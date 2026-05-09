@@ -15,6 +15,19 @@
 # `node-01.local.broetec.com.br`.
 base_domain: local.broetec.com.br
 
+# Raiz do repositório (hosts.ini está em provisioning/inventory/<overlay>/).
+_repo_root: "{{ inventory_dir | dirname | dirname | dirname }}"
+
+# -----------------------------------------------------------------------------
+# Bootstrap do host KVM
+# -----------------------------------------------------------------------------
+# Quando `true` (padrão), a role `kvm_vm` instala qemu-kvm/libvirt/etc. e
+# habilita o serviço libvirtd no host. Em distros imutáveis (Bazzite,
+# Silverblue, Kinoite) ou em hosts onde o KVM já está pronto, defina como
+# `false` para que o playbook NÃO toque na configuração do host.
+# Equivalente a rodar com `--skip-tags bootstrap`.
+kvm_host_bootstrap: true
+
 # -----------------------------------------------------------------------------
 # Defaults da VM
 # -----------------------------------------------------------------------------
@@ -23,7 +36,10 @@ vm_defaults:
   vcpus: 4
   memory_mb: 8192
   disk_size_gb: 60
-  os_variant: rocky10.0          # id do libosinfo no host KVM
+  # id do libosinfo no host KVM. Para confirmar o que está disponível:
+  #   osinfo-query os | grep -i rocky
+  # Em hosts com libosinfo antigo, caia para `rocky9.0` ou `rhel10.0`.
+  os_variant: rocky10.0
   network_iface_model: virtio
 
 # -----------------------------------------------------------------------------
@@ -56,13 +72,31 @@ libvirt_pool:
 # Imagem base (cloud image) — Rocky Linux qcow2
 # -----------------------------------------------------------------------------
 # A imagem é baixada uma única vez para `cache_dir` e clonada por VM.
+# Atenção: a partir do Rocky 10 o nome publicado tem o sufixo `-Base`
+# (`Rocky-10-GenericCloud-Base.latest.x86_64.qcow2`). O Rocky 9 ainda
+# mantinha o nome legacy sem sufixo. Confira em:
+#   https://dl.rockylinux.org/pub/rocky/<versao>/images/x86_64/
 os_image:
   distribution: rocky
   version: "10"
-  filename: Rocky-10-GenericCloud.latest.x86_64.qcow2
-  url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud.latest.x86_64.qcow2
-  checksum_url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud.latest.x86_64.qcow2.CHECKSUM
+  filename: Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
+  url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
+  checksum_url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2.CHECKSUM
   cache_dir: /var/lib/libvirt/images/_cache
+
+# -----------------------------------------------------------------------------
+# Chave SSH do laboratório (nome explícito: k8s-blueprint em env/)
+# -----------------------------------------------------------------------------
+# Os ficheiros ficam em `<repo>/env/k8s-blueprint` e `.pub`, gerados por
+# `make keys` / `make up`. O `Makefile` pode sobrescrever estes caminhos via `-e`.
+#
+# Para gerar manualmente na raiz do repositório:
+#   ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
+#
+# Para usar outra chave, sobrescreva no seu overlay:
+#   ssh_public_key_path: "{{ lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' }}"
+ssh_public_key_path: "{{ _repo_root }}/env/k8s-blueprint.pub"
+ansible_ssh_private_key_file: "{{ _repo_root }}/env/k8s-blueprint"
 
 # -----------------------------------------------------------------------------
 # cloud-init — usuário padrão, fuso, locale e chaves SSH a injetar
@@ -72,4 +106,4 @@ cloud_init:
   timezone: America/Sao_Paulo
   locale: en_US.UTF-8
   ssh_authorized_keys:
-    - "{{ lookup('file', lookup('env', 'HOME') ~ '/.ssh/id_ed25519.pub') }}"
+    - "{{ lookup('file', ssh_public_key_path) }}"

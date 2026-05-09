@@ -5,8 +5,11 @@
 # Provisiona VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
 #
 # Pré-requisitos:
-#   - Coleção `community.libvirt` instalada no controller
-#     (ansible-galaxy collection install community.libvirt).
+#   - `virsh`, `virt-install`, `qemu-img` e `genisoimage` ou `xorriso` no PATH
+#     (a etapa 1 abaixo cuida disso quando `kvm_host_bootstrap: true`).
+#   - Apenas `ansible-core` no controller — não é necessário instalar a
+#     coleção `community.libvirt` nem o binding `libvirt-python` (que exige
+#     `libvirt-devel` no host para compilar). Tudo é feito via `virsh`.
 #
 # Etapas:
 #   1. Pré-requisitos no host KVM (pacotes + libvirtd ativo).
@@ -21,6 +24,10 @@
 # =============================================================================
 
 # ---------- 1. Pré-requisitos no host KVM ------------------------------------
+# Esta etapa é OPCIONAL: em distros imutáveis (Bazzite, Silverblue, Kinoite) ou
+# em hosts onde KVM já está configurado, defina `kvm_host_bootstrap: false` no
+# inventário (ou rode com `--skip-tags bootstrap`) para pular a instalação de
+# pacotes e o gerenciamento do serviço libvirtd.
 - name: "Instalar dependências de KVM/libvirt no host"
   ansible.builtin.package:
     name:
@@ -30,15 +37,43 @@
       - virt-install
       - libguestfs-tools
       - genisoimage
-      - python3-lxml
-      - python3-libvirt
+      - xorriso
     state: present
+  when: kvm_host_bootstrap | default(true) | bool
+  tags: [bootstrap, install]
 
 - name: "Garantir libvirtd ativo e habilitado no boot"
   ansible.builtin.service:
     name: libvirtd
     state: started
     enabled: true
+  when: kvm_host_bootstrap | default(true) | bool
+  tags: [bootstrap, install]
+
+# ---------- 1.5. Preflight do controller -------------------------------------
+# Falha cedo (antes de baixar qcow2 ou criar VM) se algo essencial estiver
+# faltando no controller — economiza tempo e bandwidth.
+- name: "Preflight: chave SSH pública configurada existe?"
+  ansible.builtin.stat:
+    path: "{{ ssh_public_key_path }}"
+  register: ssh_pubkey_stat
+  check_mode: false
+
+- name: "Falhar com mensagem clara se a chave SSH pública não existir"
+  ansible.builtin.fail:
+    msg: |-
+      Chave SSH pública não encontrada em: {{ ssh_public_key_path }}
+
+      Solução A — na raiz do repositório (recomendado):
+        make keys
+
+      Solução B — gerar manualmente no repositório:
+        ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
+
+      Solução C — apontar para uma chave existente, sobrescrevendo
+      `ssh_public_key_path` no seu inventário (ex.: group_vars/all.yml):
+        ssh_public_key_path: "{{ '{{' }} lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' {{ '}}' }}"
+  when: not ssh_pubkey_stat.stat.exists
 
 # ---------- 2. Rede libvirt (subrede 10.20.30.0/24) --------------------------
 - name: "Definir XML da rede libvirt {{ kvm_network.name }}"
@@ -59,26 +94,30 @@
       </network>
 
 - name: "Listar redes libvirt já definidas"
-  community.libvirt.virt_net:
-    command: list_nets
-  register: libvirt_nets
+  ansible.builtin.command: virsh -c qemu:///system net-list --all --name
+  register: libvirt_defined_nets
+  changed_when: false
+  check_mode: false
 
 - name: "Definir a rede libvirt se ainda não existir"
-  community.libvirt.virt_net:
-    command: define
-    name: "{{ kvm_network.name }}"
-    xml: "{{ lookup('file', '/tmp/libvirt-net-' + kvm_network.name + '.xml') }}"
-  when: kvm_network.name not in libvirt_nets.list_nets
+  ansible.builtin.command: >-
+    virsh -c qemu:///system net-define
+    /tmp/libvirt-net-{{ kvm_network.name }}.xml
+  when: kvm_network.name not in libvirt_defined_nets.stdout_lines
 
 - name: "Marcar a rede libvirt como autostart"
-  community.libvirt.virt_net:
-    name: "{{ kvm_network.name }}"
-    autostart: true
+  ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
+  changed_when: false
 
-- name: "Iniciar a rede libvirt"
-  community.libvirt.virt_net:
-    name: "{{ kvm_network.name }}"
-    state: active
+- name: "Listar redes libvirt ativas"
+  ansible.builtin.command: virsh -c qemu:///system net-list --name
+  register: libvirt_active_nets
+  changed_when: false
+  check_mode: false
+
+- name: "Iniciar a rede libvirt se ainda não estiver ativa"
+  ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
+  when: kvm_network.name not in libvirt_active_nets.stdout_lines
 
 # ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
 - name: "Garantir diretório de cache para a imagem base"
@@ -88,6 +127,10 @@
     owner: root
     group: root
     mode: "0755"
+  # Operação idempotente e segura: criamos mesmo em --check para que as
+  # tasks subsequentes (get_url, copy) não quebrem com "destination does
+  # not exist" em dry-run.
+  check_mode: false
 
 - name: "Baixar a imagem qcow2 do Rocky Linux (uma única vez)"
   ansible.builtin.get_url:
@@ -98,11 +141,12 @@
 
 # ---------- 4. Provisionar cada VM do inventário -----------------------------
 - name: "Verificar quais VMs já existem no libvirt"
-  ansible.builtin.command: "virsh dominfo {{ item }}"
+  ansible.builtin.command: "virsh -c qemu:///system dominfo {{ item }}"
   register: virsh_dominfo
   loop: "{{ groups['vms'] }}"
   changed_when: false
   failed_when: false
+  check_mode: false
 
 - name: "Calcular conjunto de VMs ainda a criar"
   ansible.builtin.set_fact:
@@ -170,15 +214,42 @@
     label: "{{ item.item }}"
 
 - name: "Gerar seed ISO do cloud-init por VM"
-  ansible.builtin.command: >-
-    genisoimage -output {{ libvirt_pool.path }}/{{ item.item }}-seed.iso
-    -volid cidata -joliet -rock
-    {{ item.path }}/user-data {{ item.path }}/meta-data
+  ansible.builtin.shell: |
+    set -euo pipefail
+    out="{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
+    u="{{ item.path }}/user-data"
+    m="{{ item.path }}/meta-data"
+    if command -v genisoimage >/dev/null 2>&1; then
+      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m"
+    elif command -v xorriso >/dev/null 2>&1; then
+      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m"
+    else
+      echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode o playbook com a tag bootstrap)." >&2
+      exit 1
+    fi
   args:
     creates: "{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
+    executable: /bin/bash
   loop: "{{ ci_tmpdirs.results }}"
   loop_control:
     label: "{{ item.item }}"
+
+- name: "Preflight: virt-install no PATH do host KVM?"
+  ansible.builtin.command: command -v virt-install
+  changed_when: false
+  failed_when: false
+  register: virt_install_lookup
+
+- name: "Falhar se virt-install não estiver instalado"
+  ansible.builtin.fail:
+    msg: |-
+      O comando `virt-install` não foi encontrado no host que corre o libvirt.
+
+      • Fedora/RHEL (dnf): instale `virt-install` e dependências — ou `make up ANSIBLE_FLAGS=`
+        para o playbook instalar a tag `bootstrap`.
+      • Bazzite/Silverblue/immutable: não use dnf; instale em camada com `rpm-ostree`
+        (lista em provisioning/README.md, secção «Fedora Atomic / Bazzite») e reinicie.
+  when: virt_install_lookup.rc != 0
 
 - name: "Definir e iniciar cada VM via virt-install"
   ansible.builtin.command: >-
