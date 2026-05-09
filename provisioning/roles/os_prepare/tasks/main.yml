@@ -1,0 +1,73 @@
+---
+# =============================================================================
+# roles/os_prepare/tasks/main.yml
+# =============================================================================
+# Roda dentro de cada VM (grupo `vms`) via SSH e deixa o Rocky Linux
+# em um estado base padrão para a Broetec:
+#
+#   1. Aguardar o cloud-init terminar.
+#   2. Desativar swap (imediato + persistência em /etc/fstab).
+#   3. Definir SELinux como `permissive` (imediato + /etc/selinux/config).
+#   4. Estrutura básica do firewalld (instalado, ativo, zona public, ssh).
+#
+# Esta role intencionalmente NÃO instala/configura nada acima da camada
+# de SO; a camada de plataforma fica para etapas posteriores do blueprint.
+# =============================================================================
+
+# ---------- 1. Sincronização inicial -----------------------------------------
+- name: "Aguardar cloud-init concluir o boot"
+  ansible.builtin.command: cloud-init status --wait
+  register: cloud_init_status
+  changed_when: false
+  failed_when: false
+
+# ---------- 2. Desativar swap ------------------------------------------------
+- name: "Desativar swap em runtime"
+  ansible.builtin.command: swapoff -a
+  when: ansible_facts.swaptotal_mb | default(0) > 0
+  changed_when: ansible_facts.swaptotal_mb | default(0) > 0
+
+- name: "Comentar entradas de swap em /etc/fstab"
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\s+swap\s+.*)$'
+    replace: '# \1'
+
+# ---------- 3. SELinux em modo permissive ------------------------------------
+- name: "Aplicar SELinux=permissive em runtime"
+  ansible.builtin.command: setenforce 0
+  changed_when: false
+  failed_when: false
+
+- name: "Persistir SELinux=permissive em /etc/selinux/config"
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: 'SELINUX=permissive'
+    state: present
+
+# ---------- 4. Firewalld — estrutura básica ----------------------------------
+- name: "Instalar firewalld"
+  ansible.builtin.package:
+    name: firewalld
+    state: present
+
+- name: "Habilitar e iniciar firewalld"
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: "Definir zona padrão como public"
+  ansible.builtin.command: firewall-cmd --set-default-zone=public
+  register: fw_default_zone
+  changed_when: "'ZONE_ALREADY_SET' not in fw_default_zone.stderr"
+  failed_when: fw_default_zone.rc != 0 and 'ZONE_ALREADY_SET' not in fw_default_zone.stderr
+
+- name: "Garantir SSH liberado na zona public (estrutura base)"
+  ansible.posix.firewalld:
+    service: ssh
+    zone: public
+    permanent: true
+    immediate: true
+    state: enabled

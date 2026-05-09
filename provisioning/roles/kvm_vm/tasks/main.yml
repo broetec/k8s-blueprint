@@ -1,0 +1,213 @@
+---
+# =============================================================================
+# roles/kvm_vm/tasks/main.yml
+# =============================================================================
+# Provisiona VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
+#
+# Pré-requisitos:
+#   - Coleção `community.libvirt` instalada no controller
+#     (ansible-galaxy collection install community.libvirt).
+#
+# Etapas:
+#   1. Pré-requisitos no host KVM (pacotes + libvirtd ativo).
+#   2. Garantir a rede libvirt 10.20.30.0/24 (definida, autostart, ativa).
+#   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (cache).
+#   4. Para cada VM ainda inexistente:
+#        a. clonar a qcow2 base e redimensionar o disco;
+#        b. renderizar `user-data` + `meta-data`;
+#        c. gerar o seed ISO (NoCloud datasource);
+#        d. criar a VM via `virt-install --import --noautoconsole`.
+#   5. Aguardar o SSH responder em cada VM.
+# =============================================================================
+
+# ---------- 1. Pré-requisitos no host KVM ------------------------------------
+- name: "Instalar dependências de KVM/libvirt no host"
+  ansible.builtin.package:
+    name:
+      - qemu-kvm
+      - libvirt
+      - libvirt-client
+      - virt-install
+      - libguestfs-tools
+      - genisoimage
+      - python3-lxml
+      - python3-libvirt
+    state: present
+
+- name: "Garantir libvirtd ativo e habilitado no boot"
+  ansible.builtin.service:
+    name: libvirtd
+    state: started
+    enabled: true
+
+# ---------- 2. Rede libvirt (subrede 10.20.30.0/24) --------------------------
+- name: "Definir XML da rede libvirt {{ kvm_network.name }}"
+  ansible.builtin.copy:
+    dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
+    mode: "0644"
+    content: |
+      <network>
+        <name>{{ kvm_network.name }}</name>
+        <forward mode='nat'/>
+        <bridge name='{{ kvm_network.bridge }}' stp='on' delay='0'/>
+        <domain name='{{ kvm_network.domain }}' localOnly='yes'/>
+        <ip address='{{ kvm_network.gateway }}' netmask='{{ kvm_network.netmask }}'>
+          <dhcp>
+            <range start='{{ kvm_network.dhcp_start }}' end='{{ kvm_network.dhcp_end }}'/>
+          </dhcp>
+        </ip>
+      </network>
+
+- name: "Listar redes libvirt já definidas"
+  community.libvirt.virt_net:
+    command: list_nets
+  register: libvirt_nets
+
+- name: "Definir a rede libvirt se ainda não existir"
+  community.libvirt.virt_net:
+    command: define
+    name: "{{ kvm_network.name }}"
+    xml: "{{ lookup('file', '/tmp/libvirt-net-' + kvm_network.name + '.xml') }}"
+  when: kvm_network.name not in libvirt_nets.list_nets
+
+- name: "Marcar a rede libvirt como autostart"
+  community.libvirt.virt_net:
+    name: "{{ kvm_network.name }}"
+    autostart: true
+
+- name: "Iniciar a rede libvirt"
+  community.libvirt.virt_net:
+    name: "{{ kvm_network.name }}"
+    state: active
+
+# ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
+- name: "Garantir diretório de cache para a imagem base"
+  ansible.builtin.file:
+    path: "{{ os_image.cache_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Baixar a imagem qcow2 do Rocky Linux (uma única vez)"
+  ansible.builtin.get_url:
+    url: "{{ os_image.url }}"
+    dest: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
+    mode: "0644"
+    force: false
+
+# ---------- 4. Provisionar cada VM do inventário -----------------------------
+- name: "Verificar quais VMs já existem no libvirt"
+  ansible.builtin.command: "virsh dominfo {{ item }}"
+  register: virsh_dominfo
+  loop: "{{ groups['vms'] }}"
+  changed_when: false
+  failed_when: false
+
+- name: "Calcular conjunto de VMs ainda a criar"
+  ansible.builtin.set_fact:
+    vms_to_create: >-
+      {{ groups['vms']
+         | difference(
+             virsh_dominfo.results
+             | selectattr('rc', 'equalto', 0)
+             | map(attribute='item')
+             | list
+           )
+      }}
+
+- name: "Clonar a imagem base para o disco de cada VM nova"
+  ansible.builtin.copy:
+    src: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
+    dest: "{{ libvirt_pool.path }}/{{ item }}.qcow2"
+    remote_src: true
+    force: false
+    mode: "0644"
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Redimensionar o disco de cada VM nova"
+  ansible.builtin.command: >-
+    qemu-img resize
+    {{ libvirt_pool.path }}/{{ item }}.qcow2
+    {{ hostvars[item].vm_disk_size_gb | default(vm_defaults.disk_size_gb) }}G
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: true
+
+- name: "Criar diretório temporário para artefatos do cloud-init"
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: "ci-{{ item }}"
+  loop: "{{ vms_to_create }}"
+  register: ci_tmpdirs
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Renderizar user-data por VM (cloud-init)"
+  ansible.builtin.template:
+    src: cloud-init.j2
+    dest: "{{ item.path }}/user-data"
+    mode: "0644"
+  vars:
+    vm_hostname: "{{ item.item }}"
+    vm_ip: "{{ hostvars[item.item].vm_ip }}"
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "Gerar meta-data por VM"
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/meta-data"
+    mode: "0644"
+    content: |
+      instance-id: {{ item.item }}-{{ ansible_date_time.epoch }}
+      local-hostname: {{ item.item }}.{{ base_domain }}
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "Gerar seed ISO do cloud-init por VM"
+  ansible.builtin.command: >-
+    genisoimage -output {{ libvirt_pool.path }}/{{ item.item }}-seed.iso
+    -volid cidata -joliet -rock
+    {{ item.path }}/user-data {{ item.path }}/meta-data
+  args:
+    creates: "{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "Definir e iniciar cada VM via virt-install"
+  ansible.builtin.command: >-
+    virt-install
+    --connect qemu:///system
+    --name {{ item }}
+    --memory {{ hostvars[item].vm_memory_mb | default(vm_defaults.memory_mb) }}
+    --vcpus {{ hostvars[item].vm_vcpus | default(vm_defaults.vcpus) }}
+    --os-variant {{ vm_defaults.os_variant }}
+    --disk path={{ libvirt_pool.path }}/{{ item }}.qcow2,format=qcow2,bus=virtio
+    --disk path={{ libvirt_pool.path }}/{{ item }}-seed.iso,device=cdrom
+    --network network={{ kvm_network.name }},model={{ vm_defaults.network_iface_model }}
+    --graphics none
+    --noautoconsole
+    --import
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+  register: virt_install
+  changed_when: virt_install.rc == 0
+
+# ---------- 5. Esperar SSH responder em cada VM ------------------------------
+- name: "Aguardar o SSH responder em cada VM (cloud-init concluído)"
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[item].vm_ip }}"
+    port: 22
+    state: started
+    delay: 10
+    timeout: 600
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"

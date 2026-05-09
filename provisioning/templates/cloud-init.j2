@@ -1,0 +1,90 @@
+#cloud-config
+# =============================================================================
+# cloud-init — user-data + network-config (arquivo único)
+# =============================================================================
+# Este template é renderizado pela role `kvm_vm` para cada host do grupo
+# `vms` e gravado como `user-data` no seed ISO (NoCloud datasource).
+#
+# Estratégia de rede:
+#   - Em vez de um arquivo `network-config` separado (network-config v2),
+#     embarcamos a configuração de rede como um keyfile do NetworkManager
+#     entregue via `write_files`. Isso mantém o template em um único
+#     arquivo (`cloud-init.j2`) e garante IP estático na subrede
+#     10.20.30.0/24 com FQDN `{nome}.local.broetec.com.br`.
+#   - O keyfile não fixa `interface-name`: como a VM é criada com uma
+#     única NIC virtio, o NM aplica a configuração à interface ativa de
+#     forma determinística.
+#
+# Variáveis injetadas pela role:
+#   - vm_hostname           : hostname curto (ex.: node-01)
+#   - vm_ip                 : IP estático da VM (ex.: 10.20.30.40)
+#   - base_domain           : domínio base (ex.: local.broetec.com.br)
+#   - kvm_network.*         : prefix, gateway, dns_servers
+#   - cloud_init.*          : default_user, timezone, locale, ssh_authorized_keys
+# =============================================================================
+
+hostname: {{ vm_hostname }}
+fqdn: {{ vm_hostname }}.{{ base_domain }}
+prefer_fqdn_over_hostname: true
+preserve_hostname: false
+manage_etc_hosts: false
+
+timezone: {{ cloud_init.timezone }}
+locale: {{ cloud_init.locale }}
+
+users:
+  - name: {{ cloud_init.default_user }}
+    gecos: "Broetec lab default user"
+    groups: [wheel, adm, systemd-journal]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+{% for key in cloud_init.ssh_authorized_keys %}
+      - "{{ key }}"
+{% endfor %}
+
+ssh_pwauth: false
+disable_root: true
+
+write_files:
+  # -------------------------------------------------------------------------
+  # /etc/hosts — resolve o FQDN da própria VM no domínio Broetec.
+  # -------------------------------------------------------------------------
+  - path: /etc/hosts
+    permissions: "0644"
+    owner: root:root
+    content: |
+      127.0.0.1   localhost localhost.localdomain
+      ::1         localhost6 localhost6.localdomain
+      {{ vm_ip }}   {{ vm_hostname }}.{{ base_domain }} {{ vm_hostname }}
+
+  # -------------------------------------------------------------------------
+  # NetworkManager keyfile — IP estático na rede broetec-lab (10.20.30.0/24)
+  # -------------------------------------------------------------------------
+  - path: /etc/NetworkManager/system-connections/broetec-static.nmconnection
+    permissions: "0600"
+    owner: root:root
+    content: |
+      [connection]
+      id=broetec-static
+      type=ethernet
+      autoconnect=true
+      autoconnect-priority=100
+
+      [ipv4]
+      method=manual
+      address1={{ vm_ip }}/{{ kvm_network.prefix }},{{ kvm_network.gateway }}
+      dns={{ kvm_network.dns_servers | join(';') }};
+      dns-search={{ base_domain }};
+      may-fail=false
+
+      [ipv6]
+      method=disabled
+
+runcmd:
+  - [ hostnamectl, set-hostname, "{{ vm_hostname }}.{{ base_domain }}" ]
+  - [ nmcli, connection, reload ]
+  - [ systemctl, restart, NetworkManager ]
+
+final_message: "cloud-init concluído em {{ vm_hostname }}.{{ base_domain }} ({{ vm_ip }}) após $UPTIME segundos."

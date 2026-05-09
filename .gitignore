@@ -25,6 +25,14 @@ collections/ansible_collections/
 fact_cache/
 /tmp/ansible_facts/
 
+# ---- Ansible — inventories (versiona apenas o overlay "example") -------------
+# Cada utilizador deve copiar `provisioning/inventory/example` para um overlay
+# próprio (ex.: `provisioning/inventory/meu-ambiente`). O padrão abaixo ignora
+# todos os overlays e re-inclui apenas o "example", que é a Reference
+# Architecture oficial da Broetec.
+provisioning/inventory/*
+!provisioning/inventory/example/
+
 # ---- Kubernetes --------------------------------------------------------------
 kubeconfig
 kubeconfig.*

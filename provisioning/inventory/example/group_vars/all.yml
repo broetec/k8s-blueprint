@@ -1,0 +1,75 @@
+---
+# =============================================================================
+# Variáveis globais — overlay "example" (Reference Architecture / Broetec)
+# =============================================================================
+# Estas variáveis são consumidas tanto pela role `kvm_vm` (no host KVM) quanto
+# pela role `os_prepare` (dentro da VM). Para criar um novo ambiente, copie a
+# pasta `inventory/example` e ajuste os valores aqui.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Domínio base
+# -----------------------------------------------------------------------------
+# A Broetec possui o domínio `local.broetec.com.br` apontando (via DNS)
+# para o IP de teste do laboratório local. As VMs ganham FQDN do tipo
+# `node-01.local.broetec.com.br`.
+base_domain: local.broetec.com.br
+
+# -----------------------------------------------------------------------------
+# Defaults da VM
+# -----------------------------------------------------------------------------
+# Podem ser sobrescritos por host na `hosts.ini` (ex.: vm_vcpus=8).
+vm_defaults:
+  vcpus: 4
+  memory_mb: 8192
+  disk_size_gb: 60
+  os_variant: rocky10.0          # id do libosinfo no host KVM
+  network_iface_model: virtio
+
+# -----------------------------------------------------------------------------
+# Rede libvirt — usamos a subrede 10.20.30.0/24 deliberadamente
+# para evitar colisão com roteadores domésticos (que normalmente usam
+# 192.168.0.x ou 192.168.1.x).
+# -----------------------------------------------------------------------------
+kvm_network:
+  name: broetec-lab
+  bridge: virbr-broetec
+  subnet_cidr: 10.20.30.0/24
+  netmask: 255.255.255.0
+  prefix: 24
+  gateway: 10.20.30.1
+  dhcp_start: 10.20.30.100
+  dhcp_end: 10.20.30.200
+  dns_servers:
+    - 1.1.1.1
+    - 8.8.8.8
+  domain: "{{ base_domain }}"
+
+# -----------------------------------------------------------------------------
+# Pool de imagens libvirt
+# -----------------------------------------------------------------------------
+libvirt_pool:
+  name: default
+  path: /var/lib/libvirt/images
+
+# -----------------------------------------------------------------------------
+# Imagem base (cloud image) — Rocky Linux qcow2
+# -----------------------------------------------------------------------------
+# A imagem é baixada uma única vez para `cache_dir` e clonada por VM.
+os_image:
+  distribution: rocky
+  version: "10"
+  filename: Rocky-10-GenericCloud.latest.x86_64.qcow2
+  url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud.latest.x86_64.qcow2
+  checksum_url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud.latest.x86_64.qcow2.CHECKSUM
+  cache_dir: /var/lib/libvirt/images/_cache
+
+# -----------------------------------------------------------------------------
+# cloud-init — usuário padrão, fuso, locale e chaves SSH a injetar
+# -----------------------------------------------------------------------------
+cloud_init:
+  default_user: rocky
+  timezone: America/Sao_Paulo
+  locale: en_US.UTF-8
+  ssh_authorized_keys:
+    - "{{ lookup('file', lookup('env', 'HOME') ~ '/.ssh/id_ed25519.pub') }}"
