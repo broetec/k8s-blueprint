@@ -36,10 +36,10 @@ vm_defaults:
   vcpus: 4
   memory_mb: 8192
   disk_size_gb: 60
-  # id do libosinfo no host KVM. Para confirmar o que está disponível:
-  #   osinfo-query os | grep -i rocky
-  # Em hosts com libosinfo antigo, caia para `rocky9.0` ou `rhel10.0`.
-  os_variant: rocky10.0
+  # id curto do libosinfo (virt-install --osinfo list | grep -i rocky).
+  # Use `rocky10`, não `rocky10.0` — só existe o major em RL10.
+  # Em hosts antigos: `rocky9.0`, `rhel9.2`, etc.
+  os_variant: rocky10
   network_iface_model: virtio
 
 # -----------------------------------------------------------------------------

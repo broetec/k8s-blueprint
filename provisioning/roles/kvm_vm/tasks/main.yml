@@ -213,16 +213,29 @@
   loop_control:
     label: "{{ item.item }}"
 
+- name: "Renderizar network-config v2 por VM (NoCloud)"
+  ansible.builtin.template:
+    src: network-config.j2
+    dest: "{{ item.path }}/network-config"
+    mode: "0644"
+  vars:
+    vm_hostname: "{{ item.item }}"
+    vm_ip: "{{ hostvars[item.item].vm_ip }}"
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
 - name: "Gerar seed ISO do cloud-init por VM"
   ansible.builtin.shell: |
     set -euo pipefail
     out="{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
     u="{{ item.path }}/user-data"
     m="{{ item.path }}/meta-data"
+    n="{{ item.path }}/network-config"
     if command -v genisoimage >/dev/null 2>&1; then
-      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m"
+      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m" "$n"
     elif command -v xorriso >/dev/null 2>&1; then
-      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m"
+      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m" "$n"
     else
       echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode o playbook com a tag bootstrap)." >&2
       exit 1

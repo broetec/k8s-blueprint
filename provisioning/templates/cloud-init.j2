@@ -5,15 +5,8 @@
 # Este template é renderizado pela role `kvm_vm` para cada host do grupo
 # `vms` e gravado como `user-data` no seed ISO (NoCloud datasource).
 #
-# Estratégia de rede:
-#   - Em vez de um arquivo `network-config` separado (network-config v2),
-#     embarcamos a configuração de rede como um keyfile do NetworkManager
-#     entregue via `write_files`. Isso mantém o template em um único
-#     arquivo (`cloud-init.j2`) e garante IP estático na subrede
-#     10.20.30.0/24 com FQDN `{nome}.local.broetec.com.br`.
-#   - O keyfile não fixa `interface-name`: como a VM é criada com uma
-#     única NIC virtio, o NM aplica a configuração à interface ativa de
-#     forma determinística.
+# Rede: `network-config` v2 no seed ISO (template `network-config.j2`) —
+# interface virtio (`driver: virtio_net`), IP estático 10.20.30.x e gateway.
 #
 # Variáveis injetadas pela role:
 #   - vm_hostname           : hostname curto (ex.: node-01)
@@ -59,32 +52,9 @@ write_files:
       ::1         localhost6 localhost6.localdomain
       {{ vm_ip }}   {{ vm_hostname }}.{{ base_domain }} {{ vm_hostname }}
 
-  # -------------------------------------------------------------------------
-  # NetworkManager keyfile — IP estático na rede broetec-lab (10.20.30.0/24)
-  # -------------------------------------------------------------------------
-  - path: /etc/NetworkManager/system-connections/broetec-static.nmconnection
-    permissions: "0600"
-    owner: root:root
-    content: |
-      [connection]
-      id=broetec-static
-      type=ethernet
-      autoconnect=true
-      autoconnect-priority=100
-
-      [ipv4]
-      method=manual
-      address1={{ vm_ip }}/{{ kvm_network.prefix }},{{ kvm_network.gateway }}
-      dns={{ kvm_network.dns_servers | join(';') }};
-      dns-search={{ base_domain }};
-      may-fail=false
-
-      [ipv6]
-      method=disabled
+  # Rede IPv4 estática: ver `network-config` no mesmo seed ISO (cloud-init v2).
 
 runcmd:
   - [ hostnamectl, set-hostname, "{{ vm_hostname }}.{{ base_domain }}" ]
-  - [ nmcli, connection, reload ]
-  - [ systemctl, restart, NetworkManager ]
 
 final_message: "cloud-init concluído em {{ vm_hostname }}.{{ base_domain }} ({{ vm_ip }}) após $UPTIME segundos."

@@ -13,7 +13,8 @@ provisioning/
 │       ├── hosts.ini
 │       └── group_vars/all.yml
 ├── templates/
-│   └── cloud-init.j2              # user-data + network-config (NM keyfile)
+│   ├── cloud-init.j2              # user-data (cloud-init)
+│   └── network-config.j2          # rede v2 para o seed ISO NoCloud
 └── roles/
     ├── kvm_vm/tasks/main.yml      # libvirt, qcow2, seed ISO, virt-install
     └── os_prepare/tasks/main.yml  # swap, SELinux, firewalld dentro da VM
