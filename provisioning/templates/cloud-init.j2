@@ -1,20 +1,23 @@
 #cloud-config
 # =============================================================================
-# cloud-init — user-data + network-config (arquivo único)
+# cloud-init — user-data + meta-data (seed ISO NoCloud)
 # =============================================================================
 # Este template é renderizado pela role `kvm_vm` para cada host do grupo
 # `vms` e gravado como `user-data` no seed ISO (NoCloud datasource).
 #
-# Rede: `network-config` v2 no seed ISO (template `network-config.j2`) —
-# interface virtio (`driver: virtio_net`), IP estático 10.20.30.x e gateway.
+# IP vem da reserva DHCP no dnsmasq da rede libvirt (MAC fixo -> vm_ip).
 #
 # Variáveis injetadas pela role:
 #   - vm_hostname           : hostname curto (ex.: node-01)
 #   - vm_ip                 : IP estático da VM (ex.: 10.20.30.40)
 #   - base_domain           : domínio base (ex.: local.broetec.com.br)
 #   - kvm_network.*         : prefix, gateway, dns_servers
-#   - cloud_init.*          : default_user, timezone, locale, ssh_authorized_keys
+#   - cloud_init.*          : default_user, timezone, locale, ssh_authorized_keys,
+#                             password_hash opcional (SHA-512), ssh_password_login
 # =============================================================================
+
+{% set _pwd = cloud_init.password_hash | default('') %}
+{% set _ssh_pwd_opt = cloud_init.ssh_password_login | default(none) %}
 
 hostname: {{ vm_hostname }}
 fqdn: {{ vm_hostname }}.{{ base_domain }}
@@ -31,13 +34,19 @@ users:
     groups: [wheel, adm, systemd-journal]
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     shell: /bin/bash
+{% if _pwd | length > 0 %}
+    lock_passwd: false
+    passwd: "{{ _pwd }}"
+{% else %}
     lock_passwd: true
+{% endif %}
     ssh_authorized_keys:
 {% for key in cloud_init.ssh_authorized_keys %}
       - "{{ key }}"
 {% endfor %}
 
-ssh_pwauth: false
+{# SSH por palavra-passe: só se definires password_hash; podes forçar false em ssh_password_login #}
+ssh_pwauth: {% if _pwd | length == 0 %}false{% elif _ssh_pwd_opt is not none %}{{ _ssh_pwd_opt | lower }}{% else %}true{% endif %}
 disable_root: true
 
 write_files:
@@ -51,8 +60,6 @@ write_files:
       127.0.0.1   localhost localhost.localdomain
       ::1         localhost6 localhost6.localdomain
       {{ vm_ip }}   {{ vm_hostname }}.{{ base_domain }} {{ vm_hostname }}
-
-  # Rede IPv4 estática: ver `network-config` no mesmo seed ISO (cloud-init v2).
 
 runcmd:
   - [ hostnamectl, set-hostname, "{{ vm_hostname }}.{{ base_domain }}" ]

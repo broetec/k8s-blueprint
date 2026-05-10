@@ -13,7 +13,7 @@
 #
 # Etapas:
 #   1. Pré-requisitos no host KVM (pacotes + libvirtd ativo).
-#   2. Garantir a rede libvirt 10.20.30.0/24 (definida, autostart, ativa).
+#   2. Rede libvirt 10.20.30.0/24 + reservas DHCP (MAC -> vm_ip no dnsmasq).
 #   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (cache).
 #   4. Para cada VM ainda inexistente:
 #        a. clonar a qcow2 base e redimensionar o disco;
@@ -75,13 +75,41 @@
         ssh_public_key_path: "{{ '{{' }} lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' {{ '}}' }}"
   when: not ssh_pubkey_stat.stat.exists
 
-# ---------- 2. Rede libvirt (subrede 10.20.30.0/24) --------------------------
+
+- name: "Definir MAC estável por VM (virt-install + reserva DHCP dnsmasq)"
+  ansible.builtin.set_fact:
+    kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
+  vars:
+    _vm_mac: >-
+      {{ hostvars[item].vm_mac | default(
+           '52:54:00:' ~ (item | hash('md5'))[0:2] ~ ':' ~
+           (item | hash('md5'))[2:4] ~ ':' ~ (item | hash('md5'))[4:6]
+         ) }}
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"
+
+# ---------- 2. Rede libvirt (subrede 10.20.30.0/24) — net-define precisa do <uuid>
+#    se a rede com o mesmo nome já existir.
+- name: "Obter UUID da rede {{ kvm_network.name }} (se já estiver definida)"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    virsh -c qemu:///system net-info "{{ kvm_network.name }}" 2>/dev/null | awk '/^UUID:/ { print $2 }'
+  args:
+    executable: /bin/bash
+  register: kvm_network_uuid_lookup
+  changed_when: false
+  failed_when: false
+
 - name: "Definir XML da rede libvirt {{ kvm_network.name }}"
   ansible.builtin.copy:
     dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
     mode: "0644"
     content: |
       <network>
+        {% if kvm_network_uuid_lookup.stdout | trim | length > 0 %}
+        <uuid>{{ kvm_network_uuid_lookup.stdout | trim }}</uuid>
+        {% endif %}
         <name>{{ kvm_network.name }}</name>
         <forward mode='nat'/>
         <bridge name='{{ kvm_network.bridge }}' stp='on' delay='0'/>
@@ -89,21 +117,17 @@
         <ip address='{{ kvm_network.gateway }}' netmask='{{ kvm_network.netmask }}'>
           <dhcp>
             <range start='{{ kvm_network.dhcp_start }}' end='{{ kvm_network.dhcp_end }}'/>
+            {% for vm in groups['vms'] %}
+            <host mac='{{ kvm_vm_mac_by_host[vm] }}' ip='{{ hostvars[vm].vm_ip }}'/>
+            {% endfor %}
           </dhcp>
         </ip>
       </network>
 
-- name: "Listar redes libvirt já definidas"
-  ansible.builtin.command: virsh -c qemu:///system net-list --all --name
-  register: libvirt_defined_nets
-  changed_when: false
-  check_mode: false
-
-- name: "Definir a rede libvirt se ainda não existir"
+- name: "Definir ou atualizar rede libvirt (persistente; inclui reservas DHCP)"
   ansible.builtin.command: >-
     virsh -c qemu:///system net-define
     /tmp/libvirt-net-{{ kvm_network.name }}.xml
-  when: kvm_network.name not in libvirt_defined_nets.stdout_lines
 
 - name: "Marcar a rede libvirt como autostart"
   ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
@@ -118,6 +142,14 @@
 - name: "Iniciar a rede libvirt se ainda não estiver ativa"
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
   when: kvm_network.name not in libvirt_active_nets.stdout_lines
+
+- name: "Reiniciar rede {{ kvm_network.name }} para dnsmasq aplicar reservas DHCP estáticas"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true
+    virsh -c qemu:///system net-start "{{ kvm_network.name }}"
+  args:
+    executable: /bin/bash
 
 # ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
 - name: "Garantir diretório de cache para a imagem base"
@@ -213,35 +245,22 @@
   loop_control:
     label: "{{ item.item }}"
 
-- name: "Renderizar network-config v2 por VM (NoCloud)"
-  ansible.builtin.template:
-    src: network-config.j2
-    dest: "{{ item.path }}/network-config"
-    mode: "0644"
-  vars:
-    vm_hostname: "{{ item.item }}"
-    vm_ip: "{{ hostvars[item.item].vm_ip }}"
-  loop: "{{ ci_tmpdirs.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
 - name: "Gerar seed ISO do cloud-init por VM"
   ansible.builtin.shell: |
     set -euo pipefail
     out="{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
     u="{{ item.path }}/user-data"
     m="{{ item.path }}/meta-data"
-    n="{{ item.path }}/network-config"
     if command -v genisoimage >/dev/null 2>&1; then
-      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m" "$n"
+      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m"
     elif command -v xorriso >/dev/null 2>&1; then
-      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m" "$n"
+      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m"
     else
       echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode o playbook com a tag bootstrap)." >&2
       exit 1
     fi
   args:
-    creates: "{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
+    # Sem `creates`: senão alterações a user-data não entram na VM.
     executable: /bin/bash
   loop: "{{ ci_tmpdirs.results }}"
   loop_control:
@@ -274,7 +293,7 @@
     --os-variant {{ vm_defaults.os_variant }}
     --disk path={{ libvirt_pool.path }}/{{ item }}.qcow2,format=qcow2,bus=virtio
     --disk path={{ libvirt_pool.path }}/{{ item }}-seed.iso,device=cdrom
-    --network network={{ kvm_network.name }},model={{ vm_defaults.network_iface_model }}
+    --network network={{ kvm_network.name }},model={{ vm_defaults.network_iface_model }},mac={{ kvm_vm_mac_by_host[item] }}
     --graphics none
     --noautoconsole
     --import
@@ -283,6 +302,28 @@
     label: "{{ item }}"
   register: virt_install
   changed_when: virt_install.rc == 0
+
+- name: "Verificar MAC da VM vs reserva DHCP no dnsmasq"
+  ansible.builtin.command: virsh -c qemu:///system dumpxml {{ item }}
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+  register: domif_out
+  changed_when: false
+  when: vms_to_create | length > 0
+
+- name: "MAC da NIC deve coincidir com kvm_vm_mac_by_host"
+  ansible.builtin.assert:
+    that:
+      - kvm_vm_mac_by_host[item.item] | lower in item.stdout | lower
+    fail_msg: |-
+      O MAC da VM '{{ item.item }}' não coincide com o esperado ({{ kvm_vm_mac_by_host[item.item] }}).
+      Domínios criados antes da reserva por MAC mantêm outro endereço → DHCP na gama .100–.200 (ex.: .118).
+      Correção: make destroy && make up
+  loop: "{{ domif_out.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: vms_to_create | length > 0
 
 # ---------- 5. Esperar SSH responder em cada VM ------------------------------
 - name: "Aguardar o SSH responder em cada VM (cloud-init concluído)"

@@ -5,14 +5,43 @@
 # Roda dentro de cada VM (grupo `vms`) via SSH e deixa o Rocky Linux
 # em um estado base padrão para a Broetec:
 #
+#   0. Swap + interface sem `setup` (evita worker morto com Cursor/AppImage).
 #   1. Aguardar o cloud-init terminar.
 #   2. Desativar swap (imediato + persistência em /etc/fstab).
 #   3. Definir SELinux como `permissive` (imediato + /etc/selinux/config).
-#   4. Estrutura básica do firewalld (instalado, ativo, zona public, ssh).
+#   4. Estrutura básica do firewalld (instalado, ativo, zona public, ssh, ping/ICMP).
 #
 # Esta role intencionalmente NÃO instala/configura nada acima da camada
 # de SO; a camada de plataforma fica para etapas posteriores do blueprint.
 # =============================================================================
+
+# ---------- 0. Dados mínimos sem módulo setup (evita fork/worker morto) --------
+- name: "Ler SwapTotal (MB) de /proc/meminfo"
+  ansible.builtin.shell: awk '/^SwapTotal:/ { print int($2/1024) }' /proc/meminfo
+  register: os_prep_swap
+  changed_when: false
+
+- name: "Guardar fact de swap para as tasks seguintes"
+  ansible.builtin.set_fact:
+    os_prepare_swaptotal_mb: "{{ os_prep_swap.stdout | default('0') | int }}"
+
+- name: "Descobrir interface IPv4 primária (rota por defeito ou primeira NIC)"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    IFACE=$(ip -4 route get 8.8.8.8 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }' || true)
+    if [ -z "${IFACE}" ]; then
+      IFACE=$(ip -o link show | awk -F': ' '$2 !~ /^lo(@|$)/ { gsub(/@.*/, "", $2); print $2; exit }')
+    fi
+    printf '%s' "${IFACE}"
+  args:
+    executable: /bin/bash
+  register: os_prep_iface
+  changed_when: false
+
+- name: "Guardar interface para firewalld"
+  ansible.builtin.set_fact:
+    os_prepare_primary_iface: "{{ os_prep_iface.stdout | trim }}"
+  when: os_prep_iface.stdout | trim | length > 0
 
 # ---------- 1. Sincronização inicial -----------------------------------------
 - name: "Aguardar cloud-init concluir o boot"
@@ -24,8 +53,8 @@
 # ---------- 2. Desativar swap ------------------------------------------------
 - name: "Desativar swap em runtime"
   ansible.builtin.command: swapoff -a
-  when: ansible_facts.swaptotal_mb | default(0) > 0
-  changed_when: ansible_facts.swaptotal_mb | default(0) > 0
+  when: os_prepare_swaptotal_mb | default(0) > 0
+  changed_when: os_prepare_swaptotal_mb | default(0) > 0
 
 - name: "Comentar entradas de swap em /etc/fstab"
   ansible.builtin.replace:
@@ -64,6 +93,17 @@
   changed_when: "'ZONE_ALREADY_SET' not in fw_default_zone.stderr"
   failed_when: fw_default_zone.rc != 0 and 'ZONE_ALREADY_SET' not in fw_default_zone.stderr
 
+# Sem isto, a NIC pode ficar na zona Docker/internal/WSL e as regras de `public`
+# (ssh, icmp) não aplicam — sintoma: IP correcto mas ping/SSH mortos.
+- name: "Associar interface IPv4 por defeito à zona public"
+  ansible.posix.firewalld:
+    interface: "{{ os_prepare_primary_iface }}"
+    zone: public
+    permanent: true
+    immediate: true
+    state: enabled
+  when: os_prepare_primary_iface is defined
+
 - name: "Garantir SSH liberado na zona public (estrutura base)"
   ansible.posix.firewalld:
     service: ssh
@@ -71,3 +111,15 @@
     permanent: true
     immediate: true
     state: enabled
+
+- name: "Permitir ICMP (ping) na zona public"
+  ansible.posix.firewalld:
+    protocol: icmp
+    zone: public
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: "Recarregar firewalld"
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: true

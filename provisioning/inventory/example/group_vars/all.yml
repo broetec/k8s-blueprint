@@ -107,3 +107,11 @@ cloud_init:
   locale: en_US.UTF-8
   ssh_authorized_keys:
     - "{{ lookup('file', ssh_public_key_path) }}"
+  # --- opcional: palavra-passe para consola KVM / virsh console (hash SHA-512, não texto plano)
+  # Gerar: openssl passwd -6   ou   mkpasswd --method=SHA-512
+  # Cola o resultado em password_hash (entre aspas simples por causa dos $).
+  # Perigo: não commits hashes de produção em repos públicos; em lab local é aceitável.
+  # password_hash: '$6$rounds=4096$........................................'
+  # Com password_hash definido, SSH com palavra-passe fica ligado por defeito;
+  # para só usar palavra-passe na consola e não no SSH:
+  # ssh_password_login: false

@@ -13,8 +13,7 @@ provisioning/
 │       ├── hosts.ini
 │       └── group_vars/all.yml
 ├── templates/
-│   ├── cloud-init.j2              # user-data (cloud-init)
-│   └── network-config.j2          # rede v2 para o seed ISO NoCloud
+│   └── cloud-init.j2              # user-data (rede = DHCP + reserva MAC na libvirt)
 └── roles/
     ├── kvm_vm/tasks/main.yml      # libvirt, qcow2, seed ISO, virt-install
     └── os_prepare/tasks/main.yml  # swap, SELinux, firewalld dentro da VM
@@ -39,6 +38,9 @@ provisioning/
   ```bash
   ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
   ```
+  O utilizador na VM é sempre **`rocky`** (cloud-init não copia a chave para
+  outras contas). Ex.: `ssh -i env/k8s-blueprint rocky@<vm_ip>` — não uses só
+  `ssh <ip>` ou vais autenticar como o teu utilizador no laptop e levas *Permission denied*.
 - **Ansible Core 2.16+** instalado em user space (uma das opções abaixo).
 
 ### Fedora Atomic / Bazzite — equivalente à tag `bootstrap`
@@ -139,6 +141,22 @@ Confira a instalação:
 ansible --version
 ansible-galaxy collection list | grep ansible.posix
 ```
+
+### Erro `A worker was found in a dead state`
+
+O Ansible usa *workers* em processos filhos; em alguns ambientes (terminal
+integrado do Cursor, AppImage, ou processo pai com *threads* extra) o segundo
+bloco do playbook pode falhar mesmo com `forks=1`.
+
+- Por defeito, `make up` corre **duas** invocações do `ansible-playbook`
+  (`UP_SPLIT=1`), uma com `--tags kvm_lab` e outra com `--tags os_prepare`,
+  para reiniciar o processo Python entre as plays.
+- Se ainda falhar: corre `make up` num **terminal fora do IDE** ou força o
+  binário do sistema, por exemplo:
+  `ANSIBLE_PLAYBOOK=/usr/bin/ansible-playbook make up`.
+- Playbook numa só corrida: `make up UP_SPLIT=0` (pode voltar a falhar no 2.º
+  play no mesmo ambiente). Com `--ask-become-pass`, o split pode pedir a senha
+  **duas vezes**.
 
 ---
 

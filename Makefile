@@ -34,6 +34,10 @@ LIBVIRT_POOL_PATH ?= /var/lib/libvirt/images
 # ---- Chave SSH local do lab (gerada e armazenada em env/) -------------------
 # Nome explícito para não confundir com outras chaves no disco.
 LAB_KEY ?= env/k8s-blueprint
+# Caminho absoluto — necessário para Ansible e ssh usarem sempre o mesmo ficheiro.
+LAB_KEY_ABS := $(CURDIR)/$(LAB_KEY)
+# Opções SSH para o grupo `vms` (IdentityFile obriga a chave do lab, não ~/.ssh/id_*).
+ANSIBLE_SSH_COMMON := -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=$(LAB_KEY_ABS)
 
 # Flags repassáveis ao ansible-playbook. Para sudo passwordless local:
 #   make up SUDO_FLAGS=
@@ -41,6 +45,14 @@ SUDO_FLAGS    ?= --ask-become-pass
 # Por defeito salta a tag `bootstrap` (dnf não existe em Bazzite/immutable).
 # Fedora/RHEL tradicional com dnf: make up ANSIBLE_FLAGS=
 ANSIBLE_FLAGS ?= --skip-tags bootstrap
+# Um único fork evita "A worker was found in a dead state" (OOM / Cursor / agent).
+ANSIBLE_FORKS ?= 1
+ANSIBLE_CFG ?= $(CURDIR)/ansible.cfg
+# Binário explícito evita misturar Ansible do IDE com Python do sistema.
+# Se persistir "dead worker": terminal fora do Cursor ou ANSIBLE_PLAYBOOK=/usr/bin/ansible-playbook
+ANSIBLE_PLAYBOOK ?= ansible-playbook
+# Duas invocações (uma por play) reiniciam o processo Python — contorna fork/thread no 2.º play.
+UP_SPLIT ?= 1
 
 # ---- Cores ------------------------------------------------------------------
 B := \033[1m
@@ -50,7 +62,7 @@ R := \033[31m
 N := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help deps keys up ssh status destroy clean
+.PHONY: help deps keys up ssh ssh-add-lab status destroy clean
 
 # =============================================================================
 # Help
@@ -65,8 +77,8 @@ help: ## Lista os targets disponíveis e a config atual
 	@printf "  Inventory   : $(INVENTORY)\n"
 	@printf "  VM          : $(VM_NAME) @ $(VM_IP)\n"
 	@printf "  KVM network : $(KVM_NETWORK)\n"
-	@printf "  Lab key     : $(LAB_KEY)\n"
-	@printf "  Ansible     : $(ANSIBLE_FLAGS)\n"
+	@printf "  Lab key     : $(LAB_KEY) ($(LAB_KEY_ABS))\n"
+	@printf "  Ansible     : $(ANSIBLE_PLAYBOOK) | $(ANSIBLE_FLAGS)  forks=$(ANSIBLE_FORKS)  up_split=$(UP_SPLIT)  cfg=$(ANSIBLE_CFG)\n"
 	@printf "\n$(B)Multi-overlay:$(N)\n"
 	@printf "  make up OVERLAY=<nome>          # usa provisioning/inventory/<nome>/\n"
 	@printf "  make ssh OVERLAY=<nome> VM_IP=<ip>\n"
@@ -75,8 +87,8 @@ help: ## Lista os targets disponíveis e a config atual
 # Pré-requisitos
 # =============================================================================
 deps: ## Verifica que ansible-playbook, virsh e a coleção ansible.posix existem
-	@command -v ansible-playbook >/dev/null \
-	  || { printf "$(R)Falta ansible-playbook$(N) — veja provisioning/README.md\n"; exit 1; }
+	@$(ANSIBLE_PLAYBOOK) --version >/dev/null 2>&1 \
+	  || { printf "$(R)Falta ou não executa: $(ANSIBLE_PLAYBOOK)$(N) — veja provisioning/README.md\n"; exit 1; }
 	@command -v virsh >/dev/null \
 	  || { printf "$(R)Falta virsh$(N) — instale o pacote libvirt-client\n"; exit 1; }
 	@command -v ssh-keygen >/dev/null \
@@ -84,7 +96,7 @@ deps: ## Verifica que ansible-playbook, virsh e a coleção ansible.posix existe
 	@ansible-galaxy collection list ansible.posix 2>/dev/null \
 	  | grep -q ansible.posix \
 	  || { printf "$(Y)==> Instalando coleção ansible.posix$(N)\n"; \
-	       ansible-galaxy collection install ansible.posix; }
+	       $(ANSIBLE_PLAYBOOK:%-playbook=%-galaxy) collection install ansible.posix; }
 
 # =============================================================================
 # Chave SSH local do laboratório
@@ -104,21 +116,62 @@ $(LAB_KEY).pub:
 # =============================================================================
 up: deps keys ## Provisiona a VM (idempotente; cria a chave do lab se faltar)
 	@printf "$(B)==> Provisionando overlay '$(OVERLAY)'$(N)\n"
-	ansible-playbook \
+ifeq ($(UP_SPLIT),1)
+	@printf "$(Y)==> Ansible 1/2 (tag kvm_lab) — $(ANSIBLE_PLAYBOOK)$(N)\n"
+	ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
+	ANSIBLE_FORKS=$(ANSIBLE_FORKS) \
+	ANSIBLE_SSH_PIPELINING=false \
+	ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(ANSIBLE_PLAYBOOK) \
+	    --forks=$(ANSIBLE_FORKS) \
+	    -i $(INVENTORY) \
+	    $(PLAYBOOK) \
+	    --tags kvm_lab \
+	    $(ANSIBLE_FLAGS) \
+	    $(SUDO_FLAGS) \
+	    --private-key=$(LAB_KEY_ABS) \
+	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
+	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+	@printf "$(Y)==> Ansible 2/2 (tag os_prepare) — $(ANSIBLE_PLAYBOOK)$(N)\n"
+	ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
+	ANSIBLE_FORKS=$(ANSIBLE_FORKS) \
+	ANSIBLE_SSH_PIPELINING=false \
+	ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(ANSIBLE_PLAYBOOK) \
+	    --forks=$(ANSIBLE_FORKS) \
+	    -i $(INVENTORY) \
+	    $(PLAYBOOK) \
+	    --tags os_prepare \
+	    $(ANSIBLE_FLAGS) \
+	    $(SUDO_FLAGS) \
+	    --private-key=$(LAB_KEY_ABS) \
+	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
+	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+else
+	ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
+	ANSIBLE_FORKS=$(ANSIBLE_FORKS) \
+	ANSIBLE_SSH_PIPELINING=false \
+	ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(ANSIBLE_PLAYBOOK) \
+	    --forks=$(ANSIBLE_FORKS) \
 	    -i $(INVENTORY) \
 	    $(PLAYBOOK) \
 	    $(ANSIBLE_FLAGS) \
 	    $(SUDO_FLAGS) \
-	    --private-key=$(CURDIR)/$(LAB_KEY) \
-	    -e "ssh_public_key_path=$(CURDIR)/$(LAB_KEY).pub" \
-	    -e "ansible_ssh_private_key_file=$(CURDIR)/$(LAB_KEY)"
+	    --private-key=$(LAB_KEY_ABS) \
+	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
+	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+endif
 	@printf "\n$(G)==> Pronto.$(N) Use $(B)make ssh$(N) para entrar na VM.\n"
 
 ssh: ## Conecta na VM via SSH usando a chave do lab
-	@ssh -i $(LAB_KEY) \
+	@ssh -i $(LAB_KEY_ABS) \
 	     -o StrictHostKeyChecking=no \
 	     -o UserKnownHostsFile=/dev/null \
 	     rocky@$(VM_IP)
+
+ssh-add-lab: ## Adiciona a chave do lab ao ssh-agent (opcional; útil fora do Ansible)
+	@ssh-add $(LAB_KEY_ABS)
 
 status: ## Mostra estado da VM e da rede libvirt
 	@printf "$(B)Domínios libvirt:$(N)\n"
