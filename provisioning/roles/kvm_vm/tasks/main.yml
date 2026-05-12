@@ -91,6 +91,20 @@
 
 # ---------- 2. Rede libvirt (subrede 10.20.30.0/24) — net-define precisa do <uuid>
 #    se a rede com o mesmo nome já existir.
+#
+#    Importante: NUNCA fazer net-destroy + net-start em cada execução do playbook
+#    se o XML persistente já for o desejado — isso derruba o bridge com VMs a
+#    correr e corta rede/DHCP (ex.: 2.º `make up` com VMs já criadas). Só
+#    reiniciamos o runtime quando o fingerprint (NAT/bridge/DHCP/reservas)
+#    mudou ou quando `kvm_network_force_restart` está a true. Comparação
+#    normaliza aspas no XML (virsh vs template). Se nada mudou, nem
+#    `virsh net-define` corre (evita efeitos secundários em rede activa).
+- name: "Listar redes libvirt ativas (estado inicial, antes de net-define)"
+  ansible.builtin.command: virsh -c qemu:///system net-list --name
+  register: libvirt_active_nets_initial
+  changed_when: false
+  check_mode: false
+
 - name: "Obter UUID da rede {{ kvm_network.name }} (se já estiver definida)"
   ansible.builtin.shell: |
     set -euo pipefail
@@ -124,32 +138,92 @@
         </ip>
       </network>
 
-- name: "Definir ou atualizar rede libvirt (persistente; inclui reservas DHCP)"
+- name: "Fingerprint do XML da rede (ficheiro alvo em /tmp)"
+  ansible.builtin.shell: |-
+    {% raw %}
+    set -euo pipefail
+    f="/tmp/libvirt-net-${KVM_NET_NAME}.xml"
+    _fp_stream() {
+      sed "s/\"/'/g" | {
+        grep -oE "<forward[^/>]*/>" || true
+        grep -oE "<bridge[^/>]*/>" || true
+        grep -oE "<domain[^/>]*/>" || true
+        grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
+        grep -oE "<range start='[^']+' end='[^']+'/>" || true
+        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
+      } | sha256sum | awk '{print $1}'
+    }
+    _fp_stream < "$f"
+    {% endraw %}
+  environment:
+    KVM_NET_NAME: "{{ kvm_network.name }}"
+  args:
+    executable: /bin/bash
+  register: kvm_net_fp_wanted
+  changed_when: false
+
+- name: "Fingerprint do XML persistente actual (antes de net-define)"
+  ansible.builtin.shell: |-
+    {% raw %}
+    set -euo pipefail
+    name="${KVM_NET_NAME}"
+    if ! virsh -c qemu:///system net-info "$name" &>/dev/null; then
+      echo "__NETWORK_ABSENT__"
+      exit 0
+    fi
+    _fp_stream() {
+      sed "s/\"/'/g" | {
+        grep -oE "<forward[^/>]*/>" || true
+        grep -oE "<bridge[^/>]*/>" || true
+        grep -oE "<domain[^/>]*/>" || true
+        grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
+        grep -oE "<range start='[^']+' end='[^']+'/>" || true
+        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
+      } | sha256sum | awk '{print $1}'
+    }
+    virsh -c qemu:///system net-dumpxml --inactive "$name" | _fp_stream
+    {% endraw %}
+  environment:
+    KVM_NET_NAME: "{{ kvm_network.name }}"
+  args:
+    executable: /bin/bash
+  register: kvm_net_fp_current
+  changed_when: false
+
+- name: "Calcular se o runtime dnsmasq precisa de alinhar ao XML (mudou ou forçar)"
+  ansible.builtin.set_fact:
+    kvm_libvirt_net_runtime_needs_refresh: >-
+      {{
+        (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
+        or (kvm_network_force_restart | default(false) | bool)
+      }}
+
+- name: "Definir ou atualizar rede libvirt (persistente; só se XML lógico mudou ou rede nova)"
   ansible.builtin.command: >-
     virsh -c qemu:///system net-define
     /tmp/libvirt-net-{{ kvm_network.name }}.xml
+  when: >-
+    (kvm_net_fp_current.stdout | trim == "__NETWORK_ABSENT__")
+    or (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
 
 - name: "Marcar a rede libvirt como autostart"
   ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
   changed_when: false
 
-- name: "Listar redes libvirt ativas"
-  ansible.builtin.command: virsh -c qemu:///system net-list --name
-  register: libvirt_active_nets
-  changed_when: false
-  check_mode: false
-
 - name: "Iniciar a rede libvirt se ainda não estiver ativa"
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
-  when: kvm_network.name not in libvirt_active_nets.stdout_lines
+  when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
 
-- name: "Reiniciar rede {{ kvm_network.name }} para dnsmasq aplicar reservas DHCP estáticas"
+- name: "Reiniciar rede {{ kvm_network.name }} (só se XML/reservas mudaram ou forçado)"
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true
     virsh -c qemu:///system net-start "{{ kvm_network.name }}"
   args:
     executable: /bin/bash
+  when:
+    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
+    - kvm_libvirt_net_runtime_needs_refresh | bool
 
 # ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
 - name: "Garantir diretório de cache para a imagem base"
@@ -332,7 +406,7 @@
     port: 22
     state: started
     delay: 10
-    timeout: 600
+    timeout: 30
   loop: "{{ groups['vms'] }}"
   loop_control:
     label: "{{ item }}"

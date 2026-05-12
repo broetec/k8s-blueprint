@@ -9,7 +9,8 @@
 #   1. Aguardar o cloud-init terminar.
 #   2. Desativar swap (imediato + persistência em /etc/fstab).
 #   3. Definir SELinux como `permissive` (imediato + /etc/selinux/config).
-#   4. Estrutura básica do firewalld (instalado, ativo, zona public, ssh, ping/ICMP).
+#   4. Estrutura básica do firewalld (instalado, ativo, zona public, ssh, ping/ICMP;
+#      regras com immediate — sem reload global para não rebentar ligações no 2.º run).
 #
 # Esta role intencionalmente NÃO instala/configura nada acima da camada
 # de SO; a camada de plataforma fica para etapas posteriores do blueprint.
@@ -128,7 +129,3 @@
     permanent: true
     immediate: true
     state: enabled
-
-- name: "Recarregar firewalld"
-  ansible.builtin.command: firewall-cmd --reload
-  changed_when: true
