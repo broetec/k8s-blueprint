@@ -99,7 +99,7 @@ ssh_public_key_path: "{{ _repo_root }}/env/k8s-blueprint.pub"
 ansible_ssh_private_key_file: "{{ _repo_root }}/env/k8s-blueprint"
 
 # -----------------------------------------------------------------------------
-# cloud-init — usuário padrão, fuso, locale e chaves SSH a injetar
+# cloud-init — utilizador rocky, fuso, locale, chaves SSH e (opcional) senha
 # -----------------------------------------------------------------------------
 cloud_init:
   default_user: rocky
@@ -107,11 +107,8 @@ cloud_init:
   locale: en_US.UTF-8
   ssh_authorized_keys:
     - "{{ lookup('file', ssh_public_key_path) }}"
-  # --- opcional: palavra-passe para consola KVM / virsh console (hash SHA-512, não texto plano)
-  # Gerar: openssl passwd -6   ou   mkpasswd --method=SHA-512
-  # Cola o resultado em password_hash (entre aspas simples por causa dos $).
-  # Perigo: não commits hashes de produção em repos públicos; em lab local é aceitável.
-  # password_hash: '$6$rounds=4096$........................................'
-  # Com password_hash definido, SSH com palavra-passe fica ligado por defeito;
-  # para só usar palavra-passe na consola e não no SSH:
-  # ssh_password_login: false
+  # Password: broetec@lab
+  # Generate hash: openssl passwd -6   or   mkpasswd --method=SHA-512
+  password_hash: '$6$jNrlQDFy.2XhFEy4$lxI3Dr4ceWoc6mIKJ4z9QJKqMNCQ5u7OU9i92p5aPNBHGw23teJqlkonrdkxvJLNrRKXWOo3lgLk/hngjAKCG0'
+  ssh_password_login: false
+  sudo_nopasswd: false

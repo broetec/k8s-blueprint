@@ -16,8 +16,17 @@
 # =============================================================================
 
 # ---------- 0. Dados mínimos sem módulo setup (evita fork/worker morto) --------
+- name: "Alive check"
+  ansible.builtin.shell: ping -c 1 127.0.0.1
+  register: os_prep_alive_check
+  changed_when: false
+
 - name: "Ler SwapTotal (MB) de /proc/meminfo"
-  ansible.builtin.shell: awk '/^SwapTotal:/ { print int($2/1024) }' /proc/meminfo
+  ansible.builtin.command:
+    argv:
+      - awk
+      - '/^SwapTotal:/ { print int($2/1024) }'
+      - /proc/meminfo
   register: os_prep_swap
   changed_when: false
 

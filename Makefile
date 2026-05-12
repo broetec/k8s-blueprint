@@ -39,18 +39,27 @@ LAB_KEY_ABS := $(CURDIR)/$(LAB_KEY)
 # Opções SSH para o grupo `vms` (IdentityFile obriga a chave do lab, não ~/.ssh/id_*).
 ANSIBLE_SSH_COMMON := -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=$(LAB_KEY_ABS)
 
-# Flags repassáveis ao ansible-playbook. Para sudo passwordless local:
+# Flags repassáveis ao ansible-playbook. Para sudo passwordless em todos os hosts:
 #   make up SUDO_FLAGS=
-SUDO_FLAGS    ?= --ask-become-pass
+#
+# Fork + prompt interactivo (--ask-become-pass) pode causar "worker dead"; usar ficheiro:
+#   printf '%s\n' 'tua_senha_sudo' > env/become.pass && chmod 600 env/become.pass
+#   make up ANSIBLE_BECOME_PASSWORD_FILE=/abs/path/to/repo/env/become.pass
+ANSIBLE_BECOME_PASSWORD_FILE ?=
+SUDO_FLAGS ?= $(if $(ANSIBLE_BECOME_PASSWORD_FILE),--become-password-file=$(ANSIBLE_BECOME_PASSWORD_FILE),--ask-become-pass)
 # Por defeito salta a tag `bootstrap` (dnf não existe em Bazzite/immutable).
 # Fedora/RHEL tradicional com dnf: make up ANSIBLE_FLAGS=
 ANSIBLE_FLAGS ?= --skip-tags bootstrap
 # Um único fork evita "A worker was found in a dead state" (OOM / Cursor / agent).
 ANSIBLE_FORKS ?= 1
 ANSIBLE_CFG ?= $(CURDIR)/ansible.cfg
-# Binário explícito evita misturar Ansible do IDE com Python do sistema.
-# Se persistir "dead worker": terminal fora do Cursor ou ANSIBLE_PLAYBOOK=/usr/bin/ansible-playbook
-ANSIBLE_PLAYBOOK ?= ansible-playbook
+# Preferir ansible-playbook do sistema quando existir (/usr/bin); senão o primeiro no PATH.
+# O Python embutido no IDE pode falhar em fork; `dnf install ansible-core` costuma ir para /usr/bin.
+ANSIBLE_PLAYBOOK ?= $(shell if test -x /usr/bin/ansible-playbook; then echo /usr/bin/ansible-playbook; elif command -v ansible-playbook >/dev/null 2>&1; then command -v ansible-playbook; else echo ansible-playbook; fi)
+# SSH sem ControlMaster (multiplex) reduz falhas com workers; no_proxy=* evita proxy HTTP nas tasks.
+ANSIBLE_SSH_ARGS ?= -C -o ControlMaster=no -o ControlPersist=no
+# Cursor/AppImage costuma injectar LD_PRELOAD; fork() dos workers Ansible rebenta com preload activo.
+ANSIBLE_UNWRAP ?= env LD_PRELOAD=
 # Duas invocações (uma por play) reiniciam o processo Python — contorna fork/thread no 2.º play.
 UP_SPLIT ?= 1
 
@@ -79,6 +88,7 @@ help: ## Lista os targets disponíveis e a config atual
 	@printf "  KVM network : $(KVM_NETWORK)\n"
 	@printf "  Lab key     : $(LAB_KEY) ($(LAB_KEY_ABS))\n"
 	@printf "  Ansible     : $(ANSIBLE_PLAYBOOK) | $(ANSIBLE_FLAGS)  forks=$(ANSIBLE_FORKS)  up_split=$(UP_SPLIT)  cfg=$(ANSIBLE_CFG)\n"
+	@printf "  Become      : $(if $(ANSIBLE_BECOME_PASSWORD_FILE),ficheiro $(ANSIBLE_BECOME_PASSWORD_FILE),prompt interactivo / ver Makefile)\n"
 	@printf "\n$(B)Multi-overlay:$(N)\n"
 	@printf "  make up OVERLAY=<nome>          # usa provisioning/inventory/<nome>/\n"
 	@printf "  make ssh OVERLAY=<nome> VM_IP=<ip>\n"
@@ -87,7 +97,7 @@ help: ## Lista os targets disponíveis e a config atual
 # Pré-requisitos
 # =============================================================================
 deps: ## Verifica que ansible-playbook, virsh e a coleção ansible.posix existem
-	@$(ANSIBLE_PLAYBOOK) --version >/dev/null 2>&1 \
+	@$(ANSIBLE_UNWRAP) $(ANSIBLE_PLAYBOOK) --version >/dev/null 2>&1 \
 	  || { printf "$(R)Falta ou não executa: $(ANSIBLE_PLAYBOOK)$(N) — veja provisioning/README.md\n"; exit 1; }
 	@command -v virsh >/dev/null \
 	  || { printf "$(R)Falta virsh$(N) — instale o pacote libvirt-client\n"; exit 1; }
@@ -96,7 +106,7 @@ deps: ## Verifica que ansible-playbook, virsh e a coleção ansible.posix existe
 	@ansible-galaxy collection list ansible.posix 2>/dev/null \
 	  | grep -q ansible.posix \
 	  || { printf "$(Y)==> Instalando coleção ansible.posix$(N)\n"; \
-	       $(ANSIBLE_PLAYBOOK:%-playbook=%-galaxy) collection install ansible.posix; }
+	       $(ANSIBLE_UNWRAP) $(ANSIBLE_PLAYBOOK:%-playbook=%-galaxy) collection install ansible.posix; }
 
 # =============================================================================
 # Chave SSH local do laboratório
@@ -118,7 +128,7 @@ up: deps keys ## Provisiona a VM (idempotente; cria a chave do lab se faltar)
 	@printf "$(B)==> Provisionando overlay '$(OVERLAY)'$(N)\n"
 ifeq ($(UP_SPLIT),1)
 	@printf "$(Y)==> Ansible 1/2 (tag kvm_lab) — $(ANSIBLE_PLAYBOOK)$(N)\n"
-	ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
+	$(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
 	ANSIBLE_FORKS=$(ANSIBLE_FORKS) \
 	ANSIBLE_SSH_PIPELINING=false \
 	ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(ANSIBLE_PLAYBOOK) \
@@ -133,7 +143,7 @@ ifeq ($(UP_SPLIT),1)
 	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
 	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
 	@printf "$(Y)==> Ansible 2/2 (tag os_prepare) — $(ANSIBLE_PLAYBOOK)$(N)\n"
-	ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
+	$(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
 	ANSIBLE_FORKS=$(ANSIBLE_FORKS) \
 	ANSIBLE_SSH_PIPELINING=false \
 	ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(ANSIBLE_PLAYBOOK) \
@@ -148,7 +158,7 @@ ifeq ($(UP_SPLIT),1)
 	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
 	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
 else
-	ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
+	$(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) \
 	ANSIBLE_FORKS=$(ANSIBLE_FORKS) \
 	ANSIBLE_SSH_PIPELINING=false \
 	ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(ANSIBLE_PLAYBOOK) \

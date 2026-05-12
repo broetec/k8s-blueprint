@@ -13,11 +13,13 @@
 #   - base_domain           : domínio base (ex.: local.broetec.com.br)
 #   - kvm_network.*         : prefix, gateway, dns_servers
 #   - cloud_init.*          : default_user, timezone, locale, ssh_authorized_keys,
-#                             password_hash opcional (SHA-512), ssh_password_login
+#                             password_hash (SHA-512), ssh_password_login,
+#                             sudo_nopasswd (sudo com senha na VM para o Ansible)
 # =============================================================================
 
 {% set _pwd = cloud_init.password_hash | default('') %}
 {% set _ssh_pwd_opt = cloud_init.ssh_password_login | default(none) %}
+{% set _ssh_pwauth = false if (_pwd | length == 0) else ((_ssh_pwd_opt if _ssh_pwd_opt is not none else false) | bool) %}
 
 hostname: {{ vm_hostname }}
 fqdn: {{ vm_hostname }}.{{ base_domain }}
@@ -32,7 +34,11 @@ users:
   - name: {{ cloud_init.default_user }}
     gecos: "Broetec lab default user"
     groups: [wheel, adm, systemd-journal]
+{% if cloud_init.sudo_nopasswd | default(false) %}
     sudo: "ALL=(ALL) NOPASSWD:ALL"
+{% else %}
+    sudo: "ALL=(ALL) ALL"
+{% endif %}
     shell: /bin/bash
 {% if _pwd | length > 0 %}
     lock_passwd: false
@@ -45,8 +51,8 @@ users:
       - "{{ key }}"
 {% endfor %}
 
-{# SSH por palavra-passe: só se definires password_hash; podes forçar false em ssh_password_login #}
-ssh_pwauth: {% if _pwd | length == 0 %}false{% elif _ssh_pwd_opt is not none %}{{ _ssh_pwd_opt | lower }}{% else %}true{% endif %}
+{# ssh_pwauth: só afecta o serviço SSH. Consola SPICE/VNC usa login local (palavra-passe do user). #}
+ssh_pwauth: {{ _ssh_pwauth | bool | ternary('true', 'false') }}
 disable_root: true
 
 write_files:

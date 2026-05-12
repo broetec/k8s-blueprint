@@ -1,0 +1,16 @@
+---
+# =============================================================================
+# Variáveis só para o grupo `vms` (VMs Rocky por SSH)
+# =============================================================================
+# Se em all.yml definires `cloud_init.sudo_nopasswd: false`, o `sudo` na VM
+# passa a exigir a palavra-passe do utilizador rocky (a mesma em claro que
+# usaste para gerar `password_hash`). O Ansible precisa dessa palavra-passe
+# para `become` nas tasks — NÃO a coloques em texto neste ficheiro versionado.
+#
+# Exemplo (descomenta): cria `env/vm-rocky.pass` com uma linha (a senha),
+# chmod 600, e mantém `env/` fora do git.
+#
+# ansible_become_password: "{{ lookup('file', _repo_root ~ '/env/vm-rocky.pass') | trim }}"
+
+# Ficheiro só com documentação por defeito (variável inócua para YAML válido).
+vms_group_vars_docs: true
