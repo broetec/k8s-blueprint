@@ -5,7 +5,7 @@
 # Roda dentro de cada VM (grupo `vms`) via SSH e deixa o Rocky Linux
 # em um estado base padrão para a Broetec:
 #
-#   0. Swap + interface sem `setup` (evita worker morto com Cursor/AppImage).
+#   0. Ping sem become (paramiko + SSH estáveis no controlador).
 #   1. Aguardar o cloud-init terminar.
 #   2. Desativar swap (imediato + persistência em /etc/fstab).
 #   3. Definir SELinux como `permissive` (imediato + /etc/selinux/config).
@@ -16,11 +16,10 @@
 # de SO; a camada de plataforma fica para etapas posteriores do blueprint.
 # =============================================================================
 
-# ---------- 0. Dados mínimos sem módulo setup (evita fork/worker morto) --------
-- name: "Alive check"
-  ansible.builtin.shell: ping -c 1 127.0.0.1
-  register: os_prep_alive_check
-  changed_when: false
+# ---------- 0. Primeiro contacto SSH sem become (evita fork/worker morto no sudo) --------
+- name: "Alive check (SSH sem privilege escalation)"
+  become: false
+  ansible.builtin.ping:
 
 - name: "Ler SwapTotal (MB) de /proc/meminfo"
   ansible.builtin.command:
