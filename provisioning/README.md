@@ -41,7 +41,8 @@ provisioning/
   O utilizador na VM é sempre **`rocky`** (cloud-init não copia a chave para
   outras contas). Ex.: `ssh -i env/k8s-blueprint rocky@<vm_ip>` — não uses só
   `ssh <ip>` ou vais autenticar como o teu utilizador no laptop e levas *Permission denied*.
-- **Ansible Core 2.16+** instalado em user space (uma das opções abaixo).
+- **[uv](https://docs.astral.sh/uv/)** no `PATH` e **Python 3.12+** (o `Makefile` usa
+  `make sync` → `uv sync` com o lock do repositório; ver secção seguinte).
 
 ### Fedora Atomic / Bazzite — equivalente à tag `bootstrap`
 
@@ -79,67 +80,41 @@ Fedora **Workstation** clássico (dnf): se preferir que o Ansible instale tudo, 
 
 ---
 
-## Instalação do Ansible
+## Ansible e Python (caminho padronizado: `uv` + `pyproject.toml`)
 
-Use **um** dos dois métodos. Ambos instalam o Ansible em user space, sem mexer
-em pacotes do sistema — adequado tanto para distros imutáveis quanto para
-distros tradicionais.
+As versões de **ansible-core** e **paramiko** ficam fixadas no repositório
+(`pyproject.toml` + `uv.lock`), para o mesmo ambiente em qualquer distro Linux
+onde o `uv` consiga obter o interpretador (`UV_PYTHON`, por defeito 3.12).
 
 > **Por que não `libvirt-python`?** O role `kvm_vm` foi escrito para usar
 > apenas o binário `virsh` (que você já tem instalado com o KVM). Isso evita
 > compilar `libvirt-python` no controller — o que exigiria `libvirt-devel`,
 > `pkgconf` e `gcc` instalados como camada `rpm-ostree` no Bazzite.
 
-### Método 1 — `uv` (recomendado)
-
-[`uv`](https://docs.astral.sh/uv/) é o gerenciador Python da Astral; é rápido,
-mantém venvs isolados por ferramenta e funciona perfeitamente em Bazzite.
+### Instalar o `uv` e sincronizar o projeto
 
 ```bash
 # Caso ainda não tenha o uv:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Ansible (engine + pacote agregador "ansible")
-uv tool install ansible-core --with ansible
-
-# Tooling auxiliar (lint e UI textual)
-uv tool install ansible-lint
-uv tool install ansible-navigator
+# Na raiz do repositório (cria/atualiza .venv a partir do lock):
+make sync
+# ou:  uv sync --python 3.12 --frozen
 ```
 
-> O `--with ansible` traz o pacote agregador (`ansible`) com as coleções
-> community por cima do `ansible-core`, dentro do mesmo venv da ferramenta.
+O `Makefile` invoca o Ansible com **`uv run`** a partir da raiz do projeto
+(usa sempre o `.venv` do lock). Ferramentas opcionais (ex.: `ansible-lint`)
+podem ser adicionadas em `[project.optional-dependencies]` no `pyproject.toml`
+e instaladas com `uv sync --extra …` se precisar.
 
-### Método 2 — `pipx` (alternativa)
+### Coleção `ansible.posix`
 
-[`pipx`](https://pipx.pypa.io/) também isola cada CLI em seu próprio venv. É
-útil se você já o utiliza para outras ferramentas Python.
-
-```bash
-# Caso ainda não tenha o pipx:
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
-
-pipx install ansible-core
-pipx inject  ansible-core ansible
-pipx install ansible-lint
-pipx install ansible-navigator
-```
-
-### Coleções Ansible (passo comum aos dois métodos)
-
-Apenas `ansible.posix` é necessária (usada pelo módulo `firewalld` na role
-`os_prepare`):
+É necessária para o módulo `firewalld` na role `os_prepare`. O alvo **`make deps`**
+instala automaticamente se faltar. Manualmente:
 
 ```bash
-ansible-galaxy collection install ansible.posix
-```
-
-Confira a instalação:
-
-```bash
-ansible --version
-ansible-galaxy collection list | grep ansible.posix
+uv run ansible-galaxy collection install ansible.posix
+uv run ansible-galaxy collection list ansible.posix
 ```
 
 ### Erro `A worker was found in a dead state`
@@ -151,12 +126,15 @@ bloco do playbook pode falhar mesmo com `forks=1`.
 - Por defeito, `make up` corre **duas** invocações do `ansible-playbook`
   (`UP_SPLIT=1`), uma com `--tags kvm_lab` e outra com `--tags os_prepare`,
   para reiniciar o processo Python entre as plays.
-- Se ainda falhar: corre `make up` num **terminal fora do IDE** ou força o
-  binário do sistema, por exemplo:
-  `ANSIBLE_PLAYBOOK=/usr/bin/ansible-playbook make up`.
+- O inventário de exemplo usa **`ansible_connection=paramiko`** para o grupo
+  das VMs, há **pipelining desativado** no `ansible.cfg`, e a role `os_prepare`
+  começa com um `ping` sem `become` — mitigações testadas neste blueprint.
+- Se ainda falhar: corra `make up` num **terminal fora do IDE** ou experimente
+  outro `UV_PYTHON` (ex.: `make sync UV_PYTHON=3.13` antes do `make up`).
 - Playbook numa só corrida: `make up UP_SPLIT=0` (pode voltar a falhar no 2.º
   play no mesmo ambiente). Com `--ask-become-pass`, o split pode pedir a senha
-  **duas vezes**.
+  **duas vezes** na 1.ª play; na 2.ª use `env/vm-become.pass` ou conta `rocky`
+  com `NOPASSWD` (ver `make help`).
 
 ---
 
@@ -172,6 +150,7 @@ manualmente nem editar `~/.ssh/`.
 
 ```bash
 # Da raiz do repositório:
+make sync       # primeira vez ou após pull que altere pyproject.toml / uv.lock
 make up         # provisiona (cria chave do lab + roda Ansible)
 make ssh        # conecta na VM (rocky@10.20.30.40)
 make status     # mostra estado da VM e da rede libvirt
@@ -197,7 +176,11 @@ make destroy OVERLAY=local VM_NAME=node-02 KVM_NETWORK=outra-rede
 
 ### Caminho manual — `ansible-playbook` (didático)
 
-Útil para entender o que o `Makefile` faz por baixo do capô. Antes:
+Útil para entender o que o `Makefile` faz por baixo do capô. Corra **`make sync`**
+antes (ou `uv sync`) para ter o mesmo `ansible-core` do lock. Use **`uv run`**
+na raiz do repositório para carregar o `.venv` e respeitar o `ansible.cfg` do projeto.
+
+Antes:
 
 - Crie sua própria chave SSH (caso não use `make keys`), na raiz do repo:
   ```bash
@@ -209,7 +192,7 @@ make destroy OVERLAY=local VM_NAME=node-02 KVM_NETWORK=outra-rede
 Depois, da raiz:
 
 ```bash
-ansible-playbook \
+uv run ansible-playbook \
   -i provisioning/inventory/example/hosts.ini \
   provisioning/site.yml \
   --skip-tags bootstrap \
@@ -250,7 +233,7 @@ Como usar:
   `--check --diff` é útil para confirmar que nada inesperado mudou:
 
   ```bash
-  ansible-playbook -i provisioning/inventory/example/hosts.ini \
+  uv run ansible-playbook -i provisioning/inventory/example/hosts.ini \
     provisioning/site.yml --skip-tags bootstrap --ask-become-pass --check --diff
   ```
 
