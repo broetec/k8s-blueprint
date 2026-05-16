@@ -406,7 +406,7 @@
     port: 22
     state: started
     delay: 10
-    timeout: 30
+    timeout: 600
   loop: "{{ groups['vms'] }}"
   loop_control:
     label: "{{ item }}"

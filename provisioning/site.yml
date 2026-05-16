@@ -34,5 +34,20 @@
   gather_facts: false
   tags:
     - os_prepare
+  pre_tasks:
+    # Paramiko usa ~/.ssh/known_hosts; recriar a VM muda a chave do host (host key mismatch).
+    - name: "Limpar entrada SSH obsoleta no controlador (ssh-keygen -R)"
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -R
+          - "{{ hostvars[item].ansible_host | default(hostvars[item].vm_ip) }}"
+      loop: "{{ groups['vms'] }}"
+      loop_control:
+        label: "{{ hostvars[item].ansible_host | default(hostvars[item].vm_ip) }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      failed_when: false
   roles:
     - role: os_prepare

@@ -56,7 +56,7 @@ UP_SPLIT ?= 1
 UV ?= uv
 UV_PYTHON ?= 3.12
 # Variáveis de ambiente antes de `uv run`; depois ansible-playbook / ansible-galaxy.
-ANSIBLE_FRONT = $(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) ANSIBLE_FORKS=$(ANSIBLE_FORKS) ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(UV) run --directory "$(CURDIR)"
+ANSIBLE_FRONT = $(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_HOST_KEY_CHECKING=False ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) ANSIBLE_FORKS=$(ANSIBLE_FORKS) ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(UV) run --directory "$(CURDIR)"
 
 B := \033[1m
 G := \033[32m
@@ -65,7 +65,7 @@ R := \033[31m
 N := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help sync venv keys up ssh ssh-add-lab status destroy clean
+.PHONY: help sync venv keys up ssh ssh-add-lab ssh-host-key-forget ssh-host-key-refresh status destroy clean
 
 help: ## Lista os targets disponíveis e a config atual
 	@printf "$(B)Targets:$(N)\n"
@@ -126,6 +126,7 @@ ifeq ($(UP_SPLIT),1)
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
 	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
 	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+	@$(MAKE) ssh-host-key-refresh VM_IP=$(VM_IP) VM_NAME=$(VM_NAME)
 	@printf "$(Y)==> Ansible 2/2 (os_prepare)$(N)\n"
 	$(ANSIBLE_FRONT) ansible-playbook \
 	    --forks=$(ANSIBLE_FORKS) \
@@ -159,13 +160,25 @@ ssh: ## Conecta na VM (rocky) com a chave do lab
 ssh-add-lab: ## Adiciona a chave do lab ao ssh-agent (opcional)
 	@ssh-add $(LAB_KEY_ABS)
 
+# Paramiko (grupo vms) ignora -o StrictHostKeyChecking; limpa known_hosts ao recriar a VM.
+ssh-host-key-forget: ## Remove entradas SSH antigas de $(VM_IP) / $(VM_NAME) em ~/.ssh/known_hosts
+	@ssh-keygen -R $(VM_IP) 2>/dev/null || true
+	@ssh-keygen -R $(VM_NAME) 2>/dev/null || true
+
+ssh-host-key-refresh: ssh-host-key-forget ## Regista a chave SSH actual da VM (evita prompt yes/no)
+	@printf "$(Y)==> Registando chave SSH de $(VM_IP)...$(N)\n"
+	@mkdir -p $(HOME)/.ssh
+	@chmod 700 $(HOME)/.ssh 2>/dev/null || true
+	@until ssh-keyscan -H $(VM_IP) 2>/dev/null | grep -q .; do sleep 2; done
+	@ssh-keyscan -H $(VM_IP) >> $(HOME)/.ssh/known_hosts 2>/dev/null
+
 status: ## Estado da VM e da rede libvirt
 	@printf "$(B)Domínios libvirt:$(N)\n"
 	@virsh -c qemu:///system list --all
 	@printf "\n$(B)Redes libvirt:$(N)\n"
 	@virsh -c qemu:///system net-list --all
 
-destroy: ## Remove a VM (mantém cache da qcow2 base)
+destroy: ssh-host-key-forget ## Remove a VM (mantém cache da qcow2 base)
 	-virsh -c qemu:///system destroy $(VM_NAME)
 	-virsh -c qemu:///system undefine $(VM_NAME) --remove-all-storage
 	-sudo rm -f $(LIBVIRT_POOL_PATH)/$(VM_NAME)-seed.iso
