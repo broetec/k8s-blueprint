@@ -5,7 +5,7 @@
 # Roda dentro de cada VM (grupo `vms`) via SSH e deixa o Rocky Linux
 # em um estado base padrão para a Broetec:
 #
-#   0. Ping sem become (paramiko + SSH estáveis no controlador).
+#   0. Ping sem become (primeiro contacto SSH estável no controlador).
 #   1. Aguardar o cloud-init terminar.
 #   2. Desativar swap (imediato + persistência em /etc/fstab).
 #   3. Definir SELinux como `permissive` (imediato + /etc/selinux/config).

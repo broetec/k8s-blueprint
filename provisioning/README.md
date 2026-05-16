@@ -82,7 +82,7 @@ Fedora **Workstation** clássico (dnf): se preferir que o Ansible instale tudo, 
 
 ## Ansible e Python (caminho padronizado: `uv` + `pyproject.toml`)
 
-As versões de **ansible-core** e **paramiko** ficam fixadas no repositório
+As versões de **ansible-core** e **ansible-pylibssh** ficam fixadas no repositório
 (`pyproject.toml` + `uv.lock`), para o mesmo ambiente em qualquer distro Linux
 onde o `uv` consiga obter o interpretador (`UV_PYTHON`, por defeito 3.12).
 
@@ -107,14 +107,23 @@ O `Makefile` invoca o Ansible com **`uv run`** a partir da raiz do projeto
 podem ser adicionadas em `[project.optional-dependencies]` no `pyproject.toml`
 e instaladas com `uv sync --extra …` se precisar.
 
-### Coleção `ansible.posix`
+**Dois “Pythons” no lab:** no **controlador** (laptop + play `kvm_hosts` local) corre
+sempre o interpretador do `.venv` (`ansible_playbook_python` em
+`group_vars/kvm_hosts.yml`). Nas **VMs** (`vms`), os módulos Ansible executam o
+Python instalado no Rocky (`interpreter_python = auto_silent` no `ansible.cfg`) —
+não copie nem aponte o `.venv` do repositório para o inventário das VMs.
 
-É necessária para o módulo `firewalld` na role `os_prepare`. O alvo **`make deps`**
-instala automaticamente se faltar. Manualmente:
+### Coleções Galaxy (`ansible.posix`, `ansible.netcommon`)
+
+- **`ansible.posix`**: módulo `firewalld` na role `os_prepare`.
+- **`ansible.netcommon`**: plugin `libssh` para SSH às VMs sem fork do binário
+  `ssh` (evita *worker dead* no terminal integrado do Cursor).
+
+O alvo **`make deps`** instala ambas a partir de
+`provisioning/collections/requirements.yml`. Manualmente:
 
 ```bash
-uv run ansible-galaxy collection install ansible.posix
-uv run ansible-galaxy collection list ansible.posix
+uv run ansible-galaxy collection install -r provisioning/collections/requirements.yml
 ```
 
 ### Erro `A worker was found in a dead state`
@@ -126,9 +135,11 @@ bloco do playbook pode falhar mesmo com `forks=1`.
 - Por defeito, `make up` corre **duas** invocações do `ansible-playbook`
   (`UP_SPLIT=1`), uma com `--tags kvm_lab` e outra com `--tags os_prepare`,
   para reiniciar o processo Python entre as plays.
-- O inventário de exemplo usa **`ansible_connection=paramiko`** para o grupo
-  das VMs, há **pipelining desativado** no `ansible.cfg`, e a role `os_prepare`
-  começa com um `ping` sem `become` — mitigações testadas neste blueprint.
+- O inventário de exemplo usa **`ansible_connection=ansible.netcommon.libssh`**
+  (bindings Python, não o subprocesso `ssh` do sistema — o plugin `ssh` openssh
+  costuma falhar com *worker dead* no Cursor). Há **pipelining desativado** no
+  `ansible.cfg`, `make up` em **duas invocações** (`UP_SPLIT=1`), e a role
+  `os_prepare` começa com um `ping` sem `become`.
 - Se ainda falhar: corra `make up` num **terminal fora do IDE** ou experimente
   outro `UV_PYTHON` (ex.: `make sync UV_PYTHON=3.13` antes do `make up`).
 - Playbook numa só corrida: `make up UP_SPLIT=0` (pode voltar a falhar no 2.º

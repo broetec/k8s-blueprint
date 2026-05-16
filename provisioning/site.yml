@@ -14,8 +14,9 @@
 #                    firewalld) que serão pré-requisito para etapas
 #                    posteriores.
 #
-# Execução:
-#   ansible-playbook -i inventory/example/hosts.ini site.yml
+# Execução (na raiz do repo, com .venv via uv):
+#   uv run ansible-playbook -i provisioning/inventory/example/hosts.ini provisioning/site.yml
+#   make up
 # =============================================================================
 
 - name: "[1/2] Provisionar VMs no KVM/libvirt"
@@ -35,7 +36,7 @@
   tags:
     - os_prepare
   pre_tasks:
-    # Paramiko usa ~/.ssh/known_hosts; recriar a VM muda a chave do host (host key mismatch).
+    # Recriar a VM altera a chave do host; limpa entradas antigas para SSH manual / ssh-keyscan.
     - name: "Limpar entrada SSH obsoleta no controlador (ssh-keygen -R)"
       ansible.builtin.command:
         argv:

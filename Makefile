@@ -21,7 +21,6 @@ LIBVIRT_POOL_PATH ?= /var/lib/libvirt/images
 
 LAB_KEY ?= env/k8s-blueprint
 LAB_KEY_ABS := $(CURDIR)/$(LAB_KEY)
-ANSIBLE_SSH_COMMON := -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=$(LAB_KEY_ABS)
 
 # Become host (1ª play): env/become.pass não vazio → ficheiro; senão -K
 BECOME_PASS_FILE := $(CURDIR)/env/become.pass
@@ -55,6 +54,8 @@ UP_SPLIT ?= 1
 
 UV ?= uv
 UV_PYTHON ?= 3.12
+VENV := $(CURDIR)/.venv
+VENV_PYTHON := $(VENV)/bin/python
 # Variáveis de ambiente antes de `uv run`; depois ansible-playbook / ansible-galaxy.
 ANSIBLE_FRONT = $(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_HOST_KEY_CHECKING=False ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) ANSIBLE_FORKS=$(ANSIBLE_FORKS) ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(UV) run --directory "$(CURDIR)"
 
@@ -90,19 +91,23 @@ sync: ## uv sync — instala/atualiza .venv (pyproject.toml + uv.lock)
 	@command -v $(UV) >/dev/null 2>&1 || { printf "$(R)Instale uv: https://docs.astral.sh/uv/$(N)\n"; exit 1; }
 	@printf "$(Y)==> uv sync (Python $(UV_PYTHON))$(N)\n"
 	@cd "$(CURDIR)" && $(ANSIBLE_UNWRAP) $(UV) sync --python $(UV_PYTHON) --frozen
+	@test -x '$(VENV_PYTHON)' \
+	  || { printf "$(R).venv incompleto após sync — falta $(VENV_PYTHON)$(N)\n"; exit 1; }
 
 venv: sync ## Alias para make sync
 
-deps: sync ## Verifica uv, Ansible, virsh, ssh-keygen e coleção ansible.posix
+COLLECTIONS_REQ ?= provisioning/collections/requirements.yml
+
+deps: sync ## Verifica uv, Ansible, virsh, ssh-keygen e coleções Galaxy (posix, netcommon)
+	@test -x '$(VENV_PYTHON)' \
+	  || { printf "$(R)Falta $(VENV_PYTHON) — corra $(B)make sync$(N)\n"; exit 1; }
 	@$(ANSIBLE_FRONT) ansible-playbook --version >/dev/null 2>&1 \
 	  || { printf "$(R)ansible-playbook (uv run) não executa — corra $(B)make sync$(N)\n"; exit 1; }
 	@command -v virsh >/dev/null \
 	  || { printf "$(R)Falta virsh — instale libvirt-client$(N)\n"; exit 1; }
 	@command -v ssh-keygen >/dev/null \
 	  || { printf "$(R)Falta ssh-keygen — instale openssh-clients$(N)\n"; exit 1; }
-	@$(ANSIBLE_FRONT) ansible-galaxy collection list ansible.posix 2>/dev/null | grep -q ansible.posix \
-	  || { printf "$(Y)==> Instalando ansible.posix$(N)\n"; \
-	       $(ANSIBLE_FRONT) ansible-galaxy collection install ansible.posix; }
+	@$(ANSIBLE_FRONT) ansible-galaxy collection install -r $(COLLECTIONS_REQ)
 
 keys: $(LAB_KEY).pub ## Gera o par de chaves SSH local do lab (idempotente)
 
@@ -124,8 +129,7 @@ ifeq ($(UP_SPLIT),1)
 	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS) \
 	    --private-key=$(LAB_KEY_ABS) \
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
-	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
-	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)"
 	@$(MAKE) ssh-host-key-refresh VM_IP=$(VM_IP) VM_NAME=$(VM_NAME)
 	@printf "$(Y)==> Ansible 2/2 (os_prepare)$(N)\n"
 	$(ANSIBLE_FRONT) ansible-playbook \
@@ -136,8 +140,7 @@ ifeq ($(UP_SPLIT),1)
 	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS_VM) \
 	    --private-key=$(LAB_KEY_ABS) \
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
-	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
-	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)"
 else
 	$(ANSIBLE_FRONT) ansible-playbook \
 	    --forks=$(ANSIBLE_FORKS) \
@@ -146,8 +149,7 @@ else
 	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS) \
 	    --private-key=$(LAB_KEY_ABS) \
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
-	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
-	    -e "ansible_ssh_common_args=$(ANSIBLE_SSH_COMMON)"
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)"
 endif
 	@printf "\n$(G)==> Pronto.$(N) $(B)make ssh$(N) para entrar na VM.\n"
 
@@ -160,7 +162,7 @@ ssh: ## Conecta na VM (rocky) com a chave do lab
 ssh-add-lab: ## Adiciona a chave do lab ao ssh-agent (opcional)
 	@ssh-add $(LAB_KEY_ABS)
 
-# Paramiko (grupo vms) ignora -o StrictHostKeyChecking; limpa known_hosts ao recriar a VM.
+# Limpa known_hosts ao recriar a VM (útil para `ssh` manual fora do `make ssh`).
 ssh-host-key-forget: ## Remove entradas SSH antigas de $(VM_IP) / $(VM_NAME) em ~/.ssh/known_hosts
 	@ssh-keygen -R $(VM_IP) 2>/dev/null || true
 	@ssh-keygen -R $(VM_NAME) 2>/dev/null || true
