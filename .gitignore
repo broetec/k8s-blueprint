@@ -33,12 +33,13 @@ fact_cache/
 provisioning/inventory/*
 !provisioning/inventory/example/
 
-# ---- Env — credenciais locais do laboratório (NUNCA commitar) ---------------
-# A pasta `env/` guarda a chave SSH gerada por `make keys` / `make up`. Cada
-# clone do repositório usa a sua própria chave. Versionamos apenas o README
-# que explica o que vai ali.
+# ---- Env — credenciais e defaults locais do laboratório (NUNCA commitar) -----
+# A pasta `env/` guarda chave SSH, `.env` do Make, passwords, etc. Versionamos
+# apenas README.md e `.env.example`.
 env/*
 !env/README.md
+!env/.env.example
+env/.env
 
 # ---- Kubernetes --------------------------------------------------------------
 kubeconfig

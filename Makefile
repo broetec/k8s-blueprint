@@ -8,7 +8,13 @@
 #   make sync     uv sync (cria/atualiza .venv a partir do lock)
 #   make up       provisiona a VM (chave do lab + Ansible)
 #   make ssh      SSH para rocky@VM_IP com a chave do lab
+#
+# Defaults locais (opcional): cp env/.env.example env/.env
 # =============================================================================
+
+LAB_ENV_FILE ?= env/.env
+# Carrega env/.env (gitignored); ver env/.env.example
+-include $(LAB_ENV_FILE)
 
 OVERLAY ?= example
 
@@ -52,6 +58,9 @@ ANSIBLE_SSH_ARGS ?= -C -o ControlMaster=no -o ControlPersist=no
 ANSIBLE_UNWRAP ?= env -u LD_PRELOAD -u LD_LIBRARY_PATH -u PYTHONPATH PYTHONNOUSERSITE=1 MALLOC_ARENA_MAX=2
 UP_SPLIT ?= 1
 
+# Opt-in via .env: CREATE_SSH_GLOBAL_KNOWN_HOSTS=1 → /etc/ssh/ssh_known_hosts (sudo)
+CREATE_SSH_GLOBAL_KNOWN_HOSTS ?= 0
+
 UV ?= uv
 UV_PYTHON ?= 3.12
 VENV := $(CURDIR)/.venv
@@ -66,7 +75,7 @@ R := \033[31m
 N := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help sync venv keys up ssh ssh-add-lab ssh-host-key-forget ssh-host-key-refresh status destroy clean
+.PHONY: help sync venv keys ensure-ssh-global-known-hosts up ssh ssh-add-lab ssh-host-key-forget ssh-host-key-refresh status destroy clean
 
 help: ## Lista os targets disponíveis e a config atual
 	@printf "$(B)Targets:$(N)\n"
@@ -81,6 +90,8 @@ help: ## Lista os targets disponíveis e a config atual
 	@printf "  Lab key     : $(LAB_KEY) ($(LAB_KEY_ABS))\n"
 	@printf "  Ansible     : $(UV) run ansible-playbook | $(ANSIBLE_FLAGS)  forks=$(ANSIBLE_FORKS)  up_split=$(UP_SPLIT)\n"
 	@printf "  UV_PYTHON   : $(UV_PYTHON) (make sync UV_PYTHON=3.13)\n"
+	@printf "  env/.env    : %s\n" "$(if $(wildcard $(LAB_ENV_FILE)),$(CURDIR)/$(LAB_ENV_FILE),$(Y)ausente — cp env/.env.example env/.env$(N))"
+	@printf "  known_hosts : %s\n" "$(if $(filter 1,$(CREATE_SSH_GLOBAL_KNOWN_HOSTS)),$(G)/etc/ssh/ssh_known_hosts se faltar (opt-in)$(N),$(HOME)/.ssh/known_hosts apenas)"
 	@printf "  Become (1ª): $(if $(ANSIBLE_BECOME_PASSWORD_FILE),ficheiro,$(B)--ask-become-pass$(N) ou $(B)env/become.pass$(N))\n"
 	@printf "  Become (2ª): %s\n" "$(if $(strip $(SUDO_FLAGS_VM)),$(SUDO_FLAGS_VM),sem flags — rocky NOPASSWD)"
 	@printf "\n$(B)Multi-overlay:$(N)\n"
@@ -117,7 +128,21 @@ $(LAB_KEY).pub:
 	@ssh-keygen -t ed25519 -C "k8s-blueprint" -f $(LAB_KEY) -N "" -q
 	@printf "$(G)==> Chave criada (gitignored).$(N)\n"
 
-up: deps keys ## Provisiona a VM (idempotente; cria a chave do lab se faltar)
+ensure-ssh-global-known-hosts: ## Cria /etc/ssh/ssh_known_hosts se CREATE_SSH_GLOBAL_KNOWN_HOSTS=1
+ifeq ($(CREATE_SSH_GLOBAL_KNOWN_HOSTS),1)
+	@if [ -f /etc/ssh/ssh_known_hosts ]; then \
+	  printf "$(G)==> /etc/ssh/ssh_known_hosts já existe.$(N)\n"; \
+	else \
+	  printf "$(Y)==> CREATE_SSH_GLOBAL_KNOWN_HOSTS=1: a criar /etc/ssh/ssh_known_hosts...$(N)\n"; \
+	  sudo install -d -m 755 /etc/ssh; \
+	  sudo install -m 644 /dev/null /etc/ssh/ssh_known_hosts; \
+	  printf "$(G)==> /etc/ssh/ssh_known_hosts criado.$(N)\n"; \
+	fi
+else
+	@:
+endif
+
+up: deps keys ensure-ssh-global-known-hosts ## Provisiona a VM (idempotente; cria a chave do lab se faltar)
 	@printf "$(B)==> Provisionando overlay '$(OVERLAY)'$(N)\n"
 ifeq ($(UP_SPLIT),1)
 	@printf "$(Y)==> Ansible 1/2 (kvm_lab)$(N)\n"
@@ -154,23 +179,25 @@ endif
 	@printf "\n$(G)==> Pronto.$(N) $(B)make ssh$(N) para entrar na VM.\n"
 
 ssh: ## Conecta na VM (rocky) com a chave do lab
+	@mkdir -p $(HOME)/.ssh && chmod 700 $(HOME)/.ssh 2>/dev/null || true
 	@ssh -i $(LAB_KEY_ABS) \
-	     -o StrictHostKeyChecking=no \
-	     -o UserKnownHostsFile=/dev/null \
+	     -o StrictHostKeyChecking=accept-new \
+	     -o UserKnownHostsFile=$(HOME)/.ssh/known_hosts \
 	     rocky@$(VM_IP)
 
 ssh-add-lab: ## Adiciona a chave do lab ao ssh-agent (opcional)
 	@ssh-add $(LAB_KEY_ABS)
 
-# Limpa known_hosts ao recriar a VM (útil para `ssh` manual fora do `make ssh`).
-ssh-host-key-forget: ## Remove entradas SSH antigas de $(VM_IP) / $(VM_NAME) em ~/.ssh/known_hosts
-	@ssh-keygen -R $(VM_IP) 2>/dev/null || true
-	@ssh-keygen -R $(VM_NAME) 2>/dev/null || true
+# known_hosts só em $HOME/.ssh (nunca /etc/ssh). Útil ao recriar a VM ou `ssh` manual.
+ssh-host-key-forget: ## Remove entradas antigas de $(VM_IP) em $(HOME)/.ssh/known_hosts
+	@ssh-keygen -R $(VM_IP) -f $(HOME)/.ssh/known_hosts 2>/dev/null || true
+	@ssh-keygen -R $(VM_NAME) -f $(HOME)/.ssh/known_hosts 2>/dev/null || true
 
-ssh-host-key-refresh: ssh-host-key-forget ## Regista a chave SSH actual da VM (evita prompt yes/no)
-	@printf "$(Y)==> Registando chave SSH de $(VM_IP)...$(N)\n"
+ssh-host-key-refresh: ssh-host-key-forget ## Regista a chave da VM em $(HOME)/.ssh/known_hosts
+	@printf "$(Y)==> Registando chave SSH de $(VM_IP) em $(HOME)/.ssh/known_hosts...$(N)\n"
 	@mkdir -p $(HOME)/.ssh
 	@chmod 700 $(HOME)/.ssh 2>/dev/null || true
+	@touch $(HOME)/.ssh/known_hosts
 	@until ssh-keyscan -H $(VM_IP) 2>/dev/null | grep -q .; do sleep 2; done
 	@ssh-keyscan -H $(VM_IP) >> $(HOME)/.ssh/known_hosts 2>/dev/null
 

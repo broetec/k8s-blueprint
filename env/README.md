@@ -1,9 +1,24 @@
 # `env/` — credenciais locais do laboratório
 
-Esta pasta guarda **credenciais geradas localmente** para o ambiente de
-laboratório do `k8s-blueprint`. Tudo aqui (exceto este `README.md`) é
-gitignored — cada clone do repositório gera e usa as suas próprias
-credenciais; nada de chave compartilhada no git.
+Esta pasta agrupa **defaults e credenciais locais** do laboratório
+`k8s-blueprint`. Ficheiros sensíveis ou pessoais são gitignored; versionamos
+apenas este `README.md` e `env/.env.example`.
+
+## Defaults do Make (`env/.env`)
+
+```bash
+cp env/.env.example env/.env
+# edite OVERLAY, VM_IP, CREATE_SSH_GLOBAL_KNOWN_HOSTS, etc.
+make help
+```
+
+O `Makefile` carrega `env/.env` automaticamente. A linha de comando continua
+a poder sobrepor: `make up VM_IP=10.20.30.50`.
+
+| Variável | Uso |
+|---|---|
+| `OVERLAY`, `VM_NAME`, `VM_IP`, `KVM_NETWORK` | atalhos em vez de flags no `make` |
+| `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `0` = só `~/.ssh/known_hosts`; `1` = opt-in para criar `/etc/ssh/ssh_known_hosts` no controlador (sudo) |
 
 ## Conteúdo gerado automaticamente
 
@@ -16,10 +31,11 @@ A geração é idempotente: se a chave já existe, o Make pula esse passo.
 
 ## O que NÃO colocar aqui
 
-- **Configuração por ambiente** (VM name, IP, subrede, vCPUs) → fica em
-  `provisioning/inventory/<overlay>/group_vars/all.yml` e `hosts.ini`.
-  Para criar um novo ambiente, copie a pasta `inventory/example` para
-  `inventory/<seu-nome>` e rode `make up OVERLAY=<seu-nome>`.
+- **Inventário Ansible completo** (roles, group_vars versionados) →
+  `provisioning/inventory/<overlay>/`. O `env/.env` só substitui defaults do
+  `Makefile` (IP, overlay, flags). Para outro ambiente, copie
+  `inventory/example` → `inventory/<nome>` e use `OVERLAY=<nome>` no `.env` ou
+  no `make`.
 - **Segredos de produção** (tokens de cloud, deploy keys do GitHub, etc.) →
   use `sealed-secrets` / `external-secrets` na fase declarativa do cluster
   (ver `docs/`). Esta pasta é só para o ciclo de vida do lab local.

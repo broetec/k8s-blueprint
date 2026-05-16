@@ -147,6 +147,34 @@ bloco do playbook pode falhar mesmo com `forks=1`.
   **duas vezes** na 1.ª play; na 2.ª use `env/vm-become.pass` ou conta `rocky`
   com `NOPASSWD` (ver `make help`).
 
+### Avisos `ssh_strict_fopen` / `packet type 80` (libssh)
+
+Por defeito o blueprint **não altera ficheiros do sistema** (`/etc/ssh/…`).
+Chaves de host do lab ficam em **`$HOME/.ssh/known_hosts`** (`make
+ssh-host-key-refresh`, `make ssh`, plugin libssh).
+
+O aviso `ssh_strict_fopen: … /etc/ssh/ssh_known_hosts` vem da biblioteca C
+**libssh**, que tenta ler o ficheiro global opcional do SO (distinto de
+`~/.ssh/known_hosts`). Em Bazzite/Fedora Atomic esse ficheiro muitas vezes não
+existe; o playbook pode continuar com `failed=0`.
+
+**Opt-in** (só se quiseres criar o ficheiro global no controlador):
+
+```bash
+cp env/.env.example env/.env
+# Edite: CREATE_SSH_GLOBAL_KNOWN_HOSTS=1
+make up   # ou: make ensure-ssh-global-known-hosts
+```
+
+`packet type 80` costuma ser ruído do handshake libssh↔`sshd` da Rocky. Se houver
+falhas reais de ligação, actualize `ansible-pylibssh` / `ansible.netcommon`.
+
+### Ficheiro `env/.env` (defaults do Make)
+
+Copie `env/.env.example` → `env/.env` (gitignored; ver `env/README.md`).
+Variáveis úteis: `OVERLAY`, `VM_IP`, `VM_NAME`, `UP_SPLIT`,
+`CREATE_SSH_GLOBAL_KNOWN_HOSTS`. `make help` mostra a config efectiva.
+
 ---
 
 ## Executar o exemplo
@@ -160,7 +188,7 @@ Ansible e roda o playbook automaticamente. Você nunca precisa criar chave
 manualmente nem editar `~/.ssh/`.
 
 ```bash
-# Da raiz do repositório:
+# Da raiz do repositório (opcional: cp env/.env.example env/.env):
 make sync       # primeira vez ou após pull que altere pyproject.toml / uv.lock
 make up         # provisiona (cria chave do lab + roda Ansible)
 make ssh        # conecta na VM (rocky@10.20.30.40)

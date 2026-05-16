@@ -36,13 +36,15 @@
   tags:
     - os_prepare
   pre_tasks:
-    # Recriar a VM altera a chave do host; limpa entradas antigas para SSH manual / ssh-keyscan.
+    # Controlador: só $HOME/.ssh/known_hosts (make ssh-host-key-*). Sem /etc/ssh.
     - name: "Limpar entrada SSH obsoleta no controlador (ssh-keygen -R)"
       ansible.builtin.command:
         argv:
           - ssh-keygen
           - -R
           - "{{ hostvars[item].ansible_host | default(hostvars[item].vm_ip) }}"
+          - -f
+          - "{{ lookup('env', 'HOME') }}/.ssh/known_hosts"
       loop: "{{ groups['vms'] }}"
       loop_control:
         label: "{{ hostvars[item].ansible_host | default(hostvars[item].vm_ip) }}"
