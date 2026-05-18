@@ -18,7 +18,7 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 | Variável | Uso |
 |---|---|
 | `OVERLAY`, `VM_NAME`, `VM_IP`, `KVM_NETWORK` | atalhos em vez de flags no `make` |
-| `LIBVIRT_PATH` | raiz de `var/libvirt/` (discos + cache qcow2; gitignored) |
+| `LAB_PATH` | raiz de `lab/` (discos + cache qcow2; ver `lab/README.md`) |
 | `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` (padrão) = só `~/.ssh/known_hosts`; `true` = criar `/etc/ssh/ssh_known_hosts` no controlador (sudo, opt-in) |
 
 ## Conteúdo gerado automaticamente
@@ -44,9 +44,9 @@ A geração é idempotente: se a chave já existe, o Make pula esse passo.
 ## Como zerar as credenciais
 
 ```bash
-make clean   # remove a VM, a rede libvirt, var/libvirt/ e a chave do lab
+make clean   # remove a VM, a rede libvirt, lab/ (discos+cache) e a chave do lab
 ```
 
-Para apagar **tudo** do lab (incluindo a qcow2 baixada), remova também a pasta
-`var/libvirt/` ou o clone inteiro do repositório. Depois disso, o próximo
+Para apagar **tudo** do lab (incluindo a qcow2 baixada), remova `lab/cache` e
+`lab/disks` ou o clone inteiro do repositório. Depois disso, o próximo
 `make up` gera uma chave nova e provisiona do zero.

@@ -14,7 +14,7 @@
 # Etapas:
 #   1. Pré-requisitos no host KVM (pacotes + libvirtd ativo).
 #   2. Rede libvirt 10.20.30.0/24 + reservas DHCP (MAC -> vm_ip no dnsmasq).
-#   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (var/libvirt/cache).
+#   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (lab/cache).
 #   4. Para cada VM ainda inexistente:
 #        a. clonar a qcow2 base e redimensionar o disco;
 #        b. renderizar `user-data` + `meta-data`;
@@ -241,7 +241,7 @@
   # not exist" em dry-run.
   check_mode: false
 
-- name: "SELinux: contexto virt_image_t em var/libvirt (paths no repositório)"
+- name: "SELinux: contexto virt_image_t em lab/ (paths no repositório)"
   ansible.builtin.command:
     argv:
       - chcon

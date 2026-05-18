@@ -108,8 +108,9 @@ podem ser adicionadas em `[project.optional-dependencies]` no `pyproject.toml`
 e instaladas com `uv sync --extra …` se precisar.
 
 **Armazenamento KVM no repositório:** discos das VMs (`*.qcow2`), seed ISOs e o
-cache da imagem Rocky ficam em `var/libvirt/` na raiz do projeto (gitignored).
-`make clean` apaga essa árvore; não usa `/var/lib/libvirt/images` do sistema.
+cache da imagem Rocky ficam em `lab/` na raiz do projeto (`lab/disks`, `lab/cache`;
+gitignored — ver `lab/README.md`). `make clean` apaga essa árvore; não usa
+`/var/lib/libvirt/images` do sistema.
 
 **Dois “Pythons” no lab:** no **controlador** (laptop + play `kvm_hosts` local) corre
 sempre o interpretador do `.venv` (`ansible_playbook_python` em
@@ -248,8 +249,8 @@ Os caminhos `env/k8s-blueprint` estão definidos em `group_vars/all.yml`
 `--skip-tags bootstrap` pula as duas tasks que instalariam pacotes e
 habilitariam `libvirtd` no host (necessário em Bazzite/imutáveis ou em
 hosts onde KVM já está pronto). `--ask-become-pass` é necessário porque a
-primeira play roda no `localhost` com `become: true` para criar `var/libvirt/`
-(discos, seed ISO e cache da imagem base — tudo gitignored no repositório).
+primeira play roda no `localhost` com `become: true` para criar `lab/disks` e
+`lab/cache` (seed ISO, discos e cache da imagem base — gitignored).
 
 Para fixar `--skip-tags bootstrap` permanentemente, defina no overlay:
 
@@ -284,7 +285,7 @@ Como usar:
 
 ## Derrubar tudo
 
-A forma mais simples é `make clean` (destrói VM + rede + `var/libvirt/` + chave do lab).
+A forma mais simples é `make clean` (destrói VM + rede + `lab/` + chave do lab).
 Se quiser fazer manualmente para entender o que acontece:
 
 ```bash
@@ -294,6 +295,6 @@ virsh -c qemu:///system undefine broetec --remove-all-storage
 virsh -c qemu:///system net-destroy broetec-lab || true
 virsh -c qemu:///system net-undefine broetec-lab
 
-sudo rm -rf var/libvirt/    # discos, seed ISO e cache da qcow2 base
+sudo rm -rf lab/cache lab/disks    # discos, seed ISO e cache da qcow2 base
 rm -f env/k8s-blueprint env/k8s-blueprint.pub   # remove a chave SSH local
 ```

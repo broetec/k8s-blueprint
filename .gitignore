@@ -34,7 +34,9 @@ provisioning/inventory/*
 !provisioning/inventory/example/
 
 # ---- Lab KVM — discos, cache qcow2 e seed ISO (gerado por make up) -----------
-var/libvirt/
+# lab/README.md fica versionado; ver lab/README.md
+lab/cache/
+lab/disks/
 
 # ---- Env — credenciais e defaults locais do laboratório (NUNCA commitar) -----
 # A pasta `env/` guarda chave SSH, `.env` do Make, passwords, etc. Versionamos
