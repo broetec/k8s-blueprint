@@ -162,7 +162,7 @@ existe; o playbook pode continuar com `failed=0`.
 
 ```bash
 cp env/.env.example env/.env
-# Edite: CREATE_SSH_GLOBAL_KNOWN_HOSTS=1
+# Edite: CREATE_SSH_GLOBAL_KNOWN_HOSTS=true
 make up   # ou: make ensure-ssh-global-known-hosts
 ```
 

@@ -58,8 +58,10 @@ ANSIBLE_SSH_ARGS ?= -C -o ControlMaster=no -o ControlPersist=no
 ANSIBLE_UNWRAP ?= env -u LD_PRELOAD -u LD_LIBRARY_PATH -u PYTHONPATH PYTHONNOUSERSITE=1 MALLOC_ARENA_MAX=2
 UP_SPLIT ?= 1
 
-# Opt-in via .env: CREATE_SSH_GLOBAL_KNOWN_HOSTS=1 → /etc/ssh/ssh_known_hosts (sudo)
-CREATE_SSH_GLOBAL_KNOWN_HOSTS ?= 0
+# Opt-in em env/.env: CREATE_SSH_GLOBAL_KNOWN_HOSTS=true → /etc/ssh/ssh_known_hosts (sudo)
+CREATE_SSH_GLOBAL_KNOWN_HOSTS ?= false
+# Aceita true/false, 1/0, yes/no (definido em env/.env.example)
+SSH_GLOBAL_KNOWN_HOSTS_ENABLED := $(filter 1 true yes TRUE YES,$(CREATE_SSH_GLOBAL_KNOWN_HOSTS))
 
 UV ?= uv
 UV_PYTHON ?= 3.12
@@ -91,7 +93,9 @@ help: ## Lista os targets disponíveis e a config atual
 	@printf "  Ansible     : $(UV) run ansible-playbook | $(ANSIBLE_FLAGS)  forks=$(ANSIBLE_FORKS)  up_split=$(UP_SPLIT)\n"
 	@printf "  UV_PYTHON   : $(UV_PYTHON) (make sync UV_PYTHON=3.13)\n"
 	@printf "  env/.env    : %s\n" "$(if $(wildcard $(LAB_ENV_FILE)),$(CURDIR)/$(LAB_ENV_FILE),$(Y)ausente — cp env/.env.example env/.env$(N))"
-	@printf "  known_hosts : %s\n" "$(if $(filter 1,$(CREATE_SSH_GLOBAL_KNOWN_HOSTS)),$(G)/etc/ssh/ssh_known_hosts se faltar (opt-in)$(N),$(HOME)/.ssh/known_hosts apenas)"
+	@printf "  known_hosts : %s (CREATE_SSH_GLOBAL_KNOWN_HOSTS=%s)\n" \
+	  "$(if $(SSH_GLOBAL_KNOWN_HOSTS_ENABLED),$(G)/etc/ssh se faltar + ~/.ssh$(N),$(HOME)/.ssh apenas)" \
+	  "$(CREATE_SSH_GLOBAL_KNOWN_HOSTS)"
 	@printf "  Become (1ª): $(if $(ANSIBLE_BECOME_PASSWORD_FILE),ficheiro,$(B)--ask-become-pass$(N) ou $(B)env/become.pass$(N))\n"
 	@printf "  Become (2ª): %s\n" "$(if $(strip $(SUDO_FLAGS_VM)),$(SUDO_FLAGS_VM),sem flags — rocky NOPASSWD)"
 	@printf "\n$(B)Multi-overlay:$(N)\n"
@@ -128,12 +132,12 @@ $(LAB_KEY).pub:
 	@ssh-keygen -t ed25519 -C "k8s-blueprint" -f $(LAB_KEY) -N "" -q
 	@printf "$(G)==> Chave criada (gitignored).$(N)\n"
 
-ensure-ssh-global-known-hosts: ## Cria /etc/ssh/ssh_known_hosts se CREATE_SSH_GLOBAL_KNOWN_HOSTS=1
-ifeq ($(CREATE_SSH_GLOBAL_KNOWN_HOSTS),1)
+ensure-ssh-global-known-hosts: ## Cria /etc/ssh/ssh_known_hosts se env CREATE_SSH_GLOBAL_KNOWN_HOSTS=true
+ifneq ($(SSH_GLOBAL_KNOWN_HOSTS_ENABLED),)
 	@if [ -f /etc/ssh/ssh_known_hosts ]; then \
 	  printf "$(G)==> /etc/ssh/ssh_known_hosts já existe.$(N)\n"; \
 	else \
-	  printf "$(Y)==> CREATE_SSH_GLOBAL_KNOWN_HOSTS=1: a criar /etc/ssh/ssh_known_hosts...$(N)\n"; \
+	  printf "$(Y)==> CREATE_SSH_GLOBAL_KNOWN_HOSTS=true: a criar /etc/ssh/ssh_known_hosts...$(N)\n"; \
 	  sudo install -d -m 755 /etc/ssh; \
 	  sudo install -m 644 /dev/null /etc/ssh/ssh_known_hosts; \
 	  printf "$(G)==> /etc/ssh/ssh_known_hosts criado.$(N)\n"; \

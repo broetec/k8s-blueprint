@@ -18,7 +18,7 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 | Variável | Uso |
 |---|---|
 | `OVERLAY`, `VM_NAME`, `VM_IP`, `KVM_NETWORK` | atalhos em vez de flags no `make` |
-| `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `0` = só `~/.ssh/known_hosts`; `1` = opt-in para criar `/etc/ssh/ssh_known_hosts` no controlador (sudo) |
+| `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` (padrão) = só `~/.ssh/known_hosts`; `true` = criar `/etc/ssh/ssh_known_hosts` no controlador (sudo, opt-in) |
 
 ## Conteúdo gerado automaticamente
 
