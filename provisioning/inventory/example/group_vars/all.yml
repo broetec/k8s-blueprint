@@ -62,11 +62,14 @@ kvm_network:
   domain: "{{ base_domain }}"
 
 # -----------------------------------------------------------------------------
-# Pool de imagens libvirt
+# Armazenamento libvirt (dentro do repositório — lab descartável)
 # -----------------------------------------------------------------------------
+# Discos das VMs, seed ISOs e cache da qcow2 base ficam em var/libvirt/ (gitignored).
+# `make clean` remove a VM/rede e apaga var/libvirt/; apagar o clone do repo limpa tudo.
+# O Makefile pode sobrepor via -e libvirt_pool_path / os_image_cache_dir.
 libvirt_pool:
-  name: default
-  path: /var/lib/libvirt/images
+  name: k8s-blueprint-lab
+  path: "{{ libvirt_pool_path | default(_repo_root ~ '/var/libvirt/disks', true) }}"
 
 # -----------------------------------------------------------------------------
 # Imagem base (cloud image) — Rocky Linux qcow2
@@ -82,7 +85,7 @@ os_image:
   filename: Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
   url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
   checksum_url: https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2.CHECKSUM
-  cache_dir: /var/lib/libvirt/images/_cache
+  cache_dir: "{{ os_image_cache_dir | default(_repo_root ~ '/var/libvirt/cache', true) }}"
 
 # -----------------------------------------------------------------------------
 # Chave SSH do laboratório (nome explícito: k8s-blueprint em env/)

@@ -20,10 +20,14 @@ OVERLAY ?= example
 
 INVENTORY         ?= provisioning/inventory/$(OVERLAY)/hosts.ini
 PLAYBOOK          ?= provisioning/site.yml
-VM_NAME           ?= node-01
+VM_NAME           ?= broetec
 VM_IP             ?= 10.20.30.40
 KVM_NETWORK       ?= broetec-lab
-LIBVIRT_POOL_PATH ?= /var/lib/libvirt/images
+# Discos/ISOs e cache qcow2 no repo (gitignored); alinhado com group_vars/all.yml
+LIBVIRT_PATH ?= $(CURDIR)/var/libvirt
+LIBVIRT_POOL_PATH ?= $(LIBVIRT_PATH)/disks
+LIBVIRT_CACHE_PATH ?= $(LIBVIRT_PATH)/cache
+ANSIBLE_LIBVIRT_EXTRA = -e libvirt_pool_path=$(LIBVIRT_POOL_PATH) -e os_image_cache_dir=$(LIBVIRT_CACHE_PATH)
 
 LAB_KEY ?= env/k8s-blueprint
 LAB_KEY_ABS := $(CURDIR)/$(LAB_KEY)
@@ -89,6 +93,7 @@ help: ## Lista os targets disponíveis e a config atual
 	@printf "  Inventory   : $(INVENTORY)\n"
 	@printf "  VM          : $(VM_NAME) @ $(VM_IP)\n"
 	@printf "  KVM network : $(KVM_NETWORK)\n"
+	@printf "  Libvirt data: $(LIBVIRT_PATH) (discos=$(LIBVIRT_POOL_PATH))\n"
 	@printf "  Lab key     : $(LAB_KEY) ($(LAB_KEY_ABS))\n"
 	@printf "  Ansible     : $(UV) run ansible-playbook | $(ANSIBLE_FLAGS)  forks=$(ANSIBLE_FORKS)  up_split=$(UP_SPLIT)\n"
 	@printf "  UV_PYTHON   : $(UV_PYTHON) (make sync UV_PYTHON=3.13)\n"
@@ -158,7 +163,8 @@ ifeq ($(UP_SPLIT),1)
 	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS) \
 	    --private-key=$(LAB_KEY_ABS) \
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
-	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)"
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
+	    $(ANSIBLE_LIBVIRT_EXTRA)
 	@$(MAKE) ssh-host-key-refresh VM_IP=$(VM_IP) VM_NAME=$(VM_NAME)
 	@printf "$(Y)==> Ansible 2/2 (os_prepare)$(N)\n"
 	$(ANSIBLE_FRONT) ansible-playbook \
@@ -169,7 +175,8 @@ ifeq ($(UP_SPLIT),1)
 	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS_VM) \
 	    --private-key=$(LAB_KEY_ABS) \
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
-	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)"
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
+	    $(ANSIBLE_LIBVIRT_EXTRA)
 else
 	$(ANSIBLE_FRONT) ansible-playbook \
 	    --forks=$(ANSIBLE_FORKS) \
@@ -178,7 +185,8 @@ else
 	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS) \
 	    --private-key=$(LAB_KEY_ABS) \
 	    -e "ssh_public_key_path=$(LAB_KEY_ABS).pub" \
-	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)"
+	    -e "ansible_ssh_private_key_file=$(LAB_KEY_ABS)" \
+	    $(ANSIBLE_LIBVIRT_EXTRA)
 endif
 	@printf "\n$(G)==> Pronto.$(N) $(B)make ssh$(N) para entrar na VM.\n"
 
@@ -217,9 +225,9 @@ destroy: ssh-host-key-forget ## Remove a VM (mantém cache da qcow2 base)
 	-sudo rm -f $(LIBVIRT_POOL_PATH)/$(VM_NAME)-seed.iso
 	@printf "$(G)==> VM '$(VM_NAME)' removida (cache preservado).$(N)\n"
 
-clean: destroy ## VM + rede + cache + chave do lab
+clean: destroy ## VM + rede + var/libvirt/ + chave do lab
 	-virsh -c qemu:///system net-destroy $(KVM_NETWORK)
 	-virsh -c qemu:///system net-undefine $(KVM_NETWORK)
-	-sudo rm -rf $(LIBVIRT_POOL_PATH)/_cache
+	-sudo rm -rf $(LIBVIRT_PATH)
 	-rm -f $(LAB_KEY) $(LAB_KEY).pub
 	@printf "$(G)==> Limpo. Próximo $(B)make up$(N) começa do zero.$(N)\n"

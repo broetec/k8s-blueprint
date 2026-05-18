@@ -14,7 +14,7 @@
 # Etapas:
 #   1. Pré-requisitos no host KVM (pacotes + libvirtd ativo).
 #   2. Rede libvirt 10.20.30.0/24 + reservas DHCP (MAC -> vm_ip no dnsmasq).
-#   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (cache).
+#   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (var/libvirt/cache).
 #   4. Para cada VM ainda inexistente:
 #        a. clonar a qcow2 base e redimensionar o disco;
 #        b. renderizar `user-data` + `meta-data`;
@@ -226,17 +226,34 @@
     - kvm_libvirt_net_runtime_needs_refresh | bool
 
 # ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
-- name: "Garantir diretório de cache para a imagem base"
+- name: "Garantir diretórios do lab libvirt (discos + cache no repositório)"
   ansible.builtin.file:
-    path: "{{ os_image.cache_dir }}"
+    path: "{{ item }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
+  loop:
+    - "{{ libvirt_pool.path }}"
+    - "{{ os_image.cache_dir }}"
   # Operação idempotente e segura: criamos mesmo em --check para que as
   # tasks subsequentes (get_url, copy) não quebrem com "destination does
   # not exist" em dry-run.
   check_mode: false
+
+- name: "SELinux: contexto virt_image_t em var/libvirt (paths no repositório)"
+  ansible.builtin.command:
+    argv:
+      - chcon
+      - -R
+      - -t
+      - virt_image_t
+      - "{{ libvirt_pool.path }}"
+      - "{{ os_image.cache_dir }}"
+  when:
+    - ansible_facts.get('selinux', {}).get('status', 'disabled') == 'enabled'
+    - libvirt_pool.path.startswith(_repo_root)
+  changed_when: true
 
 - name: "Baixar a imagem qcow2 do Rocky Linux (uma única vez)"
   ansible.builtin.get_url:
