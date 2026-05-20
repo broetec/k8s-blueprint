@@ -1,10 +1,10 @@
 ---
 # =============================================================================
-# Variáveis globais — overlay "example" (Reference Architecture / Broetec)
+# Variáveis globais partilhadas — todos os overlays Broetec
 # =============================================================================
-# Estas variáveis são consumidas tanto pela role `kvm_vm` (no host KVM) quanto
-# pela role `os_prepare` (dentro da VM). Para criar um novo ambiente, copie a
-# pasta `inventory/example` e ajuste os valores aqui.
+# Consumidas pelas roles kvm_vm (host KVM) e os_prepare (VMs).
+# Cada overlay em provisioning/inventory/<nome>/ liga group_vars -> _shared.
+# Sobrescreva por overlay com group_vars/all.yml local (opcional).
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -12,7 +12,7 @@
 # -----------------------------------------------------------------------------
 # A Broetec possui o domínio `local.broetec.com.br` apontando (via DNS)
 # para o IP de teste do laboratório local. As VMs ganham FQDN do tipo
-# `node-01.local.broetec.com.br`.
+# `broetec-core.local.broetec.com.br`.
 base_domain: local.broetec.com.br
 
 # Raiz do repositório (hosts.ini está em provisioning/inventory/<overlay>/).
@@ -60,6 +60,9 @@ kvm_network:
     - 1.1.1.1
     - 8.8.8.8
   domain: "{{ base_domain }}"
+
+# Firewalld no host KVM: regras de forward/NAT para VMs (necessário com Docker no mesmo host).
+kvm_network_firewalld: true
 
 # -----------------------------------------------------------------------------
 # Armazenamento libvirt (dentro do repositório — lab descartável)

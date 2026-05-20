@@ -17,7 +17,9 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 
 | Variável | Uso |
 |---|---|
-| `OVERLAY`, `VM_NAME`, `VM_IP`, `KVM_NETWORK` | atalhos em vez de flags no `make` |
+| `OVERLAY` | overlay ativo (`broetec-core`, `broetec-storage`, …) |
+| `VM_NAME`, `VM_IP` | sobrescrevem a VM do overlay ao gerar `hosts.ini` (`make inventory`) |
+| `KVM_NETWORK` | rede libvirt no `make clean` |
 | `LAB_PATH` | raiz de `lab/` (discos + cache qcow2; ver `lab/README.md`) |
 | `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` (padrão) = só `~/.ssh/known_hosts`; `true` = criar `/etc/ssh/ssh_known_hosts` no controlador (sudo, opt-in) |
 
@@ -32,11 +34,10 @@ A geração é idempotente: se a chave já existe, o Make pula esse passo.
 
 ## O que NÃO colocar aqui
 
-- **Inventário Ansible completo** (roles, group_vars versionados) →
-  `provisioning/inventory/<overlay>/`. O `env/.env` só substitui defaults do
-  `Makefile` (IP, overlay, flags). Para outro ambiente, copie
-  `inventory/example` → `inventory/<nome>` e use `OVERLAY=<nome>` no `.env` ou
-  no `make`.
+- **Topologia de VMs** → edite `provisioning/inventory/manifest.yml` e corra
+  `make inventory`. O `env/.env` só sobrescreve o overlay ativo (`OVERLAY`,
+  opcionalmente `VM_NAME` / `VM_IP`). Variáveis Ansible partilhadas:
+  `provisioning/inventory/_shared/group_vars/`.
 - **Segredos de produção** (tokens de cloud, deploy keys do GitHub, etc.) →
   use `sealed-secrets` / `external-secrets` na fase declarativa do cluster
   (ver `docs/`). Esta pasta é só para o ciclo de vida do lab local.

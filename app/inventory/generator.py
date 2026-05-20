@@ -1,0 +1,221 @@
+"""Gera hosts.ini e liga group_vars partilhados por overlay."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import replace
+from pathlib import Path
+
+import yaml
+
+from app.inventory.env_file import load_dotenv, overlay_env_overrides
+from app.inventory.models import InventoryManifest, OverlaySpec, VmSpec
+
+_DHCP_RESERVATIONS_FILE = Path('_shared/group_vars/dhcp_reservations.yml')
+
+_SHARED_GROUP_VARS = Path('_shared/group_vars')
+_GROUP_VARS_LINK = Path('group_vars')
+
+
+class InventoryGenerator:
+    def __init__(
+        self,
+        repo_root: Path,
+        manifest_path: Path | None = None,
+        env_path: Path | None = None,
+    ) -> None:
+        self.repo_root = repo_root.resolve()
+        self.inventory_root = self.repo_root / 'provisioning/inventory'
+        self.manifest_path = manifest_path or (
+            self.inventory_root / 'manifest.yml'
+        )
+        self.env_path = env_path or (self.repo_root / 'env/.env')
+
+    def load_manifest(self) -> InventoryManifest:
+        return InventoryManifest.load(self.manifest_path)
+
+    def generate(
+        self,
+        overlay_ids: list[str] | None = None,
+        *,
+        dry_run: bool = False,
+    ) -> list[Path]:
+        manifest = self.load_manifest()
+        env = load_dotenv(self.env_path)
+        targets = overlay_ids or manifest.overlay_ids()
+        written: list[Path] = []
+        for overlay_id in targets:
+            overlay = manifest.get_overlay(overlay_id)
+            overlay = self._apply_env_overrides(overlay, env)
+            path = self._write_overlay(overlay, manifest, dry_run=dry_run)
+            written.append(path)
+        dhcp_path = self._write_dhcp_reservations(manifest, env, dry_run=dry_run)
+        written.append(dhcp_path)
+        return written
+
+    def render_hosts_ini(
+        self,
+        overlay: OverlaySpec,
+        manifest: InventoryManifest,
+    ) -> str:
+        d = manifest.defaults
+        lines = [
+            '; =============================================================================',
+            '; Gerado automaticamente — NÃO EDITAR.',
+            '; Fonte: provisioning/inventory/manifest.yml (+ env/.env se aplicável)',
+            '; Regenerar: make inventory  |  uv run python -m app.inventory.cli generate',
+            f'; Overlay: {overlay.overlay_id} — {overlay.label}',
+            '; =============================================================================',
+            '',
+            '[kvm_hosts]',
+            f'{d.kvm_host} ansible_connection={d.ansible_connection}',
+            '',
+            '[vms]',
+            '; Hostname = nome libvirt (--name). vm_ip/ansible_host = cloud-init.',
+        ]
+        for vm in overlay.vms:
+            mac = vm.resolved_mac()
+            lines.append(
+                f'{vm.name} ansible_host={vm.ip} vm_ip={vm.ip} vm_mac={mac}',
+            )
+        lines.extend(
+            [
+                '',
+                '[vms:vars]',
+                f'ansible_user={d.ansible_user}',
+                '; libssh: evita worker dead no Cursor/AppImage. Requer make deps.',
+                f'ansible_connection={d.ansible_connection_vm}',
+                f'ansible_host_key_checking={str(d.ansible_host_key_checking)}',
+                f'ansible_libssh_host_key_auto_add={str(d.ansible_libssh_host_key_auto_add)}',
+                '',
+            ],
+        )
+        return '\n'.join(lines)
+
+    def _apply_env_overrides(
+        self,
+        overlay: OverlaySpec,
+        env: dict[str, str],
+    ) -> OverlaySpec:
+        overrides = overlay_env_overrides(env, overlay.overlay_id)
+        if not overrides:
+            return overlay
+        vms = list(overlay.vms)
+        primary = vms[0]
+        name = overrides.get('VM_NAME', primary.name)
+        ip = overrides.get('VM_IP', primary.ip)
+        vms[0] = VmSpec(name=name, ip=ip, mac=primary.mac if name == primary.name else None)
+        return replace(overlay, vms=tuple(vms))
+
+    def collect_dhcp_reservations(
+        self,
+        manifest: InventoryManifest,
+        env: dict[str, str],
+    ) -> list[dict[str, str]]:
+        """Todas as VMs do manifesto (todos os overlays) para o dnsmasq partilhado."""
+        by_name: dict[str, dict[str, str]] = {}
+        for overlay_id in manifest.overlay_ids():
+            overlay = self._apply_env_overrides(
+                manifest.get_overlay(overlay_id),
+                env,
+            )
+            for vm in overlay.vms:
+                by_name[vm.name] = {
+                    'name': vm.name,
+                    'mac': vm.resolved_mac(),
+                    'ip': vm.ip,
+                }
+        return [by_name[name] for name in sorted(by_name.keys())]
+
+    def render_dhcp_reservations_yaml(
+        self,
+        manifest: InventoryManifest,
+        env: dict[str, str],
+    ) -> str:
+        reservations = self.collect_dhcp_reservations(manifest, env)
+        payload = {
+            'kvm_network_dhcp_reservations': reservations,
+        }
+        header = (
+            '# Gerado automaticamente — NÃO EDITAR.\n'
+            '# Fonte: manifest.yml (todos os overlays). Regenerar: make inventory\n'
+            '---\n'
+        )
+        return header + yaml.dump(
+            payload,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        )
+
+    def _write_dhcp_reservations(
+        self,
+        manifest: InventoryManifest,
+        env: dict[str, str],
+        *,
+        dry_run: bool,
+    ) -> Path:
+        path = self.inventory_root / _DHCP_RESERVATIONS_FILE
+        content = self.render_dhcp_reservations_yaml(manifest, env)
+        if not dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding='utf-8')
+        return path
+
+    def _write_overlay(
+        self,
+        overlay: OverlaySpec,
+        manifest: InventoryManifest,
+        *,
+        dry_run: bool,
+    ) -> Path:
+        overlay_dir = self.inventory_root / overlay.overlay_id
+        hosts_ini = overlay_dir / 'hosts.ini'
+        content = self.render_hosts_ini(overlay, manifest)
+        if dry_run:
+            return hosts_ini
+        overlay_dir.mkdir(parents=True, exist_ok=True)
+        hosts_ini.write_text(content, encoding='utf-8')
+        self._ensure_group_vars_link(overlay_dir)
+        return hosts_ini
+
+    def _ensure_group_vars_link(self, overlay_dir: Path) -> None:
+        link = overlay_dir / _GROUP_VARS_LINK
+        target = Path('..') / _SHARED_GROUP_VARS
+        if link.is_symlink():
+            if link.resolve() == (overlay_dir / _SHARED_GROUP_VARS).resolve():
+                return
+            link.unlink()
+        elif link.exists():
+            msg = f'{link} existe e não é symlink para _shared/group_vars'
+            raise FileExistsError(msg)
+        link.symlink_to(target, target_is_directory=True)
+
+
+def find_repo_root(start: Path | None = None) -> Path:
+    current = (start or Path.cwd()).resolve()
+    for directory in (current, *current.parents):
+        if (directory / 'provisioning/inventory/manifest.yml').is_file():
+            return directory
+    msg = 'Raiz do repositório não encontrada (provisioning/inventory/manifest.yml)'
+    raise FileNotFoundError(msg)
+
+
+def resolve_overlay_ids(
+    manifest: InventoryManifest,
+    cli_overlay: str | None,
+    generate_all: bool,
+    env: dict[str, str],
+) -> list[str]:
+    if generate_all:
+        return manifest.overlay_ids()
+    if cli_overlay:
+        manifest.get_overlay(cli_overlay)
+        return [cli_overlay]
+    env_overlay = env.get('OVERLAY', '').strip()
+    if env_overlay:
+        manifest.get_overlay(env_overlay)
+        return [env_overlay]
+    default = os.environ.get('OVERLAY', '').strip() or 'broetec-core'
+    manifest.get_overlay(default)
+    return [default]

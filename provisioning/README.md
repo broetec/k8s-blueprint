@@ -2,16 +2,18 @@
 
 Fase **imperativa** do k8s-blueprint da Broetec: este Ansible cria a rede libvirt
 `10.20.30.0/24`, baixa a imagem qcow2 do Rocky Linux, gera o seed ISO de
-cloud-init e provisiona a VM definida no inventário (`node-01` / `10.20.30.40`),
+cloud-init e provisiona as VMs definidas no inventário (overlays `broetec-*`),
 deixando o sistema operacional pronto para etapas posteriores.
 
 ```text
 provisioning/
 ├── site.yml                       # playbook mestre (orquestra as duas plays)
 ├── inventory/
-│   └── example/                   # overlay de referência (versionado no git)
-│       ├── hosts.ini
-│       └── group_vars/all.yml
+│   ├── manifest.yml               # fonte de verdade (gera hosts.ini)
+│   ├── _shared/group_vars/all.yml # variáveis Ansible partilhadas
+│   ├── broetec-core/              # core @ 10.20.30.40
+│   ├── broetec-storage/           # storage @ 10.20.30.50
+│   └── broetec-monitor/           # telemetria @ 10.20.30.60
 ├── templates/
 │   └── cloud-init.j2              # user-data (rede = DHCP + reserva MAC na libvirt)
 └── roles/
@@ -202,18 +204,19 @@ make destroy    # remove a VM, mantém o cache da qcow2
 make clean      # destrói TUDO (VM + rede + cache + chave do lab)
 ```
 
-Para alternar entre overlays (a configuração por ambiente vive **só** em
-`provisioning/inventory/`):
+Overlays e IPs versionados em `provisioning/inventory/manifest.yml`.
+Geração de `hosts.ini`: `make inventory` (ver `scripts/inventory/README.md`).
 
 ```bash
-cp -r provisioning/inventory/example provisioning/inventory/local
-$EDITOR provisioning/inventory/local/group_vars/all.yml
+make inventory              # todos os overlays
+make up OVERLAY=broetec-core
+make up-lab                 # core + storage + monitor (3 VMs)
+make ssh OVERLAY=broetec-storage
+make destroy OVERLAY=broetec-monitor
 
-# Se a sua VM/IP/rede do overlay forem diferentes do default, sobrescreva
-# na linha de comando para que o `make ssh`/`destroy`/`status` aponte certo:
-make up      OVERLAY=local
-make ssh     OVERLAY=local VM_IP=10.20.30.50
-make destroy OVERLAY=local VM_NAME=node-02 KVM_NETWORK=outra-rede
+# Sobrescrever IP do overlay ativo (env/.env ou linha de comando):
+# OVERLAY=broetec-core  VM_IP=10.20.30.45
+make inventory && make up
 ```
 
 `make help` lista todos os targets e mostra a config atual.
@@ -237,7 +240,7 @@ Depois, da raiz:
 
 ```bash
 uv run ansible-playbook \
-  -i provisioning/inventory/example/hosts.ini \
+  -i provisioning/inventory/broetec-core/hosts.ini \
   provisioning/site.yml \
   --skip-tags bootstrap \
   --ask-become-pass
@@ -277,7 +280,7 @@ Como usar:
   `--check --diff` é útil para confirmar que nada inesperado mudou:
 
   ```bash
-  uv run ansible-playbook -i provisioning/inventory/example/hosts.ini \
+  uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini \
     provisioning/site.yml --skip-tags bootstrap --ask-become-pass --check --diff
   ```
 

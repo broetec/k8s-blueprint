@@ -16,12 +16,16 @@ LAB_ENV_FILE ?= env/.env
 # Carrega env/.env (gitignored); ver env/.env.example
 -include $(LAB_ENV_FILE)
 
-OVERLAY ?= example
+OVERLAY ?= broetec-core
 
 INVENTORY         ?= provisioning/inventory/$(OVERLAY)/hosts.ini
 PLAYBOOK          ?= provisioning/site.yml
-VM_NAME           ?= broetec
-VM_IP             ?= 10.20.30.40
+# Nomes libvirt = hostname Ansible no grupo [vms] do inventário ativo
+_inventory_vms_list := $(shell awk 'BEGIN{v=0} /^\[vms\]$$/{v=1;next} /^\[/{if(v)v=0;next} v&&$$0!~/^[[:space:]]*([#;]|$$)/{print $$1}' "$(INVENTORY)" 2>/dev/null)
+_inventory_first_vm := $(firstword $(_inventory_vms_list))
+_inventory_first_vm_ip := $(shell awk 'BEGIN{v=0} /^\[vms\]$$/{v=1;next} /^\[/{if(v)v=0;next} v&&$$0!~/^[[:space:]]*([#;]|$$)/{for(i=2;i<=NF;i++){if($$i~/^vm_ip=/){sub(/^vm_ip=/,"",$$i);print $$i;exit} if($$i~/^ansible_host=/){sub(/^ansible_host=/,"",$$i);print $$i;exit}};exit}' "$(INVENTORY)" 2>/dev/null)
+VM_NAME           ?= $(if $(_inventory_first_vm),$(_inventory_first_vm),broetec)
+VM_IP             ?= $(if $(_inventory_first_vm_ip),$(_inventory_first_vm_ip),10.20.30.40)
 KVM_NETWORK       ?= broetec-lab
 # Discos/ISOs e cache qcow2 no repo (gitignored); alinhado com group_vars/all.yml
 LAB_PATH ?= $(CURDIR)/lab
@@ -81,7 +85,7 @@ R := \033[31m
 N := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help sync venv keys ensure-ssh-global-known-hosts up ssh ssh-add-lab ssh-host-key-forget ssh-host-key-refresh status destroy clean
+.PHONY: help sync venv keys inventory inventory-overlay network-refresh up up-lab ensure-ssh-global-known-hosts ssh ssh-add-lab ssh-host-key-forget ssh-host-key-refresh status destroy clean
 
 help: ## Lista os targets disponíveis e a config atual
 	@printf "$(B)Targets:$(N)\n"
@@ -104,8 +108,11 @@ help: ## Lista os targets disponíveis e a config atual
 	@printf "  Become (1ª): $(if $(ANSIBLE_BECOME_PASSWORD_FILE),ficheiro,$(B)--ask-become-pass$(N) ou $(B)env/become.pass$(N))\n"
 	@printf "  Become (2ª): %s\n" "$(if $(strip $(SUDO_FLAGS_VM)),$(SUDO_FLAGS_VM),sem flags — rocky NOPASSWD)"
 	@printf "\n$(B)Multi-overlay:$(N)\n"
-	@printf "  make up OVERLAY=<nome>\n"
-	@printf "  make ssh OVERLAY=<nome> VM_IP=<ip>\n"
+	@printf "  make inventory          # gera hosts.ini (manifest.yml)\n"
+	@printf "  make network-refresh    # DHCP + rede libvirt + firewalld\n"
+	@printf "  make up OVERLAY=broetec-core\n"
+	@printf "  make up-lab             # core + storage + monitor\n"
+	@printf "  make ssh OVERLAY=<nome>\n"
 
 sync: ## uv sync — instala/atualiza .venv (pyproject.toml + uv.lock)
 	@command -v $(UV) >/dev/null 2>&1 || { printf "$(R)Instale uv: https://docs.astral.sh/uv/$(N)\n"; exit 1; }
@@ -117,6 +124,23 @@ sync: ## uv sync — instala/atualiza .venv (pyproject.toml + uv.lock)
 venv: sync ## Alias para make sync
 
 COLLECTIONS_REQ ?= provisioning/collections/requirements.yml
+
+inventory: sync ## Gera hosts.ini de todos os overlays (manifest.yml + env/.env)
+	@$(ANSIBLE_UNWRAP) $(UV) run python -m app.inventory.cli generate --all
+
+inventory-overlay: sync ## Gera hosts.ini só do OVERLAY ativo
+	@$(ANSIBLE_UNWRAP) $(UV) run python -m app.inventory.cli generate -o $(OVERLAY)
+
+network-refresh: inventory-overlay deps ## Reaplica reservas DHCP (manifest) e limpa leases antigos
+	@printf "$(Y)==> Atualizar rede libvirt $(KVM_NETWORK) (reservas DHCP)$(N)\n"
+	$(ANSIBLE_FRONT) ansible-playbook \
+	    -i $(INVENTORY) \
+	    $(PLAYBOOK) \
+	    --tags kvm_lab \
+	    --limit kvm_hosts \
+	    $(ANSIBLE_FLAGS) $(SUDO_FLAGS) \
+	    -e kvm_network_force_restart=true \
+	    $(ANSIBLE_LAB_EXTRA)
 
 deps: sync ## Verifica uv, Ansible, virsh, ssh-keygen e coleções Galaxy (posix, netcommon)
 	@test -x '$(VENV_PYTHON)' \
@@ -151,7 +175,7 @@ else
 	@:
 endif
 
-up: deps keys ensure-ssh-global-known-hosts ## Provisiona a VM (idempotente; cria a chave do lab se faltar)
+up: inventory-overlay deps keys ensure-ssh-global-known-hosts ## Provisiona a VM (idempotente; cria a chave do lab se faltar)
 	@printf "$(B)==> Provisionando overlay '$(OVERLAY)'$(N)\n"
 ifeq ($(UP_SPLIT),1)
 	@printf "$(Y)==> Ansible 1/2 (kvm_lab)$(N)\n"
@@ -190,6 +214,15 @@ else
 endif
 	@printf "\n$(G)==> Pronto.$(N) $(B)make ssh$(N) para entrar na VM.\n"
 
+BROETEC_LAB_OVERLAYS := broetec-core broetec-storage broetec-monitor
+
+up-lab: inventory ## Provisiona os 3 overlays de referência (core, storage, monitor)
+	@for o in $(BROETEC_LAB_OVERLAYS); do \
+	  printf "\n$(B)==> make up OVERLAY=%s$(N)\n" "$$o"; \
+	  $(MAKE) up OVERLAY=$$o || exit $$?; \
+	done
+	@printf "\n$(G)==> Lab completo (3 VMs).$(N)\n"
+
 ssh: ## Conecta na VM (rocky) com a chave do lab
 	@mkdir -p $(HOME)/.ssh && chmod 700 $(HOME)/.ssh 2>/dev/null || true
 	@ssh -i $(LAB_KEY_ABS) \
@@ -219,11 +252,17 @@ status: ## Estado da VM e da rede libvirt
 	@printf "\n$(B)Redes libvirt:$(N)\n"
 	@virsh -c qemu:///system net-list --all
 
-destroy: ssh-host-key-forget ## Remove a VM (mantém cache da qcow2 base)
-	-virsh -c qemu:///system destroy $(VM_NAME)
-	-virsh -c qemu:///system undefine $(VM_NAME) --remove-all-storage
-	-sudo rm -f $(LAB_DISKS_PATH)/$(VM_NAME)-seed.iso
-	@printf "$(G)==> VM '$(VM_NAME)' removida (cache preservado).$(N)\n"
+destroy: ssh-host-key-forget ## Remove VMs do grupo [vms] do inventário (mantém cache da qcow2 base)
+	@if [ -z "$(strip $(_inventory_vms_list))" ]; then \
+	  printf "$(R)==> Nenhum host em [vms] em $(INVENTORY)$(N)\n"; exit 1; \
+	fi
+	@for vm in $(_inventory_vms_list); do \
+	  printf "$(Y)==> Removendo VM '%s'...$(N)\n" "$$vm"; \
+	  virsh -c qemu:///system destroy "$$vm" 2>/dev/null || true; \
+	  virsh -c qemu:///system undefine "$$vm" --remove-all-storage 2>/dev/null || true; \
+	  sudo rm -f "$(LAB_DISKS_PATH)/$$vm-seed.iso" 2>/dev/null || true; \
+	done
+	@printf "$(G)==> VM(s) do overlay removida(s) (cache preservado).$(N)\n"
 
 clean: destroy ## VM + rede + lab/ (discos+cache) + chave do lab
 	-virsh -c qemu:///system net-destroy $(KVM_NETWORK)

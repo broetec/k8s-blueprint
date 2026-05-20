@@ -15,7 +15,7 @@
 #                    posteriores.
 #
 # Execução (na raiz do repo, com .venv via uv):
-#   uv run ansible-playbook -i provisioning/inventory/example/hosts.ini provisioning/site.yml
+#   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini provisioning/site.yml
 #   make up
 # =============================================================================
 

@@ -1,0 +1,36 @@
+# =============================================================================
+# Manifesto de overlays — fonte de verdade para hosts.ini gerados
+# =============================================================================
+# Regenerar inventários: make inventory
+# Sobrescrever IP/nome do overlay ativo: env/.env (VM_NAME, VM_IP) + make inventory
+# =============================================================================
+
+defaults:
+  kvm_host: localhost
+  ansible_connection: local
+  ansible_user: rocky
+  ansible_connection_vm: ansible.netcommon.libssh
+  ansible_host_key_checking: false
+  ansible_libssh_host_key_auto_add: true
+
+overlays:
+  broetec-core:
+    label: Nó core (control plane / referência do lab)
+    role: core
+    vms:
+      - name: broetec-core
+        ip: 10.20.30.40
+
+  broetec-storage:
+    label: Nó de storage
+    role: storage
+    vms:
+      - name: broetec-storage
+        ip: 10.20.30.50
+
+  broetec-monitor:
+    label: Nó de telemetria / monitorização
+    role: monitor
+    vms:
+      - name: broetec-monitor
+        ip: 10.20.30.60

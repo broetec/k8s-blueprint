@@ -131,9 +131,14 @@
         <ip address='{{ kvm_network.gateway }}' netmask='{{ kvm_network.netmask }}'>
           <dhcp>
             <range start='{{ kvm_network.dhcp_start }}' end='{{ kvm_network.dhcp_end }}'/>
+            {% for entry in kvm_network_dhcp_reservations | default([]) %}
+            <host mac='{{ entry.mac }}' ip='{{ entry.ip }}'/>
+            {% endfor %}
+            {% if kvm_network_dhcp_reservations | default([]) | length == 0 %}
             {% for vm in groups['vms'] %}
             <host mac='{{ kvm_vm_mac_by_host[vm] }}' ip='{{ hostvars[vm].vm_ip }}'/>
             {% endfor %}
+            {% endif %}
           </dhcp>
         </ip>
       </network>
@@ -214,16 +219,30 @@
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
   when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
 
+- name: "Limpar leases DHCP persistidos (renomear VM / mudar reserva MAC→IP)"
+  ansible.builtin.file:
+    path: "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status"
+    state: absent
+  when:
+    - kvm_libvirt_net_runtime_needs_refresh | bool
+    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
+
 - name: "Reiniciar rede {{ kvm_network.name }} (só se XML/reservas mudaram ou forçado)"
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true
+    rm -f "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status" \
+          "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.macs" 2>/dev/null || true
     virsh -c qemu:///system net-start "{{ kvm_network.name }}"
   args:
     executable: /bin/bash
   when:
     - kvm_network.name in libvirt_active_nets_initial.stdout_lines
     - kvm_libvirt_net_runtime_needs_refresh | bool
+
+- name: "Firewalld — NAT/forward das VMs do lab (Fedora/RHEL + Docker)"
+  ansible.builtin.import_tasks: firewalld-lab.yml
+  when: kvm_network_firewalld | default(true) | bool
 
 # ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
 - name: "Garantir diretórios do lab libvirt (discos + cache no repositório)"
@@ -330,7 +349,7 @@
     dest: "{{ item.path }}/meta-data"
     mode: "0644"
     content: |
-      instance-id: {{ item.item }}-{{ ansible_date_time.epoch }}
+      instance-id: {{ item.item }}-{{ ansible_facts['date_time']['epoch'] }}
       local-hostname: {{ item.item }}.{{ base_domain }}
   loop: "{{ ci_tmpdirs.results }}"
   loop_control:
