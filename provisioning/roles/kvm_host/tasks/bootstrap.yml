@@ -1,0 +1,25 @@
+---
+# Bootstrap opcional: em distros imutáveis ou hosts já prontos, use
+# kvm_host_bootstrap: false ou --skip-tags bootstrap.
+
+- name: "Instalar dependências de KVM/libvirt no host"
+  ansible.builtin.package:
+    name:
+      - qemu-kvm
+      - libvirt
+      - libvirt-client
+      - virt-install
+      - libguestfs-tools
+      - genisoimage
+      - xorriso
+    state: present
+  when: kvm_host_bootstrap | default(true) | bool
+  tags: [bootstrap, install]
+
+- name: "Garantir libvirtd ativo e habilitado no boot"
+  ansible.builtin.service:
+    name: libvirtd
+    state: started
+    enabled: true
+  when: kvm_host_bootstrap | default(true) | bool
+  tags: [bootstrap, install]

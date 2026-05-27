@@ -67,6 +67,7 @@ def test_generate_hosts_ini(repo_tree: Path) -> None:
         'vm_mac=52:54:00:6d:81:73'
     ) in text
     assert '[kvm_hosts]' in text
+    assert 'vm_role=core' in text
     assert 'ansible.netcommon.libssh' in text
 
 
@@ -76,9 +77,26 @@ def test_generate_writes_files(repo_tree: Path) -> None:
     hosts = paths[0]
     assert hosts.name == 'hosts.ini'
     assert 'Gerado automaticamente' in hosts.read_text(encoding='utf-8')
-    link = hosts.parent / 'group_vars'
-    assert link.is_symlink()
-    assert (link / 'all.yml').is_file()
+    gv_all = hosts.parent / 'group_vars' / 'all'
+    assert gv_all.is_dir()
+    assert (gv_all / '00_shared.yml').is_symlink()
+    assert (gv_all / '10_dhcp_reservations.yml').is_symlink()
+    overlay_gen = gv_all / '50_overlay.generated.yml'
+    assert overlay_gen.is_file()
+    assert 'vm_role: core' in overlay_gen.read_text(encoding='utf-8')
+    assert (gv_all / '00_shared.yml').resolve().name == 'all.yml'
+
+
+def test_render_overlay_group_vars_with_manifest_vars(repo_tree: Path) -> None:
+    manifest_path = repo_tree / 'provisioning/inventory/manifest.yml'
+    raw = yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
+    raw['overlays']['broetec-core']['vars'] = {'vm_vcpus': 8}
+    manifest_path.write_text(yaml.dump(raw), encoding='utf-8')
+    gen = InventoryGenerator(repo_tree)
+    overlay = gen.load_manifest().get_overlay('broetec-core')
+    text = gen.render_overlay_group_vars(overlay)
+    assert 'vm_role: core' in text
+    assert 'vm_vcpus: 8' in text
 
 
 def test_env_override(repo_tree: Path) -> None:

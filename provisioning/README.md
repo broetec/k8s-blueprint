@@ -7,7 +7,7 @@ deixando o sistema operacional pronto para etapas posteriores.
 
 ```text
 provisioning/
-├── site.yml                       # playbook mestre (orquestra as duas plays)
+├── site.yml                       # playbook mestre
 ├── inventory/
 │   ├── manifest.yml               # fonte de verdade (gera hosts.ini)
 │   ├── _shared/group_vars/all.yml # variáveis Ansible partilhadas
@@ -17,8 +17,9 @@ provisioning/
 ├── templates/
 │   └── cloud-init.j2              # user-data (rede = DHCP + reserva MAC na libvirt)
 └── roles/
-    ├── kvm_vm/tasks/main.yml      # libvirt, qcow2, seed ISO, virt-install
-    └── os_prepare/tasks/main.yml  # swap, SELinux, firewalld dentro da VM
+    ├── kvm_host/                  # bootstrap host, rede libvirt, firewalld/NAT
+    ├── kvm_vm/                    # qcow2, seed ISO, virt-install
+    └── os_prepare/                # swap, SELinux, firewalld dentro da VM
 ```
 
 ---
@@ -48,7 +49,7 @@ provisioning/
 
 ### Fedora Atomic / Bazzite — equivalente à tag `bootstrap`
 
-O role `kvm_vm` estava a instalar estes RPMs no host KVM (quando a tag `bootstrap`
+A role `kvm_host` instala estes RPMs no host KVM (quando a tag `bootstrap`
 corre). Em **Bazzite** faça a camada equivalente com `rpm-ostree`, **reinicie**, e só
 depois rode `make up`:
 
@@ -88,7 +89,7 @@ As versões de **ansible-core** e **ansible-pylibssh** ficam fixadas no reposit�
 (`pyproject.toml` + `uv.lock`), para o mesmo ambiente em qualquer distro Linux
 onde o `uv` consiga obter o interpretador (`UV_PYTHON`, por defeito 3.12).
 
-> **Por que não `libvirt-python`?** O role `kvm_vm` foi escrito para usar
+> **Por que não `libvirt-python`?** As roles `kvm_host` e `kvm_vm` usam
 > apenas o binário `virsh` (que você já tem instalado com o KVM). Isso evita
 > compilar `libvirt-python` no controller — o que exigiria `libvirt-devel`,
 > `pkgconf` e `gcc` instalados como camada `rpm-ostree` no Bazzite.

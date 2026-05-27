@@ -2,14 +2,26 @@
 
 ## Overlays versionados
 
-| Overlay | VM (libvirt) | IP | Papel |
-|---------|--------------|-----|--------|
-| `broetec-core` | broetec-core | 10.20.30.40 | Core / control plane |
-| `broetec-storage` | broetec-storage | 10.20.30.50 | Storage |
-| `broetec-monitor` | broetec-monitor | 10.20.30.60 | Telemetria |
+| Overlay | VM (libvirt) | IP | Papel (`vm_role`) |
+|---------|--------------|-----|-------------------|
+| `broetec-core` | broetec-core | 10.20.30.40 | `core` |
+| `broetec-storage` | broetec-storage | 10.20.30.50 | `storage` |
+| `broetec-monitor` | broetec-monitor | 10.20.30.60 | `monitor` |
 
-Todos partilham o mesmo playbook (`provisioning/site.yml`) e roles (`kvm_vm`, `os_prepare`).
-Variáveis comuns: `_shared/group_vars/all.yml`.
+Todos partilham o mesmo playbook (`provisioning/site.yml`) e roles (`kvm_host`, `kvm_vm`, `os_prepare`).
+
+## Camadas de variáveis (por overlay)
+
+Cada overlay tem `group_vars/all/` com merge automático (ordem alfabética):
+
+| Ficheiro | Origem | Função |
+|----------|--------|--------|
+| `00_shared.yml` | symlink → `_shared/group_vars/all.yml` | Base comum (rede, imagem, cloud-init) |
+| `10_dhcp_reservations.yml` | symlink → `_shared/.../dhcp_reservations.yml` | Reservas DHCP (gerado) |
+| `50_overlay.generated.yml` | **gerado** (`make inventory`) | `vm_role`, `overlay_id`, `vars` do manifest |
+| `90_local.yml` | **versionado, manual** | Overrides por máquina (disco, vCPUs, etc.) |
+
+Edite **`manifest.yml`** para identidade (IP, role, vars declarativas) e **`90_local.yml`** para ajustes finos por overlay.
 
 ## Gerar `hosts.ini`
 
@@ -19,7 +31,7 @@ make inventory
 make inventory OVERLAY=broetec-core
 ```
 
-Edite **`manifest.yml`** para novos modelos; não edite `hosts.ini` à mão.
+Não edite `hosts.ini` à mão — inclui `vm_role` em `[vms:vars]`.
 
 ## Overlay local (gitignored)
 
@@ -53,7 +65,7 @@ Confirme: `virsh net-dumpxml broetec-lab | grep host` deve listar o MAC da VM
 ## Sem internet na VM (IP correcto, ping 8.8.8.8 falha)
 
 Em Fedora com **Docker** no mesmo host, o `firewalld`/`FORWARD` bloqueia o tráfego
-`vnet* → wlan0`. O `make up` aplica regras na role `kvm_vm` (`firewalld-lab.yml`).
+`vnet* → wlan0`. O `make up` aplica regras na role `kvm_host` (`firewalld-lab.yml`).
 
 Correcção manual (uma vez):
 
@@ -71,3 +83,14 @@ make up-lab
 ```
 
 Cada overlay cria uma VM na mesma rede libvirt `broetec-lab` (10.20.30.0/24).
+
+## Roles futuras por papel
+
+Use `vm_role` em plays condicionais:
+
+```yaml
+- hosts: vms
+  roles:
+    - role: storage_setup
+      when: vm_role == 'storage'
+```

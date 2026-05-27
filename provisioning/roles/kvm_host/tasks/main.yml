@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# roles/kvm_host/tasks/main.yml
+# =============================================================================
+# Prepara o host físico KVM/libvirt antes de criar VMs (role kvm_vm):
+#
+#   1. Bootstrap opcional — pacotes + libvirtd (tag bootstrap).
+#   2. Rede libvirt NAT + reservas DHCP por MAC.
+#   3. Firewalld — forward/NAT das VMs (Fedora/RHEL + Docker).
+#
+# Pré-requisito para kvm_vm: virsh, virt-install, qemu-img, genisoimage|xorriso
+# no PATH (bootstrap instala quando kvm_host_bootstrap: true).
+# =============================================================================
+
+- name: "Bootstrap do host KVM (pacotes e libvirtd)"
+  ansible.builtin.import_tasks: bootstrap.yml
+
+- name: "Rede libvirt e reservas DHCP"
+  ansible.builtin.import_tasks: network.yml
+  tags: [kvm_lab]
+
+- name: "Firewalld — NAT/forward das VMs do lab"
+  ansible.builtin.import_tasks: firewalld-lab.yml
+  when: kvm_network_firewalld | default(true) | bool
+  tags: [kvm_lab]

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: Broetec
+  description: Prepara o host KVM/libvirt (bootstrap, rede NAT, firewalld).
+  license: MIT
+  min_ansible_version: "2.14"
+  galaxy_tags:
+    - kvm
+    - libvirt
+
+dependencies: []

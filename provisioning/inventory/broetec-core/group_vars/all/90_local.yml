@@ -1,0 +1,5 @@
+---
+# Variáveis locais do overlay broetec-core — editável, não sobrescrito por make inventory.
+# Sobrepõe 00_shared.yml e 50_overlay.generated.yml quando as chaves coincidem.
+
+# Referência do lab; usa os defaults globais de vm_defaults em _shared/group_vars/all.yml.

@@ -45,10 +45,14 @@ class OverlaySpec:
     label: str
     role: str
     vms: tuple[VmSpec, ...]
+    extra_vars: tuple[tuple[str, Any], ...] = ()
 
     @property
     def primary_vm(self) -> VmSpec:
         return self.vms[0]
+
+    def extra_vars_dict(self) -> dict[str, Any]:
+        return dict(self.extra_vars)
 
 
 @dataclass(frozen=True)
@@ -123,9 +127,15 @@ def _parse_overlay(overlay_id: str, data: dict[str, Any]) -> OverlaySpec:
         ip = str(entry['ip'])
         mac = entry.get('mac')
         vms.append(VmSpec(name=name, ip=ip, mac=str(mac) if mac else None))
+    extra_raw = data.get('vars') or {}
+    if not isinstance(extra_raw, dict):
+        msg = f'Overlay {overlay_id!r}: vars deve ser um mapa'
+        raise ValueError(msg)
+    extra_vars = tuple(sorted(extra_raw.items(), key=lambda item: item[0]))
     return OverlaySpec(
         overlay_id=overlay_id,
         label=str(data.get('label', overlay_id)),
         role=str(data.get('role', 'generic')),
         vms=tuple(vms),
+        extra_vars=extra_vars,
     )

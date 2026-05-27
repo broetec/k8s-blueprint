@@ -20,6 +20,7 @@ OVERLAY ?= broetec-core
 
 INVENTORY         ?= provisioning/inventory/$(OVERLAY)/hosts.ini
 PLAYBOOK          ?= provisioning/site.yml
+
 # Nomes libvirt = hostname Ansible no grupo [vms] do inventário ativo
 _inventory_vms_list := $(shell awk 'BEGIN{v=0} /^\[vms\]$$/{v=1;next} /^\[/{if(v)v=0;next} v&&$$0!~/^[[:space:]]*([#;]|$$)/{print $$1}' "$(INVENTORY)" 2>/dev/null)
 _inventory_first_vm := $(firstword $(_inventory_vms_list))

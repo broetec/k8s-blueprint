@@ -1,0 +1,5 @@
+---
+# Variáveis locais do overlay broetec-storage — editável, não sobrescrito por make inventory.
+
+# Disco maior para dados persistentes (consumido por roles/kvm_vm via hostvars).
+vm_disk_size_gb: 120

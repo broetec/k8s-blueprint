@@ -2,17 +2,12 @@
 # =============================================================================
 # site.yml — Playbook mestre (Broetec k8s-blueprint)
 # =============================================================================
-# Orquestra a fase IMPERATIVA do blueprint, em duas etapas:
+# Orquestra a fase IMPERATIVA do blueprint:
 #
-#   1. kvm_vm     -> roda no host físico (kvm_hosts).
-#                    Garante a rede libvirt 10.20.30.0/24, baixa a imagem
-#                    qcow2 do Rocky Linux, gera o seed ISO de cloud-init
-#                    e cria cada VM definida no inventário.
-#
-#   2. os_prepare -> roda dentro de cada VM (grupo `vms`) via SSH.
-#                    Aplica preparações básicas de SO (swap, SELinux,
-#                    firewalld) que serão pré-requisito para etapas
-#                    posteriores.
+#   1. kvm_host    -> host físico (kvm_hosts): bootstrap opcional, rede libvirt,
+#                     firewalld/NAT.
+#   2. kvm_vm      -> host físico: qcow2, cloud-init, virt-install, wait SSH.
+#   3. os_prepare  -> dentro de cada VM (grupo `vms`): swap, SELinux, firewalld.
 #
 # Execução (na raiz do repo, com .venv via uv):
 #   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini provisioning/site.yml
@@ -26,6 +21,7 @@
   tags:
     - kvm_lab
   roles:
+    - role: kvm_host
     - role: kvm_vm
 
 - name: "[2/2] Preparar o sistema operacional das VMs"

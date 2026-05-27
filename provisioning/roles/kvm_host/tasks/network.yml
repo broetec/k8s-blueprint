@@ -1,0 +1,156 @@
+---
+# Rede libvirt (NAT + reservas DHCP por MAC) e MAC estável por VM.
+
+- name: "Definir MAC estável por VM (virt-install + reserva DHCP dnsmasq)"
+  ansible.builtin.set_fact:
+    kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
+  vars:
+    _vm_mac: >-
+      {{ hostvars[item].vm_mac | default(
+           '52:54:00:' ~ (item | hash('md5'))[0:2] ~ ':' ~
+           (item | hash('md5'))[2:4] ~ ':' ~ (item | hash('md5'))[4:6]
+         ) }}
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Listar redes libvirt ativas (estado inicial, antes de net-define)"
+  ansible.builtin.command: virsh -c qemu:///system net-list --name
+  register: libvirt_active_nets_initial
+  changed_when: false
+  check_mode: false
+
+- name: "Obter UUID da rede {{ kvm_network.name }} (se já estiver definida)"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    virsh -c qemu:///system net-info "{{ kvm_network.name }}" 2>/dev/null | awk '/^UUID:/ { print $2 }'
+  args:
+    executable: /bin/bash
+  register: kvm_network_uuid_lookup
+  changed_when: false
+  failed_when: false
+
+- name: "Definir XML da rede libvirt {{ kvm_network.name }}"
+  ansible.builtin.copy:
+    dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
+    mode: "0644"
+    content: |
+      <network>
+        {% if kvm_network_uuid_lookup.stdout | trim | length > 0 %}
+        <uuid>{{ kvm_network_uuid_lookup.stdout | trim }}</uuid>
+        {% endif %}
+        <name>{{ kvm_network.name }}</name>
+        <forward mode='nat'/>
+        <bridge name='{{ kvm_network.bridge }}' stp='on' delay='0'/>
+        <domain name='{{ kvm_network.domain }}' localOnly='yes'/>
+        <ip address='{{ kvm_network.gateway }}' netmask='{{ kvm_network.netmask }}'>
+          <dhcp>
+            <range start='{{ kvm_network.dhcp_start }}' end='{{ kvm_network.dhcp_end }}'/>
+            {% for entry in kvm_network_dhcp_reservations | default([]) %}
+            <host mac='{{ entry.mac }}' ip='{{ entry.ip }}'/>
+            {% endfor %}
+            {% if kvm_network_dhcp_reservations | default([]) | length == 0 %}
+            {% for vm in groups['vms'] %}
+            <host mac='{{ kvm_vm_mac_by_host[vm] }}' ip='{{ hostvars[vm].vm_ip }}'/>
+            {% endfor %}
+            {% endif %}
+          </dhcp>
+        </ip>
+      </network>
+
+- name: "Fingerprint do XML da rede (ficheiro alvo em /tmp)"
+  ansible.builtin.shell: |-
+    {% raw %}
+    set -euo pipefail
+    f="/tmp/libvirt-net-${KVM_NET_NAME}.xml"
+    _fp_stream() {
+      sed "s/\"/'/g" | {
+        grep -oE "<forward[^/>]*/>" || true
+        grep -oE "<bridge[^/>]*/>" || true
+        grep -oE "<domain[^/>]*/>" || true
+        grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
+        grep -oE "<range start='[^']+' end='[^']+'/>" || true
+        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
+      } | sha256sum | awk '{print $1}'
+    }
+    _fp_stream < "$f"
+    {% endraw %}
+  environment:
+    KVM_NET_NAME: "{{ kvm_network.name }}"
+  args:
+    executable: /bin/bash
+  register: kvm_net_fp_wanted
+  changed_when: false
+
+- name: "Fingerprint do XML persistente actual (antes de net-define)"
+  ansible.builtin.shell: |-
+    {% raw %}
+    set -euo pipefail
+    name="${KVM_NET_NAME}"
+    if ! virsh -c qemu:///system net-info "$name" &>/dev/null; then
+      echo "__NETWORK_ABSENT__"
+      exit 0
+    fi
+    _fp_stream() {
+      sed "s/\"/'/g" | {
+        grep -oE "<forward[^/>]*/>" || true
+        grep -oE "<bridge[^/>]*/>" || true
+        grep -oE "<domain[^/>]*/>" || true
+        grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
+        grep -oE "<range start='[^']+' end='[^']+'/>" || true
+        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
+      } | sha256sum | awk '{print $1}'
+    }
+    virsh -c qemu:///system net-dumpxml --inactive "$name" | _fp_stream
+    {% endraw %}
+  environment:
+    KVM_NET_NAME: "{{ kvm_network.name }}"
+  args:
+    executable: /bin/bash
+  register: kvm_net_fp_current
+  changed_when: false
+
+- name: "Calcular se o runtime dnsmasq precisa de alinhar ao XML (mudou ou forçar)"
+  ansible.builtin.set_fact:
+    kvm_libvirt_net_runtime_needs_refresh: >-
+      {{
+        (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
+        or (kvm_network_force_restart | default(false) | bool)
+      }}
+
+- name: "Definir ou atualizar rede libvirt (persistente; só se XML lógico mudou ou rede nova)"
+  ansible.builtin.command: >-
+    virsh -c qemu:///system net-define
+    /tmp/libvirt-net-{{ kvm_network.name }}.xml
+  when: >-
+    (kvm_net_fp_current.stdout | trim == "__NETWORK_ABSENT__")
+    or (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
+
+- name: "Marcar a rede libvirt como autostart"
+  ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
+  changed_when: false
+
+- name: "Iniciar a rede libvirt se ainda não estiver ativa"
+  ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
+  when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
+
+- name: "Limpar leases DHCP persistidos (renomear VM / mudar reserva MAC→IP)"
+  ansible.builtin.file:
+    path: "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status"
+    state: absent
+  when:
+    - kvm_libvirt_net_runtime_needs_refresh | bool
+    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
+
+- name: "Reiniciar rede {{ kvm_network.name }} (só se XML/reservas mudaram ou forçado)"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true
+    rm -f "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status" \
+          "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.macs" 2>/dev/null || true
+    virsh -c qemu:///system net-start "{{ kvm_network.name }}"
+  args:
+    executable: /bin/bash
+  when:
+    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
+    - kvm_libvirt_net_runtime_needs_refresh | bool

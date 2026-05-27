@@ -2,57 +2,20 @@
 # =============================================================================
 # roles/kvm_vm/tasks/main.yml
 # =============================================================================
-# Provisiona VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
+# Cria VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
 #
-# Pré-requisitos:
-#   - `virsh`, `virt-install`, `qemu-img` e `genisoimage` ou `xorriso` no PATH
-#     (a etapa 1 abaixo cuida disso quando `kvm_host_bootstrap: true`).
-#   - Apenas `ansible-core` no controller — não é necessário instalar a
-#     coleção `community.libvirt` nem o binding `libvirt-python` (que exige
-#     `libvirt-devel` no host para compilar). Tudo é feito via `virsh`.
+# Pré-requisitos (role kvm_host ou host já preparado):
+#   - Rede libvirt activa com reservas DHCP (kvm_vm_mac_by_host definido).
+#   - `virsh`, `virt-install`, `qemu-img`, `genisoimage` ou `xorriso` no PATH.
 #
 # Etapas:
-#   1. Pré-requisitos no host KVM (pacotes + libvirtd ativo).
-#   2. Rede libvirt 10.20.30.0/24 + reservas DHCP (MAC -> vm_ip no dnsmasq).
-#   3. Baixar a imagem qcow2 do Rocky Linux uma única vez (lab/cache).
-#   4. Para cada VM ainda inexistente:
-#        a. clonar a qcow2 base e redimensionar o disco;
-#        b. renderizar `user-data` + `meta-data`;
-#        c. gerar o seed ISO (NoCloud datasource);
-#        d. criar a VM via `virt-install --import --noautoconsole`.
-#   5. Aguardar o SSH responder em cada VM.
+#   1. Preflight (chave SSH pública).
+#   2. Cache da imagem qcow2 do Rocky Linux (lab/cache).
+#   3. Clonar disco, cloud-init, virt-install por VM nova.
+#   4. Aguardar SSH em cada VM.
 # =============================================================================
 
-# ---------- 1. Pré-requisitos no host KVM ------------------------------------
-# Esta etapa é OPCIONAL: em distros imutáveis (Bazzite, Silverblue, Kinoite) ou
-# em hosts onde KVM já está configurado, defina `kvm_host_bootstrap: false` no
-# inventário (ou rode com `--skip-tags bootstrap`) para pular a instalação de
-# pacotes e o gerenciamento do serviço libvirtd.
-- name: "Instalar dependências de KVM/libvirt no host"
-  ansible.builtin.package:
-    name:
-      - qemu-kvm
-      - libvirt
-      - libvirt-client
-      - virt-install
-      - libguestfs-tools
-      - genisoimage
-      - xorriso
-    state: present
-  when: kvm_host_bootstrap | default(true) | bool
-  tags: [bootstrap, install]
-
-- name: "Garantir libvirtd ativo e habilitado no boot"
-  ansible.builtin.service:
-    name: libvirtd
-    state: started
-    enabled: true
-  when: kvm_host_bootstrap | default(true) | bool
-  tags: [bootstrap, install]
-
-# ---------- 1.5. Preflight do controller -------------------------------------
-# Falha cedo (antes de baixar qcow2 ou criar VM) se algo essencial estiver
-# faltando no controller — economiza tempo e bandwidth.
+# ---------- 1. Preflight -----------------------------------------------------
 - name: "Preflight: chave SSH pública configurada existe?"
   ansible.builtin.stat:
     path: "{{ ssh_public_key_path }}"
@@ -75,176 +38,7 @@
         ssh_public_key_path: "{{ '{{' }} lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' {{ '}}' }}"
   when: not ssh_pubkey_stat.stat.exists
 
-
-- name: "Definir MAC estável por VM (virt-install + reserva DHCP dnsmasq)"
-  ansible.builtin.set_fact:
-    kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
-  vars:
-    _vm_mac: >-
-      {{ hostvars[item].vm_mac | default(
-           '52:54:00:' ~ (item | hash('md5'))[0:2] ~ ':' ~
-           (item | hash('md5'))[2:4] ~ ':' ~ (item | hash('md5'))[4:6]
-         ) }}
-  loop: "{{ groups['vms'] }}"
-  loop_control:
-    label: "{{ item }}"
-
-# ---------- 2. Rede libvirt (subrede 10.20.30.0/24) — net-define precisa do <uuid>
-#    se a rede com o mesmo nome já existir.
-#
-#    Importante: NUNCA fazer net-destroy + net-start em cada execução do playbook
-#    se o XML persistente já for o desejado — isso derruba o bridge com VMs a
-#    correr e corta rede/DHCP (ex.: 2.º `make up` com VMs já criadas). Só
-#    reiniciamos o runtime quando o fingerprint (NAT/bridge/DHCP/reservas)
-#    mudou ou quando `kvm_network_force_restart` está a true. Comparação
-#    normaliza aspas no XML (virsh vs template). Se nada mudou, nem
-#    `virsh net-define` corre (evita efeitos secundários em rede activa).
-- name: "Listar redes libvirt ativas (estado inicial, antes de net-define)"
-  ansible.builtin.command: virsh -c qemu:///system net-list --name
-  register: libvirt_active_nets_initial
-  changed_when: false
-  check_mode: false
-
-- name: "Obter UUID da rede {{ kvm_network.name }} (se já estiver definida)"
-  ansible.builtin.shell: |
-    set -euo pipefail
-    virsh -c qemu:///system net-info "{{ kvm_network.name }}" 2>/dev/null | awk '/^UUID:/ { print $2 }'
-  args:
-    executable: /bin/bash
-  register: kvm_network_uuid_lookup
-  changed_when: false
-  failed_when: false
-
-- name: "Definir XML da rede libvirt {{ kvm_network.name }}"
-  ansible.builtin.copy:
-    dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
-    mode: "0644"
-    content: |
-      <network>
-        {% if kvm_network_uuid_lookup.stdout | trim | length > 0 %}
-        <uuid>{{ kvm_network_uuid_lookup.stdout | trim }}</uuid>
-        {% endif %}
-        <name>{{ kvm_network.name }}</name>
-        <forward mode='nat'/>
-        <bridge name='{{ kvm_network.bridge }}' stp='on' delay='0'/>
-        <domain name='{{ kvm_network.domain }}' localOnly='yes'/>
-        <ip address='{{ kvm_network.gateway }}' netmask='{{ kvm_network.netmask }}'>
-          <dhcp>
-            <range start='{{ kvm_network.dhcp_start }}' end='{{ kvm_network.dhcp_end }}'/>
-            {% for entry in kvm_network_dhcp_reservations | default([]) %}
-            <host mac='{{ entry.mac }}' ip='{{ entry.ip }}'/>
-            {% endfor %}
-            {% if kvm_network_dhcp_reservations | default([]) | length == 0 %}
-            {% for vm in groups['vms'] %}
-            <host mac='{{ kvm_vm_mac_by_host[vm] }}' ip='{{ hostvars[vm].vm_ip }}'/>
-            {% endfor %}
-            {% endif %}
-          </dhcp>
-        </ip>
-      </network>
-
-- name: "Fingerprint do XML da rede (ficheiro alvo em /tmp)"
-  ansible.builtin.shell: |-
-    {% raw %}
-    set -euo pipefail
-    f="/tmp/libvirt-net-${KVM_NET_NAME}.xml"
-    _fp_stream() {
-      sed "s/\"/'/g" | {
-        grep -oE "<forward[^/>]*/>" || true
-        grep -oE "<bridge[^/>]*/>" || true
-        grep -oE "<domain[^/>]*/>" || true
-        grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
-        grep -oE "<range start='[^']+' end='[^']+'/>" || true
-        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
-      } | sha256sum | awk '{print $1}'
-    }
-    _fp_stream < "$f"
-    {% endraw %}
-  environment:
-    KVM_NET_NAME: "{{ kvm_network.name }}"
-  args:
-    executable: /bin/bash
-  register: kvm_net_fp_wanted
-  changed_when: false
-
-- name: "Fingerprint do XML persistente actual (antes de net-define)"
-  ansible.builtin.shell: |-
-    {% raw %}
-    set -euo pipefail
-    name="${KVM_NET_NAME}"
-    if ! virsh -c qemu:///system net-info "$name" &>/dev/null; then
-      echo "__NETWORK_ABSENT__"
-      exit 0
-    fi
-    _fp_stream() {
-      sed "s/\"/'/g" | {
-        grep -oE "<forward[^/>]*/>" || true
-        grep -oE "<bridge[^/>]*/>" || true
-        grep -oE "<domain[^/>]*/>" || true
-        grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
-        grep -oE "<range start='[^']+' end='[^']+'/>" || true
-        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
-      } | sha256sum | awk '{print $1}'
-    }
-    virsh -c qemu:///system net-dumpxml --inactive "$name" | _fp_stream
-    {% endraw %}
-  environment:
-    KVM_NET_NAME: "{{ kvm_network.name }}"
-  args:
-    executable: /bin/bash
-  register: kvm_net_fp_current
-  changed_when: false
-
-- name: "Calcular se o runtime dnsmasq precisa de alinhar ao XML (mudou ou forçar)"
-  ansible.builtin.set_fact:
-    kvm_libvirt_net_runtime_needs_refresh: >-
-      {{
-        (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
-        or (kvm_network_force_restart | default(false) | bool)
-      }}
-
-- name: "Definir ou atualizar rede libvirt (persistente; só se XML lógico mudou ou rede nova)"
-  ansible.builtin.command: >-
-    virsh -c qemu:///system net-define
-    /tmp/libvirt-net-{{ kvm_network.name }}.xml
-  when: >-
-    (kvm_net_fp_current.stdout | trim == "__NETWORK_ABSENT__")
-    or (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
-
-- name: "Marcar a rede libvirt como autostart"
-  ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
-  changed_when: false
-
-- name: "Iniciar a rede libvirt se ainda não estiver ativa"
-  ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
-  when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
-
-- name: "Limpar leases DHCP persistidos (renomear VM / mudar reserva MAC→IP)"
-  ansible.builtin.file:
-    path: "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status"
-    state: absent
-  when:
-    - kvm_libvirt_net_runtime_needs_refresh | bool
-    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
-
-- name: "Reiniciar rede {{ kvm_network.name }} (só se XML/reservas mudaram ou forçado)"
-  ansible.builtin.shell: |
-    set -euo pipefail
-    virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true
-    rm -f "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status" \
-          "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.macs" 2>/dev/null || true
-    virsh -c qemu:///system net-start "{{ kvm_network.name }}"
-  args:
-    executable: /bin/bash
-  when:
-    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
-    - kvm_libvirt_net_runtime_needs_refresh | bool
-
-- name: "Firewalld — NAT/forward das VMs do lab (Fedora/RHEL + Docker)"
-  ansible.builtin.import_tasks: firewalld-lab.yml
-  when: kvm_network_firewalld | default(true) | bool
-
-# ---------- 3. Imagem base do Rocky Linux (cache) ----------------------------
+# ---------- 2. Imagem base do Rocky Linux (cache) ----------------------------
 - name: "Garantir diretórios do lab libvirt (discos + cache no repositório)"
   ansible.builtin.file:
     path: "{{ item }}"
@@ -255,9 +49,6 @@
   loop:
     - "{{ libvirt_pool.path }}"
     - "{{ os_image.cache_dir }}"
-  # Operação idempotente e segura: criamos mesmo em --check para que as
-  # tasks subsequentes (get_url, copy) não quebrem com "destination does
-  # not exist" em dry-run.
   check_mode: false
 
 - name: "SELinux: contexto virt_image_t em lab/ (paths no repositório)"
@@ -281,7 +72,7 @@
     mode: "0644"
     force: false
 
-# ---------- 4. Provisionar cada VM do inventário -----------------------------
+# ---------- 3. Provisionar cada VM do inventário -----------------------------
 - name: "Verificar quais VMs já existem no libvirt"
   ansible.builtin.command: "virsh -c qemu:///system dominfo {{ item }}"
   register: virsh_dominfo
@@ -366,11 +157,10 @@
     elif command -v xorriso >/dev/null 2>&1; then
       xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m"
     else
-      echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode o playbook com a tag bootstrap)." >&2
+      echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode com a tag bootstrap / role kvm_host)." >&2
       exit 1
     fi
   args:
-    # Sem `creates`: senão alterações a user-data não entram na VM.
     executable: /bin/bash
   loop: "{{ ci_tmpdirs.results }}"
   loop_control:
@@ -387,9 +177,8 @@
     msg: |-
       O comando `virt-install` não foi encontrado no host que corre o libvirt.
 
-      • Fedora/RHEL (dnf): instale `virt-install` e dependências — ou `make up ANSIBLE_FLAGS=`
-        para o playbook instalar a tag `bootstrap`.
-      • Bazzite/Silverblue/immutable: não use dnf; instale em camada com `rpm-ostree`
+      • Fedora/RHEL (dnf): `make up ANSIBLE_FLAGS=` (tag bootstrap / role kvm_host).
+      • Bazzite/Silverblue/immutable: instale em camada com `rpm-ostree`
         (lista em provisioning/README.md, secção «Fedora Atomic / Bazzite») e reinicie.
   when: virt_install_lookup.rc != 0
 
@@ -435,7 +224,7 @@
     label: "{{ item.item }}"
   when: vms_to_create | length > 0
 
-# ---------- 5. Esperar SSH responder em cada VM ------------------------------
+# ---------- 4. Esperar SSH responder em cada VM ------------------------------
 - name: "Aguardar o SSH responder em cada VM (cloud-init concluído)"
   ansible.builtin.wait_for:
     host: "{{ hostvars[item].vm_ip }}"

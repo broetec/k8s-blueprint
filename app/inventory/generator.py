@@ -14,7 +14,9 @@ from app.inventory.models import InventoryManifest, OverlaySpec, VmSpec
 _DHCP_RESERVATIONS_FILE = Path('_shared/group_vars/dhcp_reservations.yml')
 
 _SHARED_GROUP_VARS = Path('_shared/group_vars')
-_GROUP_VARS_LINK = Path('group_vars')
+_GROUP_VARS_DIR = Path('group_vars')
+_GROUP_VARS_ALL = Path('group_vars/all')
+_OVERLAY_GENERATED = '50_overlay.generated.yml'
 
 
 class InventoryGenerator:
@@ -83,6 +85,7 @@ class InventoryGenerator:
                 '',
                 '[vms:vars]',
                 f'ansible_user={d.ansible_user}',
+                f'vm_role={overlay.role}',
                 '; libssh: evita worker dead no Cursor/AppImage. Requer make deps.',
                 f'ansible_connection={d.ansible_connection_vm}',
                 f'ansible_host_key_checking={str(d.ansible_host_key_checking)}',
@@ -91,6 +94,25 @@ class InventoryGenerator:
             ],
         )
         return '\n'.join(lines)
+
+    def render_overlay_group_vars(self, overlay: OverlaySpec) -> str:
+        payload: dict[str, object] = {
+            'vm_role': overlay.role,
+            'overlay_id': overlay.overlay_id,
+            'overlay_label': overlay.label,
+        }
+        payload.update(overlay.extra_vars_dict())
+        header = (
+            '# Gerado automaticamente — NÃO EDITAR.\n'
+            '# Fonte: manifest.yml (+ env/.env se aplicável). Regenerar: make inventory\n'
+            '---\n'
+        )
+        return header + yaml.dump(
+            payload,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        )
 
     def _apply_env_overrides(
         self,
@@ -176,20 +198,44 @@ class InventoryGenerator:
             return hosts_ini
         overlay_dir.mkdir(parents=True, exist_ok=True)
         hosts_ini.write_text(content, encoding='utf-8')
-        self._ensure_group_vars_link(overlay_dir)
+        self._ensure_group_vars(overlay_dir, overlay)
         return hosts_ini
 
-    def _ensure_group_vars_link(self, overlay_dir: Path) -> None:
-        link = overlay_dir / _GROUP_VARS_LINK
-        target = Path('..') / _SHARED_GROUP_VARS
+    def _ensure_group_vars(self, overlay_dir: Path, overlay: OverlaySpec) -> None:
+        """group_vars/all/ em camadas: shared → dhcp → overlay (manifest) → local."""
+        gv_root = overlay_dir / _GROUP_VARS_DIR
+        legacy_link = gv_root
+        if legacy_link.is_symlink():
+            legacy_link.unlink()
+        elif legacy_link.is_dir() and not (legacy_link / 'all').is_dir():
+            msg = (
+                f'{legacy_link} existe mas não segue group_vars/all/ — '
+                'migre manualmente ou remova'
+            )
+            raise FileExistsError(msg)
+
+        gv_all = overlay_dir / _GROUP_VARS_ALL
+        gv_all.mkdir(parents=True, exist_ok=True)
+
+        shared_src = self.inventory_root / _SHARED_GROUP_VARS / 'all.yml'
+        dhcp_src = self.inventory_root / _SHARED_GROUP_VARS / 'dhcp_reservations.yml'
+        self._symlink_file(gv_all / '00_shared.yml', shared_src)
+        self._symlink_file(gv_all / '10_dhcp_reservations.yml', dhcp_src)
+        (gv_all / _OVERLAY_GENERATED).write_text(
+            self.render_overlay_group_vars(overlay),
+            encoding='utf-8',
+        )
+
+    def _symlink_file(self, link: Path, target: Path) -> None:
+        rel = os.path.relpath(target.resolve(), link.parent.resolve())
         if link.is_symlink():
-            if link.resolve() == (overlay_dir / _SHARED_GROUP_VARS).resolve():
+            if link.resolve() == target.resolve():
                 return
             link.unlink()
         elif link.exists():
-            msg = f'{link} existe e não é symlink para _shared/group_vars'
+            msg = f'{link} existe e não é symlink para {target}'
             raise FileExistsError(msg)
-        link.symlink_to(target, target_is_directory=True)
+        link.symlink_to(rel)
 
 
 def find_repo_root(start: Path | None = None) -> Path:
