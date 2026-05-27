@@ -18,9 +18,10 @@ uv run k8s-blueprint-inventory generate -o broetec-core
 | `provisioning/inventory/manifest.yml` | Overlays, VMs e `vars` por overlay |
 | `env/.env` | `OVERLAY`, `VM_NAME`, `VM_IP` (sobrescreve o overlay ativo) |
 | `provisioning/inventory/_shared/group_vars/all.yml` | Variáveis Ansible partilhadas |
+| `provisioning/inventory/_shared/group_vars/kvm_hosts.yml` | Python do controlador (grupo `kvm_hosts`) |
 | `provisioning/inventory/<overlay>/group_vars/all/` | Camadas: shared + overlay gerado + `90_local.yml` |
 
-Cada overlay contém `hosts.ini` **gerado** e `group_vars/all/` (symlinks + ficheiros locais).
+Cada overlay contém `hosts.ini` **gerado**, `group_vars/kvm_hosts.yml` (symlink) e `group_vars/all/` (symlinks + ficheiros locais).
 
 ## Make
 

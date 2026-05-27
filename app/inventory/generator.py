@@ -16,6 +16,7 @@ _DHCP_RESERVATIONS_FILE = Path('_shared/group_vars/dhcp_reservations.yml')
 _SHARED_GROUP_VARS = Path('_shared/group_vars')
 _GROUP_VARS_DIR = Path('group_vars')
 _GROUP_VARS_ALL = Path('group_vars/all')
+_KVM_HOSTS_VARS = Path('group_vars/kvm_hosts.yml')
 _OVERLAY_GENERATED = '50_overlay.generated.yml'
 
 
@@ -219,8 +220,10 @@ class InventoryGenerator:
 
         shared_src = self.inventory_root / _SHARED_GROUP_VARS / 'all.yml'
         dhcp_src = self.inventory_root / _SHARED_GROUP_VARS / 'dhcp_reservations.yml'
+        kvm_hosts_src = self.inventory_root / _SHARED_GROUP_VARS / 'kvm_hosts.yml'
         self._symlink_file(gv_all / '00_shared.yml', shared_src)
         self._symlink_file(gv_all / '10_dhcp_reservations.yml', dhcp_src)
+        self._symlink_file(overlay_dir / _KVM_HOSTS_VARS, kvm_hosts_src)
         (gv_all / _OVERLAY_GENERATED).write_text(
             self.render_overlay_group_vars(overlay),
             encoding='utf-8',

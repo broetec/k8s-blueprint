@@ -35,7 +35,6 @@ provisioning/inventory/*
 !provisioning/inventory/broetec-core/
 !provisioning/inventory/broetec-storage/
 !provisioning/inventory/broetec-monitor/
-!provisioning/inventory/example/README.md
 
 # ---- Lab KVM — discos, cache qcow2 e seed ISO (gerado por make up) -----------
 # lab/README.md fica versionado; ver lab/README.md

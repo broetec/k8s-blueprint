@@ -117,7 +117,7 @@ gitignored — ver `lab/README.md`). `make clean` apaga essa árvore; não usa
 
 **Dois “Pythons” no lab:** no **controlador** (laptop + play `kvm_hosts` local) corre
 sempre o interpretador do `.venv` (`ansible_playbook_python` em
-`group_vars/kvm_hosts.yml`). Nas **VMs** (`vms`), os módulos Ansible executam o
+`_shared/group_vars/kvm_hosts.yml`, ligado por overlay via `make inventory`). Nas **VMs** (`vms`), os módulos Ansible executam o
 Python instalado no Rocky (`interpreter_python = auto_silent` no `ansible.cfg`) —
 não copie nem aponte o `.venv` do repositório para o inventário das VMs.
 

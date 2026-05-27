@@ -42,6 +42,10 @@ def repo_tree(tmp_path: Path) -> Path:
     shared = inv / '_shared/group_vars'
     shared.mkdir(parents=True)
     (shared / 'all.yml').write_text('---\nbase_domain: test.local\n', encoding='utf-8')
+    (shared / 'kvm_hosts.yml').write_text(
+        '---\nansible_python_interpreter: "{{ ansible_playbook_python }}"\n',
+        encoding='utf-8',
+    )
     (tmp_path / 'env').mkdir()
     return tmp_path
 
@@ -85,6 +89,10 @@ def test_generate_writes_files(repo_tree: Path) -> None:
     assert overlay_gen.is_file()
     assert 'vm_role: core' in overlay_gen.read_text(encoding='utf-8')
     assert (gv_all / '00_shared.yml').resolve().name == 'all.yml'
+    kvm_hosts = hosts.parent / 'group_vars' / 'kvm_hosts.yml'
+    assert kvm_hosts.is_symlink()
+    assert kvm_hosts.resolve().name == 'kvm_hosts.yml'
+    assert 'ansible_playbook_python' in kvm_hosts.resolve().read_text(encoding='utf-8')
 
 
 def test_render_overlay_group_vars_with_manifest_vars(repo_tree: Path) -> None:

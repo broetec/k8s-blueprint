@@ -21,7 +21,17 @@ Cada overlay tem `group_vars/all/` com merge automático (ordem alfabética):
 | `50_overlay.generated.yml` | **gerado** (`make inventory`) | `vm_role`, `overlay_id`, `vars` do manifest |
 | `90_local.yml` | **versionado, manual** | Overrides por máquina (disco, vCPUs, etc.) |
 
+Só para o grupo **`[kvm_hosts]`** (`localhost` na play KVM), o gerador cria também:
+
+| Ficheiro | Origem | Função |
+|----------|--------|--------|
+| `group_vars/kvm_hosts.yml` | symlink → `_shared/group_vars/kvm_hosts.yml` | Python do controlador (`.venv` via `ansible_playbook_python`) |
+
 Edite **`manifest.yml`** para identidade (IP, role, vars declarativas) e **`90_local.yml`** para ajustes finos por overlay.
+
+### `become` nas VMs (opcional)
+
+Variáveis só do grupo `[vms]` podem ir em `group_vars/vms.yml` (crie manualmente no overlay, não é gerado). Ex.: `ansible_become_password` quando `cloud_init.sudo_nopasswd: false` — use ficheiro local `env/vm-rocky.pass` (gitignored) ou Ansible Vault; ver comentários em `provisioning/README.md`.
 
 ## Gerar `hosts.ini`
 
