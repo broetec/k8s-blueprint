@@ -1,6 +1,6 @@
 ---
-# Bootstrap opcional (pacotes + libvirtd). Desligue em distros imutáveis ou com --skip-tags bootstrap.
+# Optional bootstrap (packages + libvirtd). Disable on immutable distros or with --skip-tags bootstrap.
 kvm_host_bootstrap: true
 
-# Regras firewalld/NAT para VMs na rede libvirt do lab.
+# firewalld NAT/forward rules for VMs on the lab libvirt network.
 kvm_network_firewalld: true

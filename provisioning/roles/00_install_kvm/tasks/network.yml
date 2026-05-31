@@ -1,7 +1,7 @@
 ---
-# Rede libvirt (NAT + reservas DHCP por MAC) e MAC estável por VM.
+# Libvirt network (NAT + DHCP reservations by MAC) and stable MAC per VM.
 
-- name: "Definir MAC estável por VM (virt-install + reserva DHCP dnsmasq)"
+- name: Derive stable MAC per VM (virt-install + dnsmasq DHCP reservation)
   ansible.builtin.set_fact:
     kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
   vars:
@@ -14,13 +14,13 @@
   loop_control:
     label: "{{ item }}"
 
-- name: "Listar redes libvirt ativas (estado inicial, antes de net-define)"
+- name: List active libvirt networks (initial state, before net-define)
   ansible.builtin.command: virsh -c qemu:///system net-list --name
   register: libvirt_active_nets_initial
   changed_when: false
   check_mode: false
 
-- name: "Obter UUID da rede {{ kvm_network.name }} (se já estiver definida)"
+- name: Look up UUID of network {{ kvm_network.name }} (if already defined)
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-info "{{ kvm_network.name }}" 2>/dev/null | awk '/^UUID:/ { print $2 }'
@@ -30,7 +30,7 @@
   changed_when: false
   failed_when: false
 
-- name: "Definir XML da rede libvirt {{ kvm_network.name }}"
+- name: Render libvirt network XML for {{ kvm_network.name }}
   ansible.builtin.copy:
     dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
     mode: "0644"
@@ -58,7 +58,7 @@
         </ip>
       </network>
 
-- name: "Fingerprint do XML da rede (ficheiro alvo em /tmp)"
+- name: Compute desired network XML fingerprint (/tmp target file)
   ansible.builtin.shell: |-
     {% raw %}
     set -euo pipefail
@@ -82,7 +82,7 @@
   register: kvm_net_fp_wanted
   changed_when: false
 
-- name: "Fingerprint do XML persistente actual (antes de net-define)"
+- name: Compute current persistent network XML fingerprint (before net-define)
   ansible.builtin.shell: |-
     {% raw %}
     set -euo pipefail
@@ -110,7 +110,7 @@
   register: kvm_net_fp_current
   changed_when: false
 
-- name: "Calcular se o runtime dnsmasq precisa de alinhar ao XML (mudou ou forçar)"
+- name: Determine whether dnsmasq runtime must realign to XML (changed or forced)
   ansible.builtin.set_fact:
     kvm_libvirt_net_runtime_needs_refresh: >-
       {{
@@ -118,7 +118,7 @@
         or (kvm_network_force_restart | default(false) | bool)
       }}
 
-- name: "Definir ou atualizar rede libvirt (persistente; só se XML lógico mudou ou rede nova)"
+- name: Define or update libvirt network (persistent; only if logical XML changed or new)
   ansible.builtin.command: >-
     virsh -c qemu:///system net-define
     /tmp/libvirt-net-{{ kvm_network.name }}.xml
@@ -126,15 +126,15 @@
     (kvm_net_fp_current.stdout | trim == "__NETWORK_ABSENT__")
     or (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
 
-- name: "Marcar a rede libvirt como autostart"
+- name: Enable libvirt network autostart
   ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
   changed_when: false
 
-- name: "Iniciar a rede libvirt se ainda não estiver ativa"
+- name: Start libvirt network if not already active
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
   when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
 
-- name: "Limpar leases DHCP persistidos (renomear VM / mudar reserva MAC→IP)"
+- name: Remove stale dnsmasq DHCP lease files (VM rename / MAC→IP reservation change)
   ansible.builtin.file:
     path: "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status"
     state: absent
@@ -142,7 +142,7 @@
     - kvm_libvirt_net_runtime_needs_refresh | bool
     - kvm_network.name in libvirt_active_nets_initial.stdout_lines
 
-- name: "Reiniciar rede {{ kvm_network.name }} (só se XML/reservas mudaram ou forçado)"
+- name: Restart network {{ kvm_network.name }} (only if XML/reservations changed or forced)
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true

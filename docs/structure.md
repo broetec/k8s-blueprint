@@ -173,11 +173,11 @@ sequenceDiagram
 
 | Target | Etapas |
 |--------|--------|
-| `setup-host` | 00 (bootstrap) |
+| `setup-host` | `setup` + 00 (controlador + host KVM; bootstrap via `env/.env`) |
 | `up` | 01 + 02 + 03 + 04 (default `OVERLAY=broetec-core`) |
 | `up-all` | loop `up` nos 3 overlays |
 | `deploy` | 03 + 04 |
-| `install-kvm` | 00 |
+| `install-kvm` | 00 (re-aplicar host, sem `setup`) |
 
 ### Ordem das roles
 
@@ -197,7 +197,7 @@ sequenceDiagram
 | Sobrescrever overlay ativo | `env/.env` (`OVERLAY`, `VM_NAME`, `VM_IP`) |
 | Variáveis Ansible partilhadas | `provisioning/inventory/_shared/group_vars/` |
 | Caminho dos discos | `env/.env` (`LAB_PATH`) ou `group_vars/all.yml` |
-| Pular instalação de pacotes no host | `make install-kvm` (default `--skip-tags bootstrap`) ou `kvm_host_bootstrap: false` |
+| Pular instalação de pacotes no host | `env/.env` → `KVM_HOST_BOOTSTRAP=false` (ou `make setup-host KVM_HOST_BOOTSTRAP=false`) |
 
 ---
 

@@ -1,20 +1,21 @@
 # -----------------------------------------------------------------------------
-# Firewalld (Fedora/RHEL) — NAT e forward das VMs do lab
+# Firewalld (Fedora/RHEL) — NAT and forward for lab VMs
 # -----------------------------------------------------------------------------
-# Em hosts com Docker, a cadeia FORWARD fica com policy DROP e o tráfego das
-# VMs (vnet* → wlan0) não sai sem estas regras. Sem firewalld activo, ignora.
+# On hosts with Docker, the FORWARD chain policy is often DROP and traffic from
+# VMs (vnet* → wlan0) will not egress without these rules. Skipped when
+# firewalld is not active.
 # -----------------------------------------------------------------------------
 
-- name: "Detectar se firewalld está activo no host KVM"
+- name: Detect whether firewalld is active on the KVM host
   ansible.builtin.command: systemctl is-active firewalld
   register: kvm_firewalld_active
   changed_when: false
   failed_when: false
 
-- name: "Configurar firewalld para a rede NAT do lab"
+- name: Configure firewalld for the lab NAT network
   when: kvm_firewalld_active.stdout | trim == 'active'
   block:
-    - name: "Remover bridge do lab da zona libvirt (evitar conflito com libvirt-routed)"
+    - name: Remove lab bridge from libvirt zone (avoid conflict with libvirt-routed)
       ansible.posix.firewalld:
         interface: "{{ kvm_network.bridge }}"
         zone: libvirt
@@ -22,7 +23,7 @@
         state: disabled
       failed_when: false
 
-    - name: "Associar bridge {{ kvm_network.bridge }} à zona libvirt-routed"
+    - name: Assign bridge {{ kvm_network.bridge }} to libvirt-routed zone
       ansible.posix.firewalld:
         interface: "{{ kvm_network.bridge }}"
         zone: libvirt-routed
@@ -30,7 +31,7 @@
         immediate: true
         state: enabled
 
-    - name: "Masquerade na zona libvirt-routed (NAT das VMs)"
+    - name: Enable masquerade on libvirt-routed zone (VM NAT)
       ansible.posix.firewalld:
         zone: libvirt-routed
         masquerade: true
@@ -38,7 +39,7 @@
         immediate: true
         state: enabled
 
-    - name: "Verificar regra direct FORWARD (lab → exterior)"
+    - name: Check direct FORWARD rule (lab subnet → external)
       ansible.builtin.command: >-
         firewall-cmd --permanent
         --direct --passthrough ipv4
@@ -47,14 +48,14 @@
       changed_when: false
       failed_when: false
 
-    - name: "Direct — permitir FORWARD do subnet do lab"
+    - name: Direct rule — allow FORWARD from lab subnet
       ansible.builtin.command: >-
         firewall-cmd --permanent
         --direct --passthrough ipv4
         -I FORWARD 1 -s {{ kvm_network.subnet_cidr }} -j ACCEPT
       when: kvm_fw_fwd_lab_check.rc != 0
 
-    - name: "Verificar regra direct FORWARD (established → lab)"
+    - name: Check direct FORWARD rule (established → lab)
       ansible.builtin.command: >-
         firewall-cmd --permanent
         --direct --passthrough ipv4
@@ -64,7 +65,7 @@
       changed_when: false
       failed_when: false
 
-    - name: "Direct — FORWARD established para o lab"
+    - name: Direct rule — FORWARD established traffic to lab subnet
       ansible.builtin.command: >-
         firewall-cmd --permanent
         --direct --passthrough ipv4
@@ -72,7 +73,7 @@
         -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
       when: kvm_fw_fwd_est_check.rc != 0
 
-    - name: "Verificar regra direct NAT (masquerade do lab)"
+    - name: Check direct NAT rule (lab masquerade)
       ansible.builtin.command: >-
         firewall-cmd --permanent
         --direct --passthrough ipv4
@@ -82,7 +83,7 @@
       changed_when: false
       failed_when: false
 
-    - name: "Direct — NAT POSTROUTING para o subnet do lab"
+    - name: Direct rule — NAT POSTROUTING for lab subnet
       ansible.builtin.command: >-
         firewall-cmd --permanent
         --direct --passthrough ipv4
@@ -90,6 +91,6 @@
         ! -d {{ kvm_network.subnet_cidr }} -j MASQUERADE
       when: kvm_fw_nat_check.rc != 0
 
-    - name: "Recarregar firewalld após regras do lab"
+    - name: Reload firewalld after lab rules
       ansible.builtin.command: firewall-cmd --reload
       changed_when: true

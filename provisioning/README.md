@@ -37,8 +37,8 @@ provisioning/
   virsh -c qemu:///system list --all
   command -v virt-install qemu-img && { command -v genisoimage >/dev/null || command -v xorriso >/dev/null; }
   ```
-  Em distros imutáveis (Bazzite, Silverblue, Kinoite), o `Makefile` já corre com
-  `--skip-tags bootstrap` por defeito — o Ansible **não** chama `dnf`/`rpm` no host.
+  Em distros imutáveis (Bazzite, Silverblue, Kinoite), defina
+  `KVM_HOST_BOOTSTRAP=false` em `env/.env` — o Ansible **não** chama `dnf`/`rpm` no host.
   Instale os pacotes à mão (secção seguinte) e configure o `libvirtd` antes do `make up`.
 - **Chave SSH** — com `make up` ela é criada em `env/k8s-blueprint[.pub]` (ver
   `env/README.md`). No caminho manual (sem Make), use uma chave própria ou
@@ -197,7 +197,7 @@ Ansible e roda o playbook automaticamente. Você nunca precisa criar chave
 manualmente nem editar `~/.ssh/`.
 
 ```bash
-# 1ª vez:
+# 1ª vez (cp env/.env.example env/.env antes, se ainda não tiver):
 make setup-host
 
 # Uso diário (default broetec-core):
@@ -236,6 +236,17 @@ Antes:
 
 Depois, da raiz:
 
+Para saltar a instalação de pacotes no host (Bazzite/imutáveis ou KVM já pronto),
+defina em `env/.env`:
+
+```bash
+KVM_HOST_BOOTSTRAP=false
+```
+
+Ou na linha de comando: `make setup-host KVM_HOST_BOOTSTRAP=false`.
+
+No caminho manual com `ansible-playbook`, use `--skip-tags bootstrap` para o mesmo efeito:
+
 ```bash
 uv run ansible-playbook \
   -i provisioning/inventory/broetec-core/hosts.ini \
@@ -248,12 +259,11 @@ Os caminhos `env/k8s-blueprint` estão definidos em `group_vars/all.yml`
 (`_repo_root`). Gere a chave antes com `make keys` ou `ssh-keygen … -f env/k8s-blueprint`.
 
 `--skip-tags bootstrap` pula as duas tasks que instalariam pacotes e
-habilitariam `libvirtd` no host (necessário em Bazzite/imutáveis ou em
-hosts onde KVM já está pronto). `--ask-become-pass` é necessário porque a
+habilitariam `libvirtd` no host. `--ask-become-pass` é necessário porque a
 primeira play roda no `localhost` com `become: true` para criar `lab/disks` e
 `lab/cache` (seed ISO, discos e cache da imagem base — gitignored).
 
-Para fixar `--skip-tags bootstrap` permanentemente, defina no overlay:
+Alternativa em inventário (sem Make):
 
 ```yaml
 # inventory/<overlay>/group_vars/all.yml

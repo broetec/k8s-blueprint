@@ -49,8 +49,13 @@ ifneq ($(filter --ask-become-pass -K,$(SUDO_FLAGS_VM)),)
 $(error Plays em vms: não use --ask-become-pass/-K. Use env/vm-become.pass ou rocky NOPASSWD.)
 endif
 
+# --- Host KVM (role 00) --------------------------------------------------------
+# Bootstrap: instala pacotes libvirt no host. Default activo; desactivar em env/.env.
+KVM_HOST_BOOTSTRAP ?= true
+KVM_HOST_BOOTSTRAP_ON := $(filter 1 true yes TRUE YES,$(KVM_HOST_BOOTSTRAP))
+
 # --- Ansible -------------------------------------------------------------------
-ANSIBLE_FLAGS ?= --skip-tags bootstrap
+ANSIBLE_FLAGS ?=
 ANSIBLE_FORKS ?= 1
 ANSIBLE_CFG ?= $(CURDIR)/provisioning/ansible.cfg
 ANSIBLE_SSH_ARGS ?= -C -o ControlMaster=no -o ControlPersist=no

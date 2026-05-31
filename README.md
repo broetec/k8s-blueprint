@@ -27,13 +27,13 @@ make clean             # reset completo
 
 Outros overlays: `make up OVERLAY=broetec-storage`
 
-Defaults locais: `cp env/.env.example env/.env` · `make help`
+Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` para saltar pacotes no host · `make help`
 
 ## Pipeline Ansible (00–04)
 
 | Etapa | Role | Target Make |
 |-------|------|-------------|
-| 00 | `00_install_kvm` | `make install-kvm` / `setup-host` |
+| 00 | `00_install_kvm` | `make setup-host` (1ª vez) / `make install-kvm` (re-aplicar) |
 | 01 | `01_create_vm` | `make create-vm` |
 | 02 | `02_prepare_vm` | `make prepare-vm` |
 | 03 | `03_install_rke2` | `make install-rke2` (stub) |

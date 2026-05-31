@@ -30,13 +30,13 @@ N := \033[0m
 help: ## Lista targets e config actual
 	@printf "$(B)Setup (1ª vez):$(N)\n"
 	@printf "  $(G)setup$(N)          uv sync + deps + chaves\n"
-	@printf "  $(G)setup-host$(N)     setup + install-kvm (BOOTSTRAP=1)\n"
+	@printf "  $(G)setup-host$(N)     setup + install-kvm (bootstrap via env/.env)\n"
 	@printf "\n$(B)Lab (cotidiano):$(N)\n"
 	@printf "  $(G)up$(N)              create-vm + prepare-vm + deploy (OVERLAY=$(OVERLAY))\n"
 	@printf "  $(G)up-all$(N)          todos os overlays ($(LAB_OVERLAYS))\n"
 	@printf "  $(G)deploy$(N)          install-rke2 + deploy-k8s\n"
 	@printf "\n$(B)Etapas (00–04):$(N)\n"
-	@printf "  $(G)install-kvm$(N)    00 — host KVM/rede\n"
+	@printf "  $(G)install-kvm$(N)    00 — re-aplicar host KVM (sem setup)\n"
 	@printf "  $(G)create-vm$(N)      01 — libvirt + qcow2\n"
 	@printf "  $(G)prepare-vm$(N)     02 — SO na VM\n"
 	@printf "  $(G)install-rke2$(N)   03 — RKE2 (stub)\n"
@@ -46,7 +46,7 @@ help: ## Lista targets e config actual
 		if ($$1 !~ /^(setup|setup-host|install-kvm|create-vm|prepare-vm|install-rke2|deploy-k8s|deploy|up|up-all)$$/) \
 		  printf "  $(G)%-18s$(N) %s\n", $$1, $$2 \
 	}' $(MAKEFILE_LIST)
-	@printf "\n$(B)Config:$(N) OVERLAY=$(OVERLAY)  VM=$(VM_NAME)@$(VM_IP)  $(ANSIBLE_FLAGS)\n"
+	@printf "\n$(B)Config:$(N) OVERLAY=$(OVERLAY)  VM=$(VM_NAME)@$(VM_IP)  KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP)\n"
 	@printf "  inventory=$(INVENTORY)\n"
 	@printf "  env/.env: %s\n" "$(if $(wildcard $(LAB_ENV_FILE)),ok,$(Y)cp env/.env.example env/.env$(N))"
 	@printf "\n$(B)Exemplos:$(N)\n"
@@ -90,13 +90,13 @@ inventory-overlay: sync ## Gera hosts.ini só do OVERLAY activo
 
 setup: sync deps keys ## Controlador: .venv, Galaxy, chave SSH
 
-setup-host: setup ## 1ª vez: controlador + host KVM (bootstrap)
-	@printf "$(B)==> setup-host: install-kvm com BOOTSTRAP=1$(N)\n"
-	@$(SUBMAKE) -f $(CURDIR)/Makefile install-kvm BOOTSTRAP=1
+setup-host: setup ## 1ª vez: controlador + host KVM (00)
+	@printf "$(B)==> setup-host: install-kvm (KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
+	@$(SUBMAKE) -f $(CURDIR)/Makefile install-kvm OVERLAY=$(OVERLAY)
 
-install-kvm: inventory-overlay deps ## 00 — host KVM, rede libvirt, firewalld
-	@printf "$(Y)==> [00] install-kvm (OVERLAY=$(OVERLAY))$(N)\n"
-	$(call run-playbook,$(if $(filter 1,$(BOOTSTRAP)),install_kvm,bootstrap,install_kvm),$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),$(EXTRA))
+install-kvm: inventory-overlay deps ## 00 — re-aplicar host KVM (rede, firewalld, bootstrap)
+	@printf "$(Y)==> [00] install-kvm (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
+	$(call run-playbook,$(INSTALL_KVM_TAGS),$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),$(INSTALL_KVM_EXTRA) $(EXTRA))
 
 network-refresh: inventory-overlay deps ## Reaplica rede libvirt e reservas DHCP
 	@printf "$(Y)==> network-refresh $(KVM_NETWORK)$(N)\n"
