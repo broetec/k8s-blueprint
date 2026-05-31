@@ -1,5 +1,14 @@
 ---
-# Coleções Ansible do blueprint (instaladas por `make deps`).
+# Ansible Galaxy collections required by this blueprint (not bundled in the repo).
+#
+# Installed into the project venv by `make deps` (see COLLECTIONS_REQ in make/config.mk):
+#   uv run ansible-galaxy collection install -r provisioning/collections/requirements.yml
+#
+# ansible.posix     — firewalld module on the KVM host (role 00_install_kvm / firewalld-lab.yml).
+# ansible.netcommon — libssh connection plugin for VM plays (inventory: ansible.netcommon.libssh).
+#                     Avoids forking the system ssh binary; helps with Cursor integrated terminal.
+#
+# Add a collection here when a role or connection plugin needs it, then re-run `make deps`.
 collections:
   - name: ansible.posix
   - name: ansible.netcommon
