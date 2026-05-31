@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# roles/os_prepare/tasks/main.yml
+# roles/02_prepare_vm/tasks/main.yml
 # =============================================================================
 # Roda dentro de cada VM (grupo `vms`) via SSH e deixa o Rocky Linux
 # em um estado base padrão para a Broetec:

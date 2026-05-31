@@ -4,10 +4,10 @@
 # =============================================================================
 # Orquestra a fase IMPERATIVA do blueprint:
 #
-#   1. kvm_host    -> host físico (kvm_hosts): bootstrap opcional, rede libvirt,
-#                     firewalld/NAT.
-#   2. kvm_vm      -> host físico: qcow2, cloud-init, virt-install, wait SSH.
-#   3. os_prepare  -> dentro de cada VM (grupo `vms`): swap, SELinux, firewalld.
+#   1. 00_install_kvm -> host físico (kvm_hosts): bootstrap opcional, rede libvirt,
+#                        firewalld/NAT.
+#   2. 01_create_vm   -> host físico: qcow2, cloud-init, virt-install, wait SSH.
+#   3. 02_prepare_vm  -> dentro de cada VM (grupo `vms`): swap, SELinux, firewalld.
 #
 # Execução (na raiz do repo, com .venv via uv):
 #   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini provisioning/site.yml
@@ -21,8 +21,8 @@
   tags:
     - kvm_lab
   roles:
-    - role: kvm_host
-    - role: kvm_vm
+    - role: 00_install_kvm
+    - role: 01_create_vm
 
 - name: "[2/2] Preparar o sistema operacional das VMs"
   hosts: vms
@@ -49,4 +49,4 @@
       changed_when: false
       failed_when: false
   roles:
-    - role: os_prepare
+    - role: 02_prepare_vm

@@ -1,5 +1,7 @@
 # `lab/` — artefactos locais do laboratório KVM
 
+> Mapa geral do repositório: [`docs/structure.md`](../docs/structure.md)
+
 Esta pasta guarda **tudo o que o `make up` gera no disco** e que não deve ir
 para o Git. É descartável: `make clean` apaga o conteúdo gerado; apagar o
 clone inteiro do repositório remove o lab por completo.

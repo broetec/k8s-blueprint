@@ -1,10 +1,10 @@
 ---
 # =============================================================================
-# roles/kvm_vm/tasks/main.yml
+# roles/01_create_vm/tasks/main.yml
 # =============================================================================
 # Cria VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
 #
-# Pré-requisitos (role kvm_host ou host já preparado):
+# Pré-requisitos (role 00_install_kvm ou host já preparado):
 #   - Rede libvirt activa com reservas DHCP (kvm_vm_mac_by_host definido).
 #   - `virsh`, `virt-install`, `qemu-img`, `genisoimage` ou `xorriso` no PATH.
 #
@@ -157,7 +157,7 @@
     elif command -v xorriso >/dev/null 2>&1; then
       xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m"
     else
-      echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode com a tag bootstrap / role kvm_host)." >&2
+      echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode com a tag bootstrap / role 00_install_kvm)." >&2
       exit 1
     fi
   args:
@@ -177,7 +177,7 @@
     msg: |-
       O comando `virt-install` não foi encontrado no host que corre o libvirt.
 
-      • Fedora/RHEL (dnf): `make up ANSIBLE_FLAGS=` (tag bootstrap / role kvm_host).
+      • Fedora/RHEL (dnf): `make up ANSIBLE_FLAGS=` (tag bootstrap / role 00_install_kvm).
       • Bazzite/Silverblue/immutable: instale em camada com `rpm-ostree`
         (lista em provisioning/README.md, secção «Fedora Atomic / Bazzite») e reinicie.
   when: virt_install_lookup.rc != 0

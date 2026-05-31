@@ -2,7 +2,7 @@
 # =============================================================================
 # Variáveis globais partilhadas — todos os overlays Broetec
 # =============================================================================
-# Consumidas pelas roles kvm_host, kvm_vm (host KVM) e os_prepare (VMs).
+# Consumidas pelas roles 00_install_kvm, 01_create_vm (host KVM) e 02_prepare_vm (VMs).
 # Cada overlay em provisioning/inventory/<nome>/ liga group_vars -> _shared.
 # Sobrescreva por overlay com group_vars/all.yml local (opcional).
 # =============================================================================
@@ -21,7 +21,7 @@ _repo_root: "{{ inventory_dir | dirname | dirname | dirname }}"
 # -----------------------------------------------------------------------------
 # Bootstrap do host KVM
 # -----------------------------------------------------------------------------
-# Quando `true` (padrão), a role `kvm_host` instala qemu-kvm/libvirt/etc. e
+# Quando `true` (padrão), a role `00_install_kvm` instala qemu-kvm/libvirt/etc. e
 # habilita o serviço libvirtd no host. Em distros imutáveis (Bazzite,
 # Silverblue, Kinoite) ou em hosts onde o KVM já está pronto, defina como
 # `false` para que o playbook NÃO toque na configuração do host.

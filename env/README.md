@@ -1,5 +1,7 @@
 # `env/` — credenciais locais do laboratório
 
+> Mapa geral do repositório: [`docs/structure.md`](../docs/structure.md)
+
 Esta pasta agrupa **defaults e credenciais locais** do laboratório
 `k8s-blueprint`. Ficheiros sensíveis ou pessoais são gitignored; versionamos
 apenas este `README.md` e `env/.env.example`.

@@ -1,4 +1,4 @@
-"""MAC derivado do hostname (mesma regra que a role kvm_host no Ansible)."""
+"""MAC derivado do hostname (mesma regra que a role 00_install_kvm no Ansible)."""
 
 from __future__ import annotations
 

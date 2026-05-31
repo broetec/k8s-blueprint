@@ -62,7 +62,7 @@ endif
 
 ANSIBLE_FLAGS ?= --skip-tags bootstrap
 ANSIBLE_FORKS ?= 1
-ANSIBLE_CFG ?= $(CURDIR)/ansible.cfg
+ANSIBLE_CFG ?= $(CURDIR)/provisioning/ansible.cfg
 ANSIBLE_SSH_ARGS ?= -C -o ControlMaster=no -o ControlPersist=no
 ANSIBLE_UNWRAP ?= env -u LD_PRELOAD -u LD_LIBRARY_PATH -u PYTHONPATH PYTHONNOUSERSITE=1 MALLOC_ARENA_MAX=2
 UP_SPLIT ?= 1

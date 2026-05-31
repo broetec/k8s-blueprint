@@ -1,14 +1,14 @@
 ---
 # =============================================================================
-# roles/kvm_host/tasks/main.yml
+# roles/00_install_kvm/tasks/main.yml
 # =============================================================================
-# Prepara o host físico KVM/libvirt antes de criar VMs (role kvm_vm):
+# Prepara o host físico KVM/libvirt antes de criar VMs (role 01_create_vm):
 #
 #   1. Bootstrap opcional — pacotes + libvirtd (tag bootstrap).
 #   2. Rede libvirt NAT + reservas DHCP por MAC.
 #   3. Firewalld — forward/NAT das VMs (Fedora/RHEL + Docker).
 #
-# Pré-requisito para kvm_vm: virsh, virt-install, qemu-img, genisoimage|xorriso
+# Pré-requisito para 01_create_vm: virsh, virt-install, qemu-img, genisoimage|xorriso
 # no PATH (bootstrap instala quando kvm_host_bootstrap: true).
 # =============================================================================
 

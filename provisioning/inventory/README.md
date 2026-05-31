@@ -8,7 +8,8 @@
 | `broetec-storage` | broetec-storage | 10.20.30.50 | `storage` |
 | `broetec-monitor` | broetec-monitor | 10.20.30.60 | `monitor` |
 
-Todos partilham o mesmo playbook (`provisioning/site.yml`) e roles (`kvm_host`, `kvm_vm`, `os_prepare`).
+Todos partilham o mesmo playbook (`provisioning/site.yml`) e roles
+(`00_install_kvm`, `01_create_vm`, `02_prepare_vm`).
 
 ## Camadas de variáveis (por overlay)
 
@@ -75,7 +76,7 @@ Confirme: `virsh net-dumpxml broetec-lab | grep host` deve listar o MAC da VM
 ## Sem internet na VM (IP correcto, ping 8.8.8.8 falha)
 
 Em Fedora com **Docker** no mesmo host, o `firewalld`/`FORWARD` bloqueia o tráfego
-`vnet* → wlan0`. O `make up` aplica regras na role `kvm_host` (`firewalld-lab.yml`).
+`vnet* → wlan0`. O `make up` aplica regras na role `00_install_kvm` (`firewalld-lab.yml`).
 
 Correcção manual (uma vez):
 
