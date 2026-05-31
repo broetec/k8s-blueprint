@@ -12,9 +12,9 @@ KVM/libvirt e Kubernetes.
 ```text
 k8s-blueprint/
 ├── README.md                 # Entrada: quick start
-├── Makefile                  # Orquestrador principal (make up, ssh, clean, …)
+├── Makefile                  # Orquestrador (includes em make/)
+├── make/                     # config.mk, ansible.mk, ssh.mk
 ├── pyproject.toml            # Dependências Python (Ansible via uv)
-├── uv.lock
 │
 ├── app/                      # App Python
 ├── tests/                    # Testes do app/
@@ -27,7 +27,9 @@ k8s-blueprint/
 │   ├── roles/
 │   │   ├── 00_install_kvm/
 │   │   ├── 01_create_vm/
-│   │   └── 02_prepare_vm/
+│   │   ├── 02_prepare_vm/
+│   │   ├── 03_install_rke2/  # stub
+│   │   └── 04_deploy_k8s/    # stub
 │   └── templates/
 │
 ├── lab/                      # Artefactos locais KVM (conteúdo gitignored)
@@ -61,11 +63,13 @@ Toda a configuração **Ansible** do laboratório.
 | Ficheiro / pasta | Função |
 |------------------|--------|
 | `ansible.cfg` | Timeouts, SSH, libssh (estabilidade no terminal) |
-| `site.yml` | Playbook mestre — duas plays (KVM + preparação da VM) |
-| `inventory/` | `manifest.yml` (fonte de verdade), overlays `broetec-*` |
-| `roles/00_install_kvm/` | Bootstrap host, rede libvirt, firewalld/NAT |
-| `roles/01_create_vm/` | qcow2, cloud-init, virt-install, wait SSH |
-| `roles/02_prepare_vm/` | swap, SELinux, firewalld dentro da VM |
+| `site.yml` | Playbook mestre — 5 plays (00–04) |
+| `inventory/` | `manifest.yml`, overlays `broetec-*` |
+| `roles/00_install_kvm/` | Bootstrap host, rede libvirt, firewalld |
+| `roles/01_create_vm/` | qcow2, cloud-init, virt-install |
+| `roles/02_prepare_vm/` | swap, SELinux, firewalld na VM |
+| `roles/03_install_rke2/` | RKE2 (stub) |
+| `roles/04_deploy_k8s/` | manifests k8s (stub) |
 | `templates/cloud-init.j2` | user-data cloud-init por VM |
 | `collections/requirements.yml` | Coleções Galaxy (`ansible.posix`, `ansible.netcommon`) |
 
@@ -146,32 +150,42 @@ uv run pytest
 sequenceDiagram
   participant User
   participant Make as Makefile
-  participant Inv as app/inventory
   participant Ansible
   participant Host as Host_KVM
   participant VM as VM_Rocky
 
-  User->>Make: make sync
-  Make->>Make: uv sync (.venv)
-  User->>Make: make up
-  Make->>Inv: make inventory
-  Make->>Ansible: play 1 --tags kvm_lab
+  User->>Make: make setup-host
+  Make->>Ansible: 00 install_kvm
   Ansible->>Host: 00_install_kvm
+
+  User->>Make: make up
+  Make->>Ansible: 01 create_vm
   Ansible->>Host: 01_create_vm
-  Make->>Ansible: play 2 --tags os_prepare
+  Make->>Ansible: 02 prepare_vm
   Ansible->>VM: 02_prepare_vm
-  User->>Make: make ssh
-  Make->>VM: SSH rocky@VM_IP
+  Make->>Ansible: 03 install_rke2
+  Ansible->>VM: 03_install_rke2 stub
+  Make->>Ansible: 04 deploy_k8s
+  Ansible->>VM: 04_deploy_k8s stub
 ```
+
+### Targets Make
+
+| Target | Etapas |
+|--------|--------|
+| `setup-host` | 00 (bootstrap) |
+| `up` | 01 + 02 + 03 + 04 (default `OVERLAY=broetec-core`) |
+| `up-all` | loop `up` nos 3 overlays |
+| `deploy` | 03 + 04 |
+| `install-kvm` | 00 |
 
 ### Ordem das roles
 
-1. **00_install_kvm** — no host físico (`kvm_hosts`): pacotes KVM (opcional),
-   rede libvirt `broetec-lab`, firewalld/NAT
-2. **01_create_vm** — no host físico: download/clonagem qcow2, cloud-init,
-   `virt-install`, aguarda SSH
-3. **02_prepare_vm** — dentro de cada VM (`vms`): cloud-init, swap, SELinux,
-   firewalld
+1. **00_install_kvm** — host (`kvm_hosts`): pacotes KVM, rede, firewalld
+2. **01_create_vm** — host: qcow2, virt-install, wait SSH
+3. **02_prepare_vm** — VM: swap, SELinux, firewalld
+4. **03_install_rke2** — VM: RKE2 (stub)
+5. **04_deploy_k8s** — VM: manifests (stub)
 
 ---
 
@@ -183,7 +197,7 @@ sequenceDiagram
 | Sobrescrever overlay ativo | `env/.env` (`OVERLAY`, `VM_NAME`, `VM_IP`) |
 | Variáveis Ansible partilhadas | `provisioning/inventory/_shared/group_vars/` |
 | Caminho dos discos | `env/.env` (`LAB_PATH`) ou `group_vars/all.yml` |
-| Pular instalação de pacotes no host | `make up` (já usa `--skip-tags bootstrap`) ou `kvm_host_bootstrap: false` |
+| Pular instalação de pacotes no host | `make install-kvm` (default `--skip-tags bootstrap`) ou `kvm_host_bootstrap: false` |
 
 ---
 

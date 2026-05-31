@@ -1,0 +1,14 @@
+---
+# Stub — substituir pela instalação RKE2 (ver docs/bootstrap/README.md).
+
+- name: "Alive check antes de install_rke2 (stub)"
+  become: false
+  ansible.builtin.ping:
+
+- name: "Placeholder — instalação RKE2 pendente"
+  ansible.builtin.debug:
+    msg: >-
+      03_install_rke2: implementação pendente.
+      Host={{ inventory_hostname }}
+      overlay={{ overlay_id | default('n/a') }}.
+      Guia: docs/bootstrap/README.md

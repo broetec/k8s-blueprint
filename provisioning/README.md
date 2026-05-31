@@ -22,7 +22,9 @@ provisioning/
 └── roles/
     ├── 00_install_kvm/            # bootstrap host, rede libvirt, firewalld/NAT
     ├── 01_create_vm/              # qcow2, seed ISO, virt-install
-    └── 02_prepare_vm/             # swap, SELinux, firewalld dentro da VM
+    ├── 02_prepare_vm/             # swap, SELinux, firewalld dentro da VM
+    ├── 03_install_rke2/           # RKE2 (stub)
+    └── 04_deploy_k8s/             # manifests k8s (stub)
 ```
 
 ---
@@ -143,20 +145,17 @@ O Ansible usa *workers* em processos filhos; em alguns ambientes (terminal
 integrado do Cursor, AppImage, ou processo pai com *threads* extra) o segundo
 bloco do playbook pode falhar mesmo com `forks=1`.
 
-- Por defeito, `make up` corre **duas** invocações do `ansible-playbook`
-  (`UP_SPLIT=1`), uma com `--tags kvm_lab` e outra com `--tags os_prepare`,
-  para reiniciar o processo Python entre as plays.
-- O inventário de exemplo usa **`ansible_connection=ansible.netcommon.libssh`**
-  (bindings Python, não o subprocesso `ssh` do sistema — o plugin `ssh` openssh
-  costuma falhar com *worker dead* no Cursor). Há **pipelining desativado** no
-  `provisioning/ansible.cfg`, `make up` em **duas invocações** (`UP_SPLIT=1`), e a role
-  `02_prepare_vm` começa com um `ping` sem `become`.
+- Por defeito, `make up` corre **várias** invocações do `ansible-playbook`
+  (create-vm, prepare-vm, install-rke2, deploy-k8s), uma por etapa, para
+  reiniciar o processo Python entre plays.
+- O inventário usa **`ansible_connection=ansible.netcommon.libssh`**
+  (bindings Python, não o subprocesso `ssh` do sistema). Há **pipelining
+  desactivado** em `provisioning/ansible.cfg`; a role `02_prepare_vm` começa
+  com `ping` sem `become`.
 - Se ainda falhar: corra `make up` num **terminal fora do IDE** ou experimente
-  outro `UV_PYTHON` (ex.: `make sync UV_PYTHON=3.13` antes do `make up`).
-- Playbook numa só corrida: `make up UP_SPLIT=0` (pode voltar a falhar no 2.º
-  play no mesmo ambiente). Com `--ask-become-pass`, o split pode pedir a senha
-  **duas vezes** na 1.ª play; na 2.ª use `env/vm-become.pass` ou conta `rocky`
-  com `NOPASSWD` (ver `make help`).
+  outro `UV_PYTHON` (ex.: `make sync UV_PYTHON=3.13`).
+- Com `--ask-become-pass`, pode pedir senha na play do host; nas plays `vms`
+  use `env/vm-become.pass` ou conta `rocky` com `NOPASSWD` (ver `make help`).
 
 ### Avisos `ssh_strict_fopen` / `packet type 80` (libssh)
 
@@ -183,8 +182,7 @@ falhas reais de ligação, actualize `ansible-pylibssh` / `ansible.netcommon`.
 ### Ficheiro `env/.env` (defaults do Make)
 
 Copie `env/.env.example` → `env/.env` (gitignored; ver `env/README.md`).
-Variáveis úteis: `OVERLAY`, `VM_IP`, `VM_NAME`, `UP_SPLIT`,
-`CREATE_SSH_GLOBAL_KNOWN_HOSTS`. `make help` mostra a config efectiva.
+Variáveis úteis: `OVERLAY`, `VM_IP`, `VM_NAME`, `CREATE_SSH_GLOBAL_KNOWN_HOSTS`.
 
 ---
 
@@ -199,28 +197,24 @@ Ansible e roda o playbook automaticamente. Você nunca precisa criar chave
 manualmente nem editar `~/.ssh/`.
 
 ```bash
-# Da raiz do repositório (opcional: cp env/.env.example env/.env):
-make sync       # primeira vez ou após pull que altere pyproject.toml / uv.lock
-make up         # provisiona (cria chave do lab + roda Ansible)
-make ssh        # conecta na VM (rocky@10.20.30.40)
-make status     # mostra estado da VM e da rede libvirt
-make destroy    # remove a VM, mantém o cache da qcow2
-make clean      # destrói TUDO (VM + rede + cache + chave do lab)
-```
+# 1ª vez:
+make setup-host
 
-Overlays e IPs versionados em `provisioning/inventory/manifest.yml`.
-Geração de `hosts.ini`: `make inventory` (ver `scripts/inventory/README.md`).
+# Uso diário (default broetec-core):
+make sync
+make up         # 01–04: VM + SO + k8s (stubs 03/04)
+make ssh
+make status
+make destroy
+make clean
 
-```bash
-make inventory              # todos os overlays
+# Overlays:
+make inventory
 make up OVERLAY=broetec-core
-make up-lab                 # core + storage + monitor (3 VMs)
+make up-all     # core + storage + monitor (3 VMs)
+make deploy OVERLAY=broetec-core   # só k8s (03 + 04)
 make ssh OVERLAY=broetec-storage
 make destroy OVERLAY=broetec-monitor
-
-# Sobrescrever IP do overlay ativo (env/.env ou linha de comando):
-# OVERLAY=broetec-core  VM_IP=10.20.30.45
-make inventory && make up
 ```
 
 `make help` lista todos os targets e mostra a config atual.

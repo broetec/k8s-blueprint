@@ -17,9 +17,9 @@
 
 - name: "Rede libvirt e reservas DHCP"
   ansible.builtin.import_tasks: network.yml
-  tags: [kvm_lab]
+  tags: [install_kvm]
 
 - name: "Firewalld — NAT/forward das VMs do lab"
   ansible.builtin.import_tasks: firewalld-lab.yml
   when: kvm_network_firewalld | default(true) | bool
-  tags: [kvm_lab]
+  tags: [install_kvm]

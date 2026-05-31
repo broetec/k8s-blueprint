@@ -2,37 +2,43 @@
 # =============================================================================
 # site.yml — Playbook mestre (Broetec k8s-blueprint)
 # =============================================================================
-# Orquestra a fase IMPERATIVA do blueprint:
+# Pipeline 00–04 (uma role por play):
 #
-#   1. 00_install_kvm -> host físico (kvm_hosts): bootstrap opcional, rede libvirt,
-#                        firewalld/NAT.
-#   2. 01_create_vm   -> host físico: qcow2, cloud-init, virt-install, wait SSH.
-#   3. 02_prepare_vm  -> dentro de cada VM (grupo `vms`): swap, SELinux, firewalld.
+#   00_install_kvm  -> kvm_hosts: bootstrap, rede libvirt, firewalld
+#   01_create_vm    -> kvm_hosts: qcow2, cloud-init, virt-install
+#   02_prepare_vm   -> vms: swap, SELinux, firewalld
+#   03_install_rke2   -> vms: RKE2 (stub)
+#   04_deploy_k8s     -> vms: manifests k8s (stub)
 #
-# Execução (na raiz do repo, com .venv via uv):
-#   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini provisioning/site.yml
-#   make up
+#   make setup-host   → 00
+#   make up           → 01 + 02 + 03 + 04
 # =============================================================================
 
-- name: "[1/2] Provisionar VMs no KVM/libvirt"
+- name: "[1/5] Preparar host KVM/libvirt"
   hosts: kvm_hosts
   become: true
   gather_facts: true
   tags:
-    - kvm_lab
+    - install_kvm
   roles:
     - role: 00_install_kvm
+
+- name: "[2/5] Criar VMs no libvirt"
+  hosts: kvm_hosts
+  become: true
+  gather_facts: true
+  tags:
+    - create_vm
+  roles:
     - role: 01_create_vm
 
-- name: "[2/2] Preparar o sistema operacional das VMs"
+- name: "[3/5] Preparar SO das VMs"
   hosts: vms
   become: true
-  # Setup completo por SSH rebenta workers fracos (Cursor/AppImage); a role usa facts mínimos.
   gather_facts: false
   tags:
-    - os_prepare
+    - prepare_vm
   pre_tasks:
-    # Controlador: só $HOME/.ssh/known_hosts (make ssh-host-key-*). Sem /etc/ssh.
     - name: "Limpar entrada SSH obsoleta no controlador (ssh-keygen -R)"
       ansible.builtin.command:
         argv:
@@ -50,3 +56,23 @@
       failed_when: false
   roles:
     - role: 02_prepare_vm
+
+- name: "[4/5] Instalar RKE2 (stub)"
+  hosts: vms
+  become: true
+  gather_facts: false
+  tags:
+    - install_rke2
+    - k8s
+  roles:
+    - role: 03_install_rke2
+
+- name: "[5/5] Deploy manifests k8s (stub)"
+  hosts: vms
+  become: true
+  gather_facts: false
+  tags:
+    - deploy_k8s
+    - k8s
+  roles:
+    - role: 04_deploy_k8s

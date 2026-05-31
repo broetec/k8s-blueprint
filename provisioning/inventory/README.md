@@ -90,7 +90,7 @@ Teste na VM: `ping -c 2 8.8.8.8` e `curl -I http://example.com`.
 ## Subir o lab completo (3 VMs)
 
 ```bash
-make up-lab
+make up-all
 ```
 
 Cada overlay cria uma VM na mesma rede libvirt `broetec-lab` (10.20.30.0/24).
