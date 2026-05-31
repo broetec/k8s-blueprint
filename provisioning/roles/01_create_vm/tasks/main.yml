@@ -15,6 +15,21 @@
 #   4. Aguardar SSH em cada VM.
 # =============================================================================
 
+# ---------- 0. MAC por VM (mesma regra que 00_install_kvm/tasks/network.yml) ---
+# Necessário quando create_vm corre sem install_kvm na mesma invocação (make up).
+- name: "Definir MAC estável por VM (virt-install + reserva DHCP dnsmasq)"
+  ansible.builtin.set_fact:
+    kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
+  vars:
+    _vm_mac: >-
+      {{ hostvars[item].vm_mac | default(
+           '52:54:00:' ~ (item | hash('md5'))[0:2] ~ ':' ~
+           (item | hash('md5'))[2:4] ~ ':' ~ (item | hash('md5'))[4:6]
+         ) }}
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"
+
 # ---------- 1. Preflight -----------------------------------------------------
 - name: "Preflight: chave SSH pública configurada existe?"
   ansible.builtin.stat:

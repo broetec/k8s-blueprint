@@ -61,6 +61,10 @@ COLLECTIONS_REQ ?= provisioning/collections/requirements.yml
 CREATE_SSH_GLOBAL_KNOWN_HOSTS ?= false
 SSH_GLOBAL_KNOWN_HOSTS_ENABLED := $(filter 1 true yes TRUE YES,$(CREATE_SSH_GLOBAL_KNOWN_HOSTS))
 
+# --- Sub-makes (Cursor redefine $(MAKE) para cursor.appimage) ------------------
+# Invocações recursivas devem usar SUBMAKE, não $(MAKE).
+SUBMAKE := $(if $(wildcard /usr/bin/make),/usr/bin/make,$(if $(wildcard /usr/bin/gmake),/usr/bin/gmake,make))
+
 # --- Python / uv ---------------------------------------------------------------
 UV ?= uv
 UV_PYTHON ?= 3.12
