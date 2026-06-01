@@ -1,0 +1,49 @@
+# Raw iptables — NAT and forward for lab VMs (Docker FORWARD DROP hosts)
+
+- name: Enable IPv4 forwarding for lab NAT
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Check iptables FORWARD rule (lab subnet → external)
+  ansible.builtin.command: >-
+    iptables -C FORWARD -s {{ kvm_network.subnet_cidr }} -j ACCEPT
+  register: kvm_ipt_fwd_lab_check
+  changed_when: false
+  failed_when: false
+
+- name: Allow FORWARD from lab subnet
+  ansible.builtin.command: >-
+    iptables -I FORWARD 1 -s {{ kvm_network.subnet_cidr }} -j ACCEPT
+  when: kvm_ipt_fwd_lab_check.rc != 0
+
+- name: Check iptables FORWARD rule (established → lab)
+  ansible.builtin.command: >-
+    iptables -C FORWARD -d {{ kvm_network.subnet_cidr }}
+    -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  register: kvm_ipt_fwd_est_check
+  changed_when: false
+  failed_when: false
+
+- name: Allow FORWARD established traffic to lab subnet
+  ansible.builtin.command: >-
+    iptables -I FORWARD 1 -d {{ kvm_network.subnet_cidr }}
+    -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  when: kvm_ipt_fwd_est_check.rc != 0
+
+- name: Check iptables NAT rule (lab masquerade)
+  ansible.builtin.command: >-
+    iptables -t nat -C POSTROUTING -s {{ kvm_network.subnet_cidr }}
+    ! -d {{ kvm_network.subnet_cidr }} -j MASQUERADE
+  register: kvm_ipt_nat_check
+  changed_when: false
+  failed_when: false
+
+- name: NAT POSTROUTING masquerade for lab subnet
+  ansible.builtin.command: >-
+    iptables -t nat -A POSTROUTING -s {{ kvm_network.subnet_cidr }}
+    ! -d {{ kvm_network.subnet_cidr }} -j MASQUERADE
+  when: kvm_ipt_nat_check.rc != 0

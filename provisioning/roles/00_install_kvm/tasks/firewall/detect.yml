@@ -1,0 +1,47 @@
+---
+# Detect which firewall backend is active on the KVM host.
+# Priority: firewalld → ufw → iptables (FORWARD policy DROP).
+
+- name: Detect whether firewalld is active on the KVM host
+  ansible.builtin.command: systemctl is-active firewalld
+  register: kvm_fw_firewalld_active
+  changed_when: false
+  failed_when: false
+
+- name: Detect whether ufw service is active on the KVM host
+  ansible.builtin.command: systemctl is-active ufw
+  register: kvm_fw_ufw_service
+  changed_when: false
+  failed_when: false
+
+- name: Check ufw runtime status
+  ansible.builtin.command: ufw status
+  register: kvm_fw_ufw_status
+  changed_when: false
+  failed_when: false
+  when: kvm_fw_ufw_service.stdout | trim == 'active'
+
+- name: Inspect iptables FORWARD chain policy
+  ansible.builtin.command: iptables -L FORWARD -n
+  register: kvm_fw_forward_chain
+  changed_when: false
+  failed_when: false
+
+- name: Select firewall backend for lab NAT rules
+  ansible.builtin.set_fact:
+    kvm_firewall_backend: >-
+      {{
+        'firewalld' if (kvm_fw_firewalld_active.stdout | trim == 'active')
+        else (
+          'ufw' if (
+            kvm_fw_ufw_service.stdout | trim == 'active'
+            and ('Status: active' in (kvm_fw_ufw_status.stdout | default('')))
+          )
+          else (
+            'iptables' if (
+              'policy DROP' in (kvm_fw_forward_chain.stdout | default(''))
+            )
+            else 'none'
+          )
+        )
+      }}

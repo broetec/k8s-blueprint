@@ -75,8 +75,9 @@ Confirme: `virsh net-dumpxml broetec-lab | grep host` deve listar o MAC da VM
 
 ## Sem internet na VM (IP correcto, ping 8.8.8.8 falha)
 
-Em Fedora com **Docker** no mesmo host, o `firewalld`/`FORWARD` bloqueia o tráfego
-`vnet* → wlan0`. O `make up` aplica regras na role `00_install_kvm` (`firewalld-lab.yml`).
+Em hosts com **Docker** e firewall activo, a cadeia `FORWARD` pode bloquear tráfego
+`vnet* → wlan0`. Defina `KVM_HOST_FIREWALL=true` em `env/.env` e corra `make install-kvm`
+(a role `00_install_kvm` detecta firewalld, ufw ou iptables e aplica regras NAT).
 
 Correcção manual (uma vez):
 

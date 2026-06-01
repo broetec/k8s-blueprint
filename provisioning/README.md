@@ -20,7 +20,7 @@ provisioning/
 ├── templates/
 │   └── cloud-init.j2              # user-data (rede = DHCP + reserva MAC na libvirt)
 └── roles/
-    ├── 00_install_kvm/            # bootstrap host, rede libvirt, firewalld/NAT
+    ├── 00_install_kvm/            # bootstrap host, rede libvirt, firewall (opt-in)
     ├── 01_create_vm/              # qcow2, seed ISO, virt-install
     ├── 02_prepare_vm/             # swap, SELinux, firewalld dentro da VM
     ├── 03_install_rke2/           # RKE2 (stub)
@@ -128,7 +128,7 @@ não copie nem aponte o `.venv` do repositório para o inventário das VMs.
 
 ### Coleções Galaxy (`ansible.posix`, `ansible.netcommon`)
 
-- **`ansible.posix`**: módulo `firewalld` na role `02_prepare_vm`.
+- **`ansible.posix`**: firewalld/sysctl na role `00_install_kvm` (host) e `firewalld` na role `02_prepare_vm` (VM).
 - **`ansible.netcommon`**: plugin `libssh` para SSH às VMs sem fork do binário
   `ssh` (evita *worker dead* no terminal integrado do Cursor).
 
@@ -241,6 +241,9 @@ defina em `env/.env`:
 
 ```bash
 KVM_HOST_BOOTSTRAP=false
+
+# Regras NAT/FORWARD no host (firewalld, ufw ou iptables):
+KVM_HOST_FIREWALL=true
 ```
 
 Ou na linha de comando: `make setup-host KVM_HOST_BOOTSTRAP=false`.

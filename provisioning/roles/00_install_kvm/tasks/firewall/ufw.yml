@@ -1,0 +1,38 @@
+# UFW (Debian/Ubuntu) — NAT and forward for lab VMs
+
+- name: Enable IPv4 forwarding for lab NAT
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Allow forwarded traffic in ufw (DEFAULT_FORWARD_POLICY=ACCEPT)
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: '^DEFAULT_FORWARD_POLICY='
+    line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+  register: kvm_ufw_default_forward
+
+- name: Install lab NAT/FORWARD rules in ufw before.rules
+  ansible.builtin.blockinfile:
+    path: /etc/ufw/before.rules
+    marker: "# {mark} k8s-blueprint-lab"
+    block: |
+      *nat
+      :POSTROUTING ACCEPT [0:0]
+      -A POSTROUTING -s {{ kvm_network.subnet_cidr }} ! -d {{ kvm_network.subnet_cidr }} -j MASQUERADE
+      COMMIT
+
+      *filter
+      :ufw-before-forward - [0:0]
+      -A ufw-before-forward -s {{ kvm_network.subnet_cidr }} -j ACCEPT
+      -A ufw-before-forward -d {{ kvm_network.subnet_cidr }} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+      COMMIT
+  register: kvm_ufw_before_rules
+
+- name: Reload ufw after lab rules
+  ansible.builtin.command: ufw reload
+  when: kvm_ufw_default_forward.changed or kvm_ufw_before_rules.changed
+  changed_when: true

@@ -4,7 +4,7 @@
 # Installed into the project venv by `make deps` (see COLLECTIONS_REQ in make/config.mk):
 #   uv run ansible-galaxy collection install -r provisioning/collections/requirements.yml
 #
-# ansible.posix     — firewalld module on the KVM host (role 00_install_kvm / firewalld-lab.yml).
+# ansible.posix     — firewalld/sysctl on the KVM host (role 00_install_kvm / tasks/firewall/).
 # ansible.netcommon — libssh connection plugin for VM plays (inventory: ansible.netcommon.libssh).
 #                     Avoids forking the system ssh binary; helps with Cursor integrated terminal.
 #

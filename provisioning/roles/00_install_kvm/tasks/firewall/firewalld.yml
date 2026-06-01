@@ -1,0 +1,81 @@
+# Firewalld (Fedora/RHEL) — NAT and forward for lab VMs
+
+- name: Remove lab bridge from libvirt zone (avoid conflict with libvirt-routed)
+  ansible.posix.firewalld:
+    interface: "{{ kvm_network.bridge }}"
+    zone: libvirt
+    permanent: true
+    state: disabled
+  failed_when: false
+
+- name: Assign bridge {{ kvm_network.bridge }} to libvirt-routed zone
+  ansible.posix.firewalld:
+    interface: "{{ kvm_network.bridge }}"
+    zone: libvirt-routed
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Enable masquerade on libvirt-routed zone (VM NAT)
+  ansible.posix.firewalld:
+    zone: libvirt-routed
+    masquerade: true
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Check direct FORWARD rule (lab subnet → external)
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --direct --passthrough ipv4
+    -C FORWARD -s {{ kvm_network.subnet_cidr }} -j ACCEPT
+  register: kvm_fw_fwd_lab_check
+  changed_when: false
+  failed_when: false
+
+- name: Direct rule — allow FORWARD from lab subnet
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --direct --passthrough ipv4
+    -I FORWARD 1 -s {{ kvm_network.subnet_cidr }} -j ACCEPT
+  when: kvm_fw_fwd_lab_check.rc != 0
+
+- name: Check direct FORWARD rule (established → lab)
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --direct --passthrough ipv4
+    -C FORWARD -d {{ kvm_network.subnet_cidr }}
+    -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  register: kvm_fw_fwd_est_check
+  changed_when: false
+  failed_when: false
+
+- name: Direct rule — FORWARD established traffic to lab subnet
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --direct --passthrough ipv4
+    -I FORWARD 1 -d {{ kvm_network.subnet_cidr }}
+    -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  when: kvm_fw_fwd_est_check.rc != 0
+
+- name: Check direct NAT rule (lab masquerade)
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --direct --passthrough ipv4
+    -t nat -C POSTROUTING -s {{ kvm_network.subnet_cidr }}
+    ! -d {{ kvm_network.subnet_cidr }} -j MASQUERADE
+  register: kvm_fw_nat_check
+  changed_when: false
+  failed_when: false
+
+- name: Direct rule — NAT POSTROUTING for lab subnet
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --direct --passthrough ipv4
+    -t nat -A POSTROUTING -s {{ kvm_network.subnet_cidr }}
+    ! -d {{ kvm_network.subnet_cidr }} -j MASQUERADE
+  when: kvm_fw_nat_check.rc != 0
+
+- name: Reload firewalld after lab rules
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: true

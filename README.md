@@ -27,7 +27,7 @@ make clean             # reset completo
 
 Outros overlays: `make up OVERLAY=broetec-storage`
 
-Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` para saltar pacotes no host · `make help`
+Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` para saltar pacotes · `KVM_HOST_FIREWALL=true` para regras NAT no host · `make help`
 
 ## Pipeline Ansible (00–04)
 

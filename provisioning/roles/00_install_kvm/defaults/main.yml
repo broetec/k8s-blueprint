@@ -7,5 +7,7 @@
 #   Without make: use -e kvm_host_bootstrap=false, inventory group_vars, or --skip-tags bootstrap.
 kvm_host_bootstrap: true
 
-# kvm_network_firewalld — NAT/forward on the KVM host (firewalld-lab.yml); no Make knob.
-kvm_network_firewalld: true
+# kvm_host_firewall — NAT/forward on the KVM host (tasks/firewall/); default off.
+#   When using make: set KVM_HOST_FIREWALL=true in env/.env (see make/config.mk); install-kvm
+#   passes -e kvm_host_firewall=true when on.
+kvm_host_firewall: false

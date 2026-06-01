@@ -54,6 +54,10 @@ endif
 KVM_HOST_BOOTSTRAP ?= true
 KVM_HOST_BOOTSTRAP_ON := $(filter 1 true yes TRUE YES,$(KVM_HOST_BOOTSTRAP))
 
+# Firewall: regras NAT/FORWARD para VMs lab. Default desactivado; activar em env/.env.
+KVM_HOST_FIREWALL ?= false
+KVM_HOST_FIREWALL_ON := $(filter 1 true yes TRUE YES,$(KVM_HOST_FIREWALL))
+
 # --- Ansible -------------------------------------------------------------------
 ANSIBLE_FLAGS ?=
 ANSIBLE_FORKS ?= 1

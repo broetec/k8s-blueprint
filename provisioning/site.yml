@@ -4,7 +4,7 @@
 # =============================================================================
 # Pipeline 00–04 (uma role por play):
 #
-#   00_install_kvm  -> kvm_hosts: bootstrap, rede libvirt, firewalld
+#   00_install_kvm  -> kvm_hosts: bootstrap, rede libvirt, firewall (opt-in)
 #   01_create_vm    -> kvm_hosts: qcow2, cloud-init, virt-install
 #   02_prepare_vm   -> vms: swap, SELinux, firewalld
 #   03_install_rke2   -> vms: RKE2 (stub)

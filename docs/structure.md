@@ -65,7 +65,7 @@ Toda a configuração **Ansible** do laboratório.
 | `ansible.cfg` | Timeouts, SSH, libssh (estabilidade no terminal) |
 | `site.yml` | Playbook mestre — 5 plays (00–04) |
 | `inventory/` | `manifest.yml`, overlays `broetec-*` |
-| `roles/00_install_kvm/` | Bootstrap host, rede libvirt, firewalld |
+| `roles/00_install_kvm/` | Bootstrap host, rede libvirt, firewall (opt-in) |
 | `roles/01_create_vm/` | qcow2, cloud-init, virt-install |
 | `roles/02_prepare_vm/` | swap, SELinux, firewalld na VM |
 | `roles/03_install_rke2/` | RKE2 (stub) |
@@ -181,7 +181,7 @@ sequenceDiagram
 
 ### Ordem das roles
 
-1. **00_install_kvm** — host (`kvm_hosts`): pacotes KVM, rede, firewalld
+1. **00_install_kvm** — host (`kvm_hosts`): pacotes KVM, rede, firewall (opt-in)
 2. **01_create_vm** — host: qcow2, virt-install, wait SSH
 3. **02_prepare_vm** — VM: swap, SELinux, firewalld
 4. **03_install_rke2** — VM: RKE2 (stub)
@@ -198,6 +198,7 @@ sequenceDiagram
 | Variáveis Ansible partilhadas | `provisioning/inventory/_shared/group_vars/` |
 | Caminho dos discos | `env/.env` (`LAB_PATH`) ou `group_vars/all.yml` |
 | Pular instalação de pacotes no host | `env/.env` → `KVM_HOST_BOOTSTRAP=false` (ou `make setup-host KVM_HOST_BOOTSTRAP=false`) |
+| Regras NAT/FORWARD no host (Docker + firewall) | `env/.env` → `KVM_HOST_FIREWALL=true` (ou `make install-kvm KVM_HOST_FIREWALL=true`) |
 
 ---
 

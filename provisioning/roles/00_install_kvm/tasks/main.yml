@@ -6,7 +6,7 @@
 #
 #   1. Optional bootstrap — packages + libvirtd (tag bootstrap).
 #   2. Libvirt NAT network + DHCP reservations by MAC.
-#   3. Firewalld — forward/NAT for lab VMs (Fedora/RHEL + Docker).
+#   3. Optional host firewall — NAT/forward for lab VMs (firewalld, ufw, iptables).
 #
 # Prerequisite for 01_create_vm: virsh, virt-install, qemu-img, genisoimage|xorriso
 # on PATH (bootstrap installs them when kvm_host_bootstrap: true).
@@ -19,7 +19,7 @@
   ansible.builtin.import_tasks: network.yml
   tags: [install_kvm]
 
-- name: Firewalld — NAT/forward for lab VMs
-  ansible.builtin.import_tasks: firewalld-lab.yml
-  when: kvm_network_firewalld | default(true) | bool
+- name: Host firewall — NAT/forward for lab VMs
+  ansible.builtin.import_tasks: firewall/main.yml
+  when: kvm_host_firewall | default(false) | bool
   tags: [install_kvm]

@@ -61,8 +61,8 @@ kvm_network:
     - 8.8.8.8
   domain: "{{ base_domain }}"
 
-# Firewalld no host KVM: regras de forward/NAT para VMs (necessário com Docker no mesmo host).
-kvm_network_firewalld: true
+# Firewall no host KVM (opt-in via Make): KVM_HOST_FIREWALL=true em env/.env
+# aplica regras NAT/FORWARD quando firewalld, ufw ou iptables (FORWARD DROP) estiver activo.
 
 # -----------------------------------------------------------------------------
 # Armazenamento libvirt (dentro do repositório — lab descartável)

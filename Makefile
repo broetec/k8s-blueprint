@@ -94,7 +94,7 @@ setup-host: setup ## 1ª vez: controlador + host KVM (00)
 	@printf "$(B)==> setup-host: install-kvm (KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
 	@$(SUBMAKE) -f $(CURDIR)/Makefile install-kvm OVERLAY=$(OVERLAY)
 
-install-kvm: inventory-overlay deps ## 00 — re-aplicar host KVM (rede, firewalld, bootstrap)
+install-kvm: inventory-overlay deps ## 00 — re-aplicar host KVM (rede, firewall opt-in, bootstrap)
 	@printf "$(Y)==> [00] install-kvm (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
 	$(call run-playbook,$(INSTALL_KVM_TAGS),$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),$(INSTALL_KVM_EXTRA) $(EXTRA))
 

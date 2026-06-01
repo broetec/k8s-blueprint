@@ -1,0 +1,25 @@
+---
+# Auto-detect active firewall backend and apply lab NAT/FORWARD rules.
+
+- name: Detect active firewall backend on the KVM host
+  ansible.builtin.import_tasks: detect.yml
+
+- name: Apply firewalld lab rules
+  ansible.builtin.import_tasks: firewalld.yml
+  when: kvm_firewall_backend == 'firewalld'
+
+- name: Apply ufw lab rules
+  ansible.builtin.import_tasks: ufw.yml
+  when: kvm_firewall_backend == 'ufw'
+
+- name: Apply iptables lab rules
+  ansible.builtin.import_tasks: iptables.yml
+  when: kvm_firewall_backend == 'iptables'
+
+- name: No supported active firewall detected — skipping host rules
+  ansible.builtin.debug:
+    msg: >-
+      kvm_host_firewall=true but no supported active firewall was detected
+      (firewalld, ufw, or iptables with FORWARD policy DROP). Skipping host
+      firewall rules; lab VMs may not reach the internet on Docker hosts.
+  when: kvm_firewall_backend == 'none'

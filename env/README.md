@@ -22,7 +22,8 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 | `OVERLAY` | overlay ativo (`broetec-core`, `broetec-storage`, …) |
 | `VM_NAME`, `VM_IP` | sobrescrevem a VM do overlay ao gerar `hosts.ini` (`make inventory`) |
 | `KVM_NETWORK` | rede libvirt no `make clean` |
-| `KVM_HOST_BOOTSTRAP` | `true` (padrão): instala pacotes libvirt no host (`make setup-host` / `install-kvm`); `false`: só rede + firewalld |
+| `KVM_HOST_BOOTSTRAP` | `true` (padrão): instala pacotes libvirt no host (`make setup-host` / `install-kvm`); `false`: só rede (+ firewall se activo) |
+| `KVM_HOST_FIREWALL` | `false` (padrão): não altera firewall do host; `true`: regras NAT/FORWARD para VMs lab (firewalld, ufw ou iptables) |
 | `LAB_PATH` | raiz de `lab/` (discos + cache qcow2; ver `lab/README.md`) |
 | `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` (padrão) = só `~/.ssh/known_hosts`; `true` = criar `/etc/ssh/ssh_known_hosts` no controlador (sudo, opt-in) |
 
