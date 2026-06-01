@@ -1,6 +1,10 @@
 ---
-# Optional bootstrap: on immutable distros or pre-configured hosts, use
-# kvm_host_bootstrap: false or --skip-tags bootstrap.
+# Host bootstrap (tag bootstrap): install KVM/libvirt packages and start libvirtd.
+# Skip on immutable distros or when the host already has libvirt.
+#
+# With make: KVM_HOST_BOOTSTRAP=false in env/.env (see make/config.mk, make/ansible.mk).
+# With ansible-playbook only: -e kvm_host_bootstrap=false and/or --skip-tags bootstrap.
+# Tasks honor kvm_host_bootstrap (defaults in defaults/main.yml).
 
 - name: Install KVM/libvirt packages on the host
   ansible.builtin.package:

@@ -1,6 +1,11 @@
 ---
-# Optional bootstrap (packages + libvirtd). Disable on immutable distros or with --skip-tags bootstrap.
+# Role defaults for 00_install_kvm (Ansible reads these; Make does not).
+#
+# kvm_host_bootstrap — skip package install + libvirtd when false (tasks/bootstrap.yml).
+#   When using make: set KVM_HOST_BOOTSTRAP in env/.env (see make/config.mk); install-kvm
+#   passes -e kvm_host_bootstrap=false and --skip-tags bootstrap when off.
+#   Without make: use -e kvm_host_bootstrap=false, inventory group_vars, or --skip-tags bootstrap.
 kvm_host_bootstrap: true
 
-# firewalld NAT/forward rules for VMs on the lab libvirt network.
+# kvm_network_firewalld — NAT/forward on the KVM host (firewalld-lab.yml); no Make knob.
 kvm_network_firewalld: true
