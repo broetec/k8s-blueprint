@@ -84,7 +84,7 @@ def test_generate_writes_files(repo_tree: Path) -> None:
     gv_all = hosts.parent / 'group_vars' / 'all'
     assert gv_all.is_dir()
     assert (gv_all / '00_shared.yml').is_symlink()
-    assert (gv_all / '10_dhcp_reservations.yml').is_symlink()
+    assert not (gv_all / '10_dhcp_reservations.yml').exists()
     overlay_gen = gv_all / '50_overlay.generated.yml'
     assert overlay_gen.is_file()
     assert 'vm_role: core' in overlay_gen.read_text(encoding='utf-8')
@@ -124,16 +124,6 @@ def test_overlay_env_overrides_scoped() -> None:
     env = {'OVERLAY': 'broetec-storage', 'VM_IP': '10.20.30.99'}
     assert overlay_env_overrides(env, 'broetec-core') == {}
     assert overlay_env_overrides(env, 'broetec-storage')['VM_IP'] == '10.20.30.99'
-
-
-def test_dhcp_reservations_all_overlays(repo_tree: Path) -> None:
-    gen = InventoryGenerator(repo_tree)
-    manifest = gen.load_manifest()
-    gen.generate(['broetec-core'])
-    dhcp = repo_tree / 'provisioning/inventory/_shared/group_vars/dhcp_reservations.yml'
-    text = dhcp.read_text(encoding='utf-8')
-    assert '52:54:00:6d:81:73' in text
-    assert '10.20.30.50' in text
 
 
 def test_load_dotenv(tmp_path: Path) -> None:

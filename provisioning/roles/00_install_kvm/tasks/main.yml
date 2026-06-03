@@ -5,7 +5,7 @@
 # Prepares the physical KVM/libvirt host before 01_create_vm:
 #
 #   1. Optional bootstrap — packages + libvirtd (tag bootstrap).
-#   2. Libvirt NAT network + DHCP reservations by MAC.
+#   2. Libvirt NAT network (VM IPs via cloud-init network-config on seed ISO).
 #   3. Optional host firewall — NAT/forward for lab VMs (firewalld, ufw, iptables).
 #
 # Prerequisite for 01_create_vm: virsh, virt-install, qemu-img, genisoimage|xorriso
@@ -15,7 +15,7 @@
 - name: Bootstrap KVM host (packages and libvirtd)
   ansible.builtin.import_tasks: bootstrap.yml
 
-- name: Libvirt network and DHCP reservations
+- name: Libvirt NAT network
   ansible.builtin.import_tasks: network.yml
   tags: [install_kvm]
 

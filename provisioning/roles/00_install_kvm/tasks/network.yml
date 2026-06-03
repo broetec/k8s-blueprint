@@ -1,25 +1,55 @@
 ---
-# Libvirt network (NAT + DHCP reservations by MAC) and stable MAC per VM.
+# =============================================================================
+# tasks/network.yml — Shared libvirt NAT network for the lab
+# =============================================================================
+#
+# Purpose
+#   Define and maintain one persistent libvirt virtual network (default:
+#   broetec-lab / virbr-broetec) used by all lab VMs across overlays.
+#
+# Scope
+#   Host-side L3 only: NAT, bridge, gateway, and a shared DHCP pool
+#   (kvm_network.dhcp_start … dhcp_end). Per-VM addresses are applied inside
+#   the guest by role 01_create_vm (network-config on the NoCloud seed ISO;
+#   see provisioning/templates/network-config.j2).
+#
+# Inventory variables (group_vars/all.yml → kvm_network)
+#   name, bridge, gateway, netmask, dhcp_start, dhcp_end, domain (DNS domain
+#   for libvirt internal resolver), subnet_cidr (used by firewall tasks).
+#
+# Extra variables
+#   kvm_network_force_restart — set true by `make network-refresh` to
+#   net-destroy + net-start even when the fingerprint is unchanged.
+#
+# Pipeline (high level)
+#   1. Snapshot whether the network is already active (for start vs restart).
+#   2. Preserve existing network UUID when re-defining (libvirt requirement).
+#   3. Render desired XML to /tmp and compute a logical fingerprint.
+#   4. Compare with inactive persistent XML; net-define only if new/changed.
+#   5. autostart + start if down; destroy+start if definition changed or forced.
+#
+# Fingerprint (why shell + grep)
+#   virsh net-define is not idempotent for running dnsmasq: we hash only the
+#   operational knobs (forward, bridge, domain, gateway, DHCP range) so cosmetic
+#   XML differences or UUID lines do not spuriously trigger a restart.
+#
+# Related commands
+#   make install-kvm          — apply this file (tag install_kvm)
+#   make network-refresh      — same with kvm_network_force_restart=true
+#
+# Manual checks
+#   virsh -c qemu:///system net-dumpxml broetec-lab
+#   virsh -c qemu:///system net-info broetec-lab
+# =============================================================================
 
-- name: Derive stable MAC per VM (virt-install + dnsmasq DHCP reservation)
-  ansible.builtin.set_fact:
-    kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
-  vars:
-    _vm_mac: >-
-      {{ hostvars[item].vm_mac | default(
-           '52:54:00:' ~ (item | hash('md5'))[0:2] ~ ':' ~
-           (item | hash('md5'))[2:4] ~ ':' ~ (item | hash('md5'))[4:6]
-         ) }}
-  loop: "{{ groups['vms'] }}"
-  loop_control:
-    label: "{{ item }}"
-
+# --- 1. Runtime state (before any mutation) -----------------------------------
 - name: List active libvirt networks (initial state, before net-define)
   ansible.builtin.command: virsh -c qemu:///system net-list --name
   register: libvirt_active_nets_initial
   changed_when: false
   check_mode: false
 
+# --- 2. Stable identity (UUID must survive net-define updates) ----------------
 - name: Look up UUID of network {{ kvm_network.name }} (if already defined)
   ansible.builtin.shell: |
     set -euo pipefail
@@ -30,6 +60,7 @@
   changed_when: false
   failed_when: false
 
+# --- 3. Desired network definition (NAT + shared DHCP pool) -------------------
 - name: Render libvirt network XML for {{ kvm_network.name }}
   ansible.builtin.copy:
     dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
@@ -46,18 +77,11 @@
         <ip address='{{ kvm_network.gateway }}' netmask='{{ kvm_network.netmask }}'>
           <dhcp>
             <range start='{{ kvm_network.dhcp_start }}' end='{{ kvm_network.dhcp_end }}'/>
-            {% for entry in kvm_network_dhcp_reservations | default([]) %}
-            <host mac='{{ entry.mac }}' ip='{{ entry.ip }}'/>
-            {% endfor %}
-            {% if kvm_network_dhcp_reservations | default([]) | length == 0 %}
-            {% for vm in groups['vms'] %}
-            <host mac='{{ kvm_vm_mac_by_host[vm] }}' ip='{{ hostvars[vm].vm_ip }}'/>
-            {% endfor %}
-            {% endif %}
           </dhcp>
         </ip>
       </network>
 
+# --- 4. Change detection (wanted vs persistent inactive XML) ------------------
 - name: Compute desired network XML fingerprint (/tmp target file)
   ansible.builtin.shell: |-
     {% raw %}
@@ -70,7 +94,6 @@
         grep -oE "<domain[^/>]*/>" || true
         grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
         grep -oE "<range start='[^']+' end='[^']+'/>" || true
-        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
       } | sha256sum | awk '{print $1}'
     }
     _fp_stream < "$f"
@@ -98,7 +121,6 @@
         grep -oE "<domain[^/>]*/>" || true
         grep -oE "<ip address='[^']+' netmask='[^']+'>" || true
         grep -oE "<range start='[^']+' end='[^']+'/>" || true
-        grep -oE "<host mac='[^']+' ip='[^']+'/>" | LC_ALL=C sort || true
       } | sha256sum | awk '{print $1}'
     }
     virsh -c qemu:///system net-dumpxml --inactive "$name" | _fp_stream
@@ -110,7 +132,7 @@
   register: kvm_net_fp_current
   changed_when: false
 
-- name: Determine whether dnsmasq runtime must realign to XML (changed or forced)
+- name: Determine whether libvirt network runtime must refresh (changed or forced)
   ansible.builtin.set_fact:
     kvm_libvirt_net_runtime_needs_refresh: >-
       {{
@@ -118,6 +140,7 @@
         or (kvm_network_force_restart | default(false) | bool)
       }}
 
+# --- 5. Apply persistent definition -------------------------------------------
 - name: Define or update libvirt network (persistent; only if logical XML changed or new)
   ansible.builtin.command: >-
     virsh -c qemu:///system net-define
@@ -130,24 +153,15 @@
   ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
   changed_when: false
 
+# --- 6. Bring network up (cold start vs reload running instance) --------------
 - name: Start libvirt network if not already active
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
   when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
 
-- name: Remove stale dnsmasq DHCP lease files (VM rename / MAC→IP reservation change)
-  ansible.builtin.file:
-    path: "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status"
-    state: absent
-  when:
-    - kvm_libvirt_net_runtime_needs_refresh | bool
-    - kvm_network.name in libvirt_active_nets_initial.stdout_lines
-
-- name: Restart network {{ kvm_network.name }} (only if XML/reservations changed or forced)
+- name: Restart network {{ kvm_network.name }} (only if base XML changed or forced)
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true
-    rm -f "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.status" \
-          "/var/lib/libvirt/dnsmasq/{{ kvm_network.bridge }}.macs" 2>/dev/null || true
     virsh -c qemu:///system net-start "{{ kvm_network.name }}"
   args:
     executable: /bin/bash

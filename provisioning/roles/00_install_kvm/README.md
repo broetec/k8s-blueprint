@@ -11,7 +11,7 @@ This role is **not** part of `make up` (daily flow). Run it once via
 Ensure the controller machine can run libvirt VMs with:
 
 1. Required packages and `libvirtd` (optional bootstrap)
-2. A NAT libvirt network with stable DHCP reservations per VM MAC
+2. A shared NAT libvirt network (lab VMs get static IPs via cloud-init on the seed ISO)
 3. Optional host firewall rules so lab VMs can reach the internet (opt-in)
 
 ## What it does
@@ -19,7 +19,7 @@ Ensure the controller machine can run libvirt VMs with:
 | Step | File | Description |
 |------|------|-------------|
 | Bootstrap | `tasks/bootstrap.yml` | Installs `qemu-kvm`, `libvirt`, `virt-install`, ISO tools; enables `libvirtd` |
-| Network | `tasks/network.yml` | Derives MACs, defines/updates libvirt NAT network, DHCP reservations, restarts dnsmasq when XML changes |
+| Network | `tasks/network.yml` | Defines/updates libvirt NAT network (bridge, gateway, optional DHCP pool); restarts when base XML changes. **Inline design notes:** see the file header in `tasks/network.yml`. |
 | Firewall | `tasks/firewall/` | NAT/forward for the lab subnet when `kvm_host_firewall=true` (auto-detects backend) |
 
 ```text
@@ -96,8 +96,7 @@ These are **not** defined in the role; set them in shared inventory (see
 
 | Variable | Purpose |
 |----------|---------|
-| `kvm_network` | Network name, bridge, gateway, DHCP range, domain |
-| `kvm_network_dhcp_reservations` | Generated list of `{name, mac, ip}` for all overlays (`make inventory`) |
+| `kvm_network` | Network name, bridge, gateway, DHCP pool range, domain |
 | `kvm_network_force_restart` | Force libvirt network restart (used by `make network-refresh`) |
 
 Via Make, prefer `KVM_HOST_FIREWALL=true` in `env/.env` over inventory overrides.
@@ -106,13 +105,11 @@ Via Make, prefer `KVM_HOST_FIREWALL=true` in `env/.env` over inventory overrides
 
 | Fact | Set by | Used by |
 |------|--------|---------|
-| `kvm_vm_mac_by_host` | `network.yml` | `01_create_vm` (`virt-install` MAC, DHCP validation) |
-| `kvm_libvirt_net_runtime_needs_refresh` | `network.yml` | Internal; triggers dnsmasq lease cleanup + net restart |
+| `kvm_libvirt_net_runtime_needs_refresh` | `network.yml` | Internal; triggers net restart when base XML changes |
 | `kvm_firewall_backend` | `firewall/detect.yml` | Internal; selects firewalld, ufw, iptables, or none |
 
-**Note:** `01_create_vm` recomputes `kvm_vm_mac_by_host` when run alone
-(`make up`), because Ansible facts do not persist across separate
-`ansible-playbook` invocations.
+**Note:** `kvm_vm_mac_by_host` is set by [`01_create_vm`](../01_create_vm/) for
+`virt-install` and `network-config` (not by this role).
 
 ## Make targets
 
@@ -120,7 +117,7 @@ Via Make, prefer `KVM_HOST_FIREWALL=true` in `env/.env` over inventory overrides
 |---------|--------|
 | `make setup-host` | `make setup` + role 00 (first-time controller + host; bootstrap from `env/.env`) |
 | `make install-kvm` | Role 00 only (re-apply network/firewall/bootstrap without re-running `setup`) |
-| `make network-refresh` | Reapply network with `kvm_network_force_restart=true` |
+| `make network-refresh` | Reapply libvirt network with `kvm_network_force_restart=true` |
 
 ## Immutable OS (Bazzite, Silverblue, Kinoite)
 
@@ -132,8 +129,7 @@ Do **not** install RPMs via Ansible on immutable hosts:
 
 ## Idempotency
 
-- **Network:** Compares a SHA256 fingerprint of logical XML (forward, bridge, DHCP hosts) before `net-define`
-- **DHCP:** Removes stale dnsmasq lease files when reservations change or VM is renamed
+- **Network:** Compares a SHA256 fingerprint of logical XML (forward, bridge, gateway, DHCP pool) before `net-define`
 - **Firewall:** Skipped when `kvm_host_firewall=false`; when on, backend-specific checks (`-C`, `blockinfile` markers) avoid duplicate rules
 - **Bootstrap:** `package` and `service` modules are idempotent
 

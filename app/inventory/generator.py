@@ -11,8 +11,6 @@ import yaml
 from app.inventory.env_file import load_dotenv, overlay_env_overrides
 from app.inventory.models import InventoryManifest, OverlaySpec, VmSpec
 
-_DHCP_RESERVATIONS_FILE = Path('_shared/group_vars/dhcp_reservations.yml')
-
 _SHARED_GROUP_VARS = Path('_shared/group_vars')
 _GROUP_VARS_DIR = Path('group_vars')
 _GROUP_VARS_ALL = Path('group_vars/all')
@@ -52,8 +50,6 @@ class InventoryGenerator:
             overlay = self._apply_env_overrides(overlay, env)
             path = self._write_overlay(overlay, manifest, dry_run=dry_run)
             written.append(path)
-        dhcp_path = self._write_dhcp_reservations(manifest, env, dry_run=dry_run)
-        written.append(dhcp_path)
         return written
 
     def render_hosts_ini(
@@ -130,61 +126,6 @@ class InventoryGenerator:
         vms[0] = VmSpec(name=name, ip=ip, mac=primary.mac if name == primary.name else None)
         return replace(overlay, vms=tuple(vms))
 
-    def collect_dhcp_reservations(
-        self,
-        manifest: InventoryManifest,
-        env: dict[str, str],
-    ) -> list[dict[str, str]]:
-        """Todas as VMs do manifesto (todos os overlays) para o dnsmasq partilhado."""
-        by_name: dict[str, dict[str, str]] = {}
-        for overlay_id in manifest.overlay_ids():
-            overlay = self._apply_env_overrides(
-                manifest.get_overlay(overlay_id),
-                env,
-            )
-            for vm in overlay.vms:
-                by_name[vm.name] = {
-                    'name': vm.name,
-                    'mac': vm.resolved_mac(),
-                    'ip': vm.ip,
-                }
-        return [by_name[name] for name in sorted(by_name.keys())]
-
-    def render_dhcp_reservations_yaml(
-        self,
-        manifest: InventoryManifest,
-        env: dict[str, str],
-    ) -> str:
-        reservations = self.collect_dhcp_reservations(manifest, env)
-        payload = {
-            'kvm_network_dhcp_reservations': reservations,
-        }
-        header = (
-            '# Gerado automaticamente — NÃO EDITAR.\n'
-            '# Fonte: manifest.yml (todos os overlays). Regenerar: make inventory\n'
-            '---\n'
-        )
-        return header + yaml.dump(
-            payload,
-            default_flow_style=False,
-            allow_unicode=True,
-            sort_keys=False,
-        )
-
-    def _write_dhcp_reservations(
-        self,
-        manifest: InventoryManifest,
-        env: dict[str, str],
-        *,
-        dry_run: bool,
-    ) -> Path:
-        path = self.inventory_root / _DHCP_RESERVATIONS_FILE
-        content = self.render_dhcp_reservations_yaml(manifest, env)
-        if not dry_run:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding='utf-8')
-        return path
-
     def _write_overlay(
         self,
         overlay: OverlaySpec,
@@ -203,7 +144,7 @@ class InventoryGenerator:
         return hosts_ini
 
     def _ensure_group_vars(self, overlay_dir: Path, overlay: OverlaySpec) -> None:
-        """group_vars/all/ em camadas: shared → dhcp → overlay (manifest) → local."""
+        """group_vars/all/ em camadas: shared → overlay (manifest) → local."""
         gv_root = overlay_dir / _GROUP_VARS_DIR
         legacy_link = gv_root
         if legacy_link.is_symlink():
@@ -219,11 +160,12 @@ class InventoryGenerator:
         gv_all.mkdir(parents=True, exist_ok=True)
 
         shared_src = self.inventory_root / _SHARED_GROUP_VARS / 'all.yml'
-        dhcp_src = self.inventory_root / _SHARED_GROUP_VARS / 'dhcp_reservations.yml'
         kvm_hosts_src = self.inventory_root / _SHARED_GROUP_VARS / 'kvm_hosts.yml'
         self._symlink_file(gv_all / '00_shared.yml', shared_src)
-        self._symlink_file(gv_all / '10_dhcp_reservations.yml', dhcp_src)
         self._symlink_file(overlay_dir / _KVM_HOSTS_VARS, kvm_hosts_src)
+        dhcp_link = gv_all / '10_dhcp_reservations.yml'
+        if dhcp_link.is_symlink() or dhcp_link.exists():
+            dhcp_link.unlink()
         (gv_all / _OVERLAY_GENERATED).write_text(
             self.render_overlay_group_vars(overlay),
             encoding='utf-8',

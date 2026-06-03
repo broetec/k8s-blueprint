@@ -18,7 +18,6 @@ Cada overlay tem `group_vars/all/` com merge automático (ordem alfabética):
 | Ficheiro | Origem | Função |
 |----------|--------|--------|
 | `00_shared.yml` | symlink → `_shared/group_vars/all.yml` | Base comum (rede, imagem, cloud-init) |
-| `10_dhcp_reservations.yml` | symlink → `_shared/.../dhcp_reservations.yml` | Reservas DHCP (gerado) |
 | `50_overlay.generated.yml` | **gerado** (`make inventory`) | `vm_role`, `overlay_id`, `vars` do manifest |
 | `90_local.yml` | **versionado, manual** | Overrides por máquina (disco, vCPUs, etc.) |
 
@@ -58,20 +57,19 @@ make inventory
 
 ## IP errado (ex.: 10.20.30.118 em vez de .40)
 
-O IP estático vem da **reserva DHCP por MAC** na rede `broetec-lab`, não do
-`hosts.ini` sozinho. Se renomeou a VM (`node-01` → `broetec-core`), o MAC muda
-e a reserva antiga deixa de aplicar → a VM cai no DHCP (.100–.200).
+O IP estático vem do **`network-config` no seed ISO** (cloud-init), gerado por
+`01_create_vm` a partir de `vm_ip` / `vm_mac` no inventário (`make inventory`).
+Se mudou IP ou MAC no `manifest.yml` sem recriar a VM, o SO pode manter o endereço antigo
+ou cair no pool DHCP da rede (`.100–.200`).
 
 ```bash
-make network-refresh OVERLAY=broetec-core   # manifest + rede + limpa leases antigos
-virsh -c qemu:///system destroy broetec-core && virsh -c qemu:///system start broetec-core
+make inventory OVERLAY=broetec-core
+make destroy OVERLAY=broetec-core    # ou apague lab/disks/<vm>-seed.iso e a VM
+make up OVERLAY=broetec-core
 ```
 
-`reboot` **não basta** se o dnsmasq ainda tiver lease antiga em
-`/var/lib/libvirt/dnsmasq/virbr-broetec.status` (ex.: `.40` preso ao MAC de `node-01`).
-
-Confirme: `virsh net-dumpxml broetec-lab | grep host` deve listar o MAC da VM
-(`virsh dumpxml broetec-core | grep "mac address"`).
+Confirme o MAC: `virsh dumpxml broetec-core | grep "mac address"` deve coincidir com
+`vm_mac` em `hosts.ini`. Confirme o IP na VM: `ip -4 addr show`.
 
 ## Sem internet na VM (IP correcto, ping 8.8.8.8 falha)
 

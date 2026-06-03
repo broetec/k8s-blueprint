@@ -98,7 +98,7 @@ install-kvm: inventory-overlay deps ## 00 — re-aplicar host KVM (rede, firewal
 	@printf "$(Y)==> [00] install-kvm (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
 	$(call run-playbook,$(INSTALL_KVM_TAGS),$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),$(INSTALL_KVM_EXTRA) $(EXTRA))
 
-network-refresh: inventory-overlay deps ## Reaplica rede libvirt e reservas DHCP
+network-refresh: inventory-overlay deps ## Reaplica rede libvirt NAT (gateway/pool)
 	@printf "$(Y)==> network-refresh $(KVM_NETWORK)$(N)\n"
 	$(call run-playbook,install_kvm,$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),-e kvm_network_force_restart=true --limit kvm_hosts)
 

@@ -5,7 +5,7 @@
 # Cria VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
 #
 # Pré-requisitos (role 00_install_kvm ou host já preparado):
-#   - Rede libvirt activa com reservas DHCP (kvm_vm_mac_by_host definido).
+#   - Rede libvirt NAT activa (broetec-lab).
 #   - `virsh`, `virt-install`, `qemu-img`, `genisoimage` ou `xorriso` no PATH.
 #
 # Etapas:
@@ -17,7 +17,7 @@
 
 # ---------- 0. MAC por VM (mesma regra que 00_install_kvm/tasks/network.yml) ---
 # Necessário quando create_vm corre sem install_kvm na mesma invocação (make up).
-- name: "Definir MAC estável por VM (virt-install + reserva DHCP dnsmasq)"
+- name: "Definir MAC estável por VM (virt-install + match no network-config)"
   ansible.builtin.set_fact:
     kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
   vars:
@@ -140,8 +140,20 @@
 
 - name: "Renderizar user-data por VM (cloud-init)"
   ansible.builtin.template:
-    src: cloud-init.j2
+    src: "{{ playbook_dir }}/templates/cloud-init.j2"
     dest: "{{ item.path }}/user-data"
+    mode: "0644"
+  vars:
+    vm_hostname: "{{ item.item }}"
+    vm_ip: "{{ hostvars[item.item].vm_ip }}"
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "Renderizar network-config por VM (IP estático no guest)"
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/network-config.j2"
+    dest: "{{ item.path }}/network-config"
     mode: "0644"
   vars:
     vm_hostname: "{{ item.item }}"
@@ -167,10 +179,11 @@
     out="{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
     u="{{ item.path }}/user-data"
     m="{{ item.path }}/meta-data"
+    n="{{ item.path }}/network-config"
     if command -v genisoimage >/dev/null 2>&1; then
-      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m"
+      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m" "$n"
     elif command -v xorriso >/dev/null 2>&1; then
-      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m"
+      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m" "$n"
     else
       echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode com a tag bootstrap / role 00_install_kvm)." >&2
       exit 1
@@ -217,7 +230,7 @@
   register: virt_install
   changed_when: virt_install.rc == 0
 
-- name: "Verificar MAC da VM vs reserva DHCP no dnsmasq"
+- name: "Verificar MAC da VM vs kvm_vm_mac_by_host (network-config)"
   ansible.builtin.command: virsh -c qemu:///system dumpxml {{ item }}
   loop: "{{ vms_to_create }}"
   loop_control:
@@ -232,7 +245,7 @@
       - kvm_vm_mac_by_host[item.item] | lower in item.stdout | lower
     fail_msg: |-
       O MAC da VM '{{ item.item }}' não coincide com o esperado ({{ kvm_vm_mac_by_host[item.item] }}).
-      Domínios criados antes da reserva por MAC mantêm outro endereço → DHCP na gama .100–.200 (ex.: .118).
+      Sem o MAC correcto, o network-config não aplica o IP estático.
       Correção: make destroy && make up
   loop: "{{ domif_out.results }}"
   loop_control:
@@ -245,7 +258,7 @@
     host: "{{ hostvars[item].vm_ip }}"
     port: 22
     state: started
-    delay: 10
+    delay: 15
     timeout: 600
   loop: "{{ groups['vms'] }}"
   loop_control:

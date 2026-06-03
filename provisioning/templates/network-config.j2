@@ -1,0 +1,17 @@
+# network-config v2 — IP estático no guest (NoCloud seed ISO).
+version: 2
+ethernets:
+  lab0:
+    match:
+      macaddress: "{{ kvm_vm_mac_by_host[vm_hostname] }}"
+    dhcp4: false
+    addresses:
+      - "{{ vm_ip }}/{{ kvm_network.prefix }}"
+    routes:
+      - to: default
+        via: "{{ kvm_network.gateway }}"
+    nameservers:
+      addresses:
+{% for dns in kvm_network.dns_servers %}
+        - {{ dns }}
+{% endfor %}

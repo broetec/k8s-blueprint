@@ -5,7 +5,7 @@
 # Este template é renderizado pela role `01_create_vm` para cada host do grupo
 # `vms` e gravado como `user-data` no seed ISO (NoCloud datasource).
 #
-# IP vem da reserva DHCP no dnsmasq da rede libvirt (MAC fixo -> vm_ip).
+# IP da interface: network-config no seed ISO (estático por MAC; ver network-config.j2).
 #
 # Variáveis injetadas pela role:
 #   - vm_hostname           : hostname curto (ex.: node-01)

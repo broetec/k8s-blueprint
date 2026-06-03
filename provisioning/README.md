@@ -18,7 +18,8 @@ provisioning/
 │   ├── broetec-storage/           # storage @ 10.20.30.50
 │   └── broetec-monitor/           # telemetria @ 10.20.30.60
 ├── templates/
-│   └── cloud-init.j2              # user-data (rede = DHCP + reserva MAC na libvirt)
+│   ├── cloud-init.j2              # user-data (utilizador, hostname, /etc/hosts)
+│   └── network-config.j2          # IP estático no guest (seed ISO NoCloud)
 └── roles/
     ├── 00_install_kvm/            # bootstrap host, rede libvirt, firewall (opt-in)
     ├── 01_create_vm/              # qcow2, seed ISO, virt-install
