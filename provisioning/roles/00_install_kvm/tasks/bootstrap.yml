@@ -1,10 +1,20 @@
 ---
-# Host bootstrap (tag bootstrap): install KVM/libvirt packages and start libvirtd.
-# Skip on immutable distros or when the host already has libvirt.
+# =============================================================================
+# tasks/bootstrap.yml — KVM host package bootstrap
+# =============================================================================
 #
-# With make: KVM_HOST_BOOTSTRAP=false in env/.env (see make/config.mk, make/ansible.mk).
-# With ansible-playbook only: -e kvm_host_bootstrap=false and/or --skip-tags bootstrap.
-# Tasks honor kvm_host_bootstrap (defaults in defaults/main.yml).
+# Purpose
+#   Install libvirt/QEMU tooling and ensure libvirtd is running on the KVM host.
+#
+# Tags
+#   bootstrap, install — skip with --skip-tags bootstrap or kvm_host_bootstrap=false.
+#
+# Variables
+#   kvm_host_bootstrap (default true) — when false, all tasks are skipped.
+#
+# Related commands
+#   make install-kvm KVM_HOST_BOOTSTRAP=false | --skip-tags bootstrap
+# =============================================================================
 
 - name: Install KVM/libvirt packages on the host
   ansible.builtin.package:

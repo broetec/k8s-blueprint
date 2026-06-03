@@ -1,13 +1,18 @@
 ---
-# Role defaults for 00_install_kvm (Ansible reads these; Make does not).
+# =============================================================================
+# defaults/main.yml — Role 00 defaults
+# =============================================================================
 #
-# kvm_host_bootstrap — skip package install + libvirtd when false (tasks/bootstrap.yml).
-#   When using make: set KVM_HOST_BOOTSTRAP in env/.env (see make/config.mk); install-kvm
-#   passes -e kvm_host_bootstrap=false and --skip-tags bootstrap when off.
-#   Without make: use -e kvm_host_bootstrap=false, inventory group_vars, or --skip-tags bootstrap.
-kvm_host_bootstrap: true
+# Purpose
+#   Default flags for bootstrap and host firewall (overridden via inventory or -e).
+#
+# Variables
+#   kvm_host_bootstrap — install packages and libvirtd (tasks/bootstrap.yml).
+#   kvm_host_firewall — apply lab NAT/FORWARD on host (tasks/firewall/).
+#
+# Related commands
+#   KVM_HOST_BOOTSTRAP / KVM_HOST_FIREWALL in env/.env (see make/config.mk).
+# =============================================================================
 
-# kvm_host_firewall — NAT/forward on the KVM host (tasks/firewall/); default off.
-#   When using make: set KVM_HOST_FIREWALL=true in env/.env (see make/config.mk); install-kvm
-#   passes -e kvm_host_firewall=true when on.
+kvm_host_bootstrap: true
 kvm_host_firewall: false

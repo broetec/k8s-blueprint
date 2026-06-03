@@ -1,25 +1,32 @@
 ---
 # =============================================================================
-# roles/00_install_kvm/tasks/main.yml
+# tasks/main.yml — Role 00 entrypoint (KVM/libvirt host)
 # =============================================================================
-# Prepares the physical KVM/libvirt host before 01_create_vm:
 #
-#   1. Optional bootstrap — packages + libvirtd (tag bootstrap).
-#   2. Libvirt NAT network (VM IPs via cloud-init network-config on seed ISO).
-#   3. Optional host firewall — NAT/forward for lab VMs (firewalld, ufw, iptables).
+# Purpose
+#   Orchestrate bootstrap, libvirt NAT network, and optional host firewall
+#   before role 01_create_vm provisions VMs.
 #
-# Prerequisite for 01_create_vm: virsh, virt-install, qemu-img, genisoimage|xorriso
-# on PATH (bootstrap installs them when kvm_host_bootstrap: true).
+# Pipeline
+#   1. bootstrap.yml — packages + libvirtd (tag bootstrap; optional).
+#   2. network.yml — shared broetec-lab network (tag install_kvm).
+#   3. firewall/main.yml — NAT/FORWARD when kvm_host_firewall (tag install_kvm).
+#
+# Variables
+#   kvm_host_bootstrap, kvm_host_firewall (defaults/main.yml; Make: KVM_HOST_*).
+#
+# Related commands
+#   make setup-host | make install-kvm | make network-refresh
 # =============================================================================
 
-- name: Bootstrap KVM host (packages and libvirtd)
+- name: Bootstrap KVM host — install packages and libvirtd (tag bootstrap)
   ansible.builtin.import_tasks: bootstrap.yml
 
-- name: Libvirt NAT network
+- name: Libvirt NAT network — define broetec-lab and start or restart
   ansible.builtin.import_tasks: network.yml
   tags: [install_kvm]
 
-- name: Host firewall — NAT/forward for lab VMs
+- name: Host firewall — detect backend and apply lab NAT/FORWARD rules
   ansible.builtin.import_tasks: firewall/main.yml
   when: kvm_host_firewall | default(false) | bool
   tags: [install_kvm]

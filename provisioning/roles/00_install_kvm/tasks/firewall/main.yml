@@ -1,26 +1,39 @@
 ---
-# Host firewall entry point for KVM lab VM connectivity.
-# Runs detect.yml to set kvm_firewall_backend, then imports exactly one backend
-# task file (firewalld, ufw, or raw iptables) to apply NAT/FORWARD for
-# kvm_network.subnet_cidr. If no supported backend is active, logs a debug
-# message and skips host rules (common on misconfigured or Docker-only hosts).
+# =============================================================================
+# tasks/firewall/main.yml — Host firewall entry for lab VM egress
+# =============================================================================
+#
+# Purpose
+#   Detect the active firewall backend and import exactly one implementation
+#   so VMs on kvm_network.subnet_cidr can reach the internet (NAT/FORWARD).
+#
+# Scope
+#   Runs only when kvm_host_firewall is true (imported from main.yml).
+#   Sets kvm_firewall_backend via detect.yml; dispatches to one backend file.
+#
+# Variables
+#   kvm_host_firewall, kvm_network.subnet_cidr, kvm_network.bridge.
+#
+# Related commands
+#   make install-kvm KVM_HOST_FIREWALL=true
+# =============================================================================
 
 - name: Detect active firewall backend on the KVM host
   ansible.builtin.import_tasks: detect.yml
 
-- name: Apply firewalld lab rules
+- name: Apply firewalld lab NAT and FORWARD rules
   ansible.builtin.import_tasks: firewalld.yml
   when: kvm_firewall_backend == 'firewalld'
 
-- name: Apply ufw lab rules
+- name: Apply ufw lab NAT and FORWARD rules
   ansible.builtin.import_tasks: ufw.yml
   when: kvm_firewall_backend == 'ufw'
 
-- name: Apply iptables lab rules
+- name: Apply iptables lab NAT and FORWARD rules
   ansible.builtin.import_tasks: iptables.yml
   when: kvm_firewall_backend == 'iptables'
 
-- name: No supported active firewall detected — skipping host rules
+- name: Skip host firewall rules — no supported active backend detected
   ansible.builtin.debug:
     msg: >-
       kvm_host_firewall=true but no supported active firewall was detected

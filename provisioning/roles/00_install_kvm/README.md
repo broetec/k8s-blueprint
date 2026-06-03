@@ -19,13 +19,34 @@ Ensure the controller machine can run libvirt VMs with:
 | Step | File | Description |
 |------|------|-------------|
 | Bootstrap | `tasks/bootstrap.yml` | Installs `qemu-kvm`, `libvirt`, `virt-install`, ISO tools; enables `libvirtd` |
-| Network | `tasks/network.yml` | Defines/updates libvirt NAT network (bridge, gateway, optional DHCP pool); restarts when base XML changes. **Inline design notes:** see the file header in `tasks/network.yml`. |
+| Network | `tasks/network.yml` | Defines/updates libvirt NAT network (bridge, gateway, optional DHCP pool); restarts when base XML changes |
 | Firewall | `tasks/firewall/` | NAT/forward for the lab subnet when `kvm_host_firewall=true` (auto-detects backend) |
 
 ```text
 bootstrap.yml  →  network.yml  →  firewall/ (opt-in)
      (optional)        (always)      (KVM_HOST_FIREWALL=true)
 ```
+
+## Task file documentation
+
+Each file under `tasks/` starts with a short **header block** (comment banner) so
+you can read the role without opening this README first. Deeper architecture and
+troubleshooting will live in Sphinx later; YAML stays operational.
+
+| Style | When | Typical sections |
+|-------|------|------------------|
+| **Lite** | Most task files (`bootstrap.yml`, `firewall/*.yml`, `main.yml`) | Purpose, Variables, Related commands (+ optional Scope, Tags, or Pipeline) |
+| **Full** | Complex flows only (`tasks/network.yml`) | Lite sections plus Pipeline, Fingerprint, Manual checks |
+
+**Runtime docs:** Ansible task `name:` fields describe each step in playbook
+output—no `# --- section ---` comments between tasks.
+
+| File | Header |
+|------|--------|
+| [`tasks/main.yml`](tasks/main.yml) | Role entrypoint and import order |
+| [`tasks/bootstrap.yml`](tasks/bootstrap.yml) | Packages and `libvirtd` |
+| [`tasks/network.yml`](tasks/network.yml) | Shared libvirt NAT network (full header) |
+| [`tasks/firewall/`](tasks/firewall/) | Backend detect + firewalld / ufw / iptables |
 
 ### Firewall backends (`tasks/firewall/`)
 

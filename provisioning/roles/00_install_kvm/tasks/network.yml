@@ -13,44 +13,34 @@
 #   the guest by role 01_create_vm (network-config on the NoCloud seed ISO;
 #   see provisioning/templates/network-config.j2).
 #
-# Inventory variables (group_vars/all.yml → kvm_network)
-#   name, bridge, gateway, netmask, dhcp_start, dhcp_end, domain (DNS domain
-#   for libvirt internal resolver), subnet_cidr (used by firewall tasks).
+# Variables
+#   kvm_network (name, bridge, gateway, netmask, dhcp_start, dhcp_end, domain,
+#   subnet_cidr for firewall tasks); kvm_network_force_restart (-e / make).
 #
-# Extra variables
-#   kvm_network_force_restart — set true by `make network-refresh` to
-#   net-destroy + net-start even when the fingerprint is unchanged.
+# Pipeline
+#   1. Snapshot active networks (start vs restart baseline).
+#   2. Preserve UUID on net-define; render desired XML; fingerprint compare.
+#   3. net-define when new/changed; autostart; start or destroy+start.
 #
-# Pipeline (high level)
-#   1. Snapshot whether the network is already active (for start vs restart).
-#   2. Preserve existing network UUID when re-defining (libvirt requirement).
-#   3. Render desired XML to /tmp and compute a logical fingerprint.
-#   4. Compare with inactive persistent XML; net-define only if new/changed.
-#   5. autostart + start if down; destroy+start if definition changed or forced.
-#
-# Fingerprint (why shell + grep)
-#   virsh net-define is not idempotent for running dnsmasq: we hash only the
-#   operational knobs (forward, bridge, domain, gateway, DHCP range) so cosmetic
-#   XML differences or UUID lines do not spuriously trigger a restart.
+# Fingerprint
+#   SHA256 of forward, bridge, domain, gateway, and DHCP range only—avoids
+#   spurious dnsmasq restarts when cosmetic XML differs.
 #
 # Related commands
-#   make install-kvm          — apply this file (tag install_kvm)
-#   make network-refresh      — same with kvm_network_force_restart=true
+#   make install-kvm | make network-refresh (kvm_network_force_restart=true)
 #
 # Manual checks
 #   virsh -c qemu:///system net-dumpxml broetec-lab
 #   virsh -c qemu:///system net-info broetec-lab
 # =============================================================================
 
-# --- 1. Runtime state (before any mutation) -----------------------------------
-- name: List active libvirt networks (initial state, before net-define)
+- name: Snapshot active libvirt networks before any net-define (start vs restart baseline)
   ansible.builtin.command: virsh -c qemu:///system net-list --name
   register: libvirt_active_nets_initial
   changed_when: false
   check_mode: false
 
-# --- 2. Stable identity (UUID must survive net-define updates) ----------------
-- name: Look up UUID of network {{ kvm_network.name }} (if already defined)
+- name: Resolve existing UUID for libvirt network {{ kvm_network.name }} (preserve across net-define)
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-info "{{ kvm_network.name }}" 2>/dev/null | awk '/^UUID:/ { print $2 }'
@@ -60,8 +50,7 @@
   changed_when: false
   failed_when: false
 
-# --- 3. Desired network definition (NAT + shared DHCP pool) -------------------
-- name: Render libvirt network XML for {{ kvm_network.name }}
+- name: Render desired NAT network XML for {{ kvm_network.name }} (bridge, gateway, DHCP pool)
   ansible.builtin.copy:
     dest: "/tmp/libvirt-net-{{ kvm_network.name }}.xml"
     mode: "0644"
@@ -81,8 +70,7 @@
         </ip>
       </network>
 
-# --- 4. Change detection (wanted vs persistent inactive XML) ------------------
-- name: Compute desired network XML fingerprint (/tmp target file)
+- name: Fingerprint desired network XML in /tmp (forward, bridge, domain, gateway, range)
   ansible.builtin.shell: |-
     {% raw %}
     set -euo pipefail
@@ -105,7 +93,7 @@
   register: kvm_net_fp_wanted
   changed_when: false
 
-- name: Compute current persistent network XML fingerprint (before net-define)
+- name: Fingerprint persistent inactive XML for {{ kvm_network.name }} via net-dumpxml
   ansible.builtin.shell: |-
     {% raw %}
     set -euo pipefail
@@ -132,7 +120,7 @@
   register: kvm_net_fp_current
   changed_when: false
 
-- name: Determine whether libvirt network runtime must refresh (changed or forced)
+- name: Set kvm_libvirt_net_runtime_needs_refresh from fingerprint diff or force flag
   ansible.builtin.set_fact:
     kvm_libvirt_net_runtime_needs_refresh: >-
       {{
@@ -140,8 +128,7 @@
         or (kvm_network_force_restart | default(false) | bool)
       }}
 
-# --- 5. Apply persistent definition -------------------------------------------
-- name: Define or update libvirt network (persistent; only if logical XML changed or new)
+- name: Run net-define for {{ kvm_network.name }} when absent or logical XML changed
   ansible.builtin.command: >-
     virsh -c qemu:///system net-define
     /tmp/libvirt-net-{{ kvm_network.name }}.xml
@@ -149,16 +136,15 @@
     (kvm_net_fp_current.stdout | trim == "__NETWORK_ABSENT__")
     or (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
 
-- name: Enable libvirt network autostart
+- name: Enable autostart for libvirt network {{ kvm_network.name }}
   ansible.builtin.command: virsh -c qemu:///system net-autostart {{ kvm_network.name }}
   changed_when: false
 
-# --- 6. Bring network up (cold start vs reload running instance) --------------
-- name: Start libvirt network if not already active
+- name: Start libvirt network {{ kvm_network.name }} when not in initial active list
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
   when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
 
-- name: Restart network {{ kvm_network.name }} (only if base XML changed or forced)
+- name: Restart libvirt network {{ kvm_network.name }} after XML change or kvm_network_force_restart
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true

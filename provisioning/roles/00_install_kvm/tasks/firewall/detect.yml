@@ -1,10 +1,21 @@
 ---
-# Detect which firewall backend is active on the KVM host.
-# Priority: firewalld → ufw → iptables (FORWARD policy DROP).
+# =============================================================================
+# tasks/firewall/detect.yml — Select host firewall backend
+# =============================================================================
 #
-# The result of this validation is stored as a host (fact) variable
-# called 'kvm_firewall_backend', making it globally available for
-# subsequent tasks and playbooks to use as a conditional filter.
+# Purpose
+#   Probe the KVM host and set kvm_firewall_backend for downstream tasks.
+#
+# Pipeline
+#   Priority: firewalld (active) → ufw (active + Status active) → iptables
+#   (FORWARD policy DROP) → none.
+#
+# Variables
+#   kvm_firewall_backend (fact set by this file).
+#
+# Related commands
+#   make install-kvm KVM_HOST_FIREWALL=true
+# =============================================================================
 
 - name: Detect whether firewalld is active on the KVM host
   ansible.builtin.command: systemctl is-active firewalld
@@ -18,20 +29,20 @@
   changed_when: false
   failed_when: false
 
-- name: Check ufw runtime status
+- name: Check ufw runtime status when ufw service is active
   ansible.builtin.command: ufw status
   register: kvm_fw_ufw_status
   changed_when: false
   failed_when: false
   when: kvm_fw_ufw_service.stdout | trim == 'active'
 
-- name: Inspect iptables FORWARD chain policy
+- name: Inspect iptables FORWARD chain policy for lab rule dispatch
   ansible.builtin.command: iptables -L FORWARD -n
   register: kvm_fw_forward_chain
   changed_when: false
   failed_when: false
 
-- name: Select firewall backend for lab NAT rules
+- name: Set kvm_firewall_backend from detect probes (firewalld, ufw, iptables, or none)
   ansible.builtin.set_fact:
     kvm_firewall_backend: >-
       {{

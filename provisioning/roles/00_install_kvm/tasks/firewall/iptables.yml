@@ -1,10 +1,21 @@
 ---
-# Raw iptables rules for the KVM lab bridge (e.g. Docker hosts with FORWARD DROP).
-# Imported when detect.yml sets kvm_firewall_backend to 'iptables'.
+# =============================================================================
+# tasks/firewall/iptables.yml — Raw iptables NAT/FORWARD for lab bridge
+# =============================================================================
 #
-# Enables net.ipv4.ip_forward, then inserts FORWARD and NAT POSTROUTING rules so VMs
-# on kvm_network.subnet_cidr can reach external networks and receive return traffic.
-# Idempotent: each rule is checked with iptables -C before insert or append.
+# Purpose
+#   Insert FORWARD and NAT MASQUERADE rules for kvm_network.subnet_cidr when
+#   the host uses iptables with FORWARD DROP (typical Docker setups).
+#
+# Variables
+#   kvm_network.subnet_cidr; kvm_firewall_backend=iptables.
+#
+# Idempotency
+#   Each rule checked with iptables -C before insert or append.
+#
+# Related commands
+#   make install-kvm KVM_HOST_FIREWALL=true
+# =============================================================================
 
 - name: Enable IPv4 forwarding for lab NAT
   ansible.posix.sysctl:
