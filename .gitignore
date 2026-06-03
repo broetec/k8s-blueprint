@@ -169,7 +169,6 @@ out/
 .history
 .ionide
 .run*
-.cursor/
 *.swp
 *.swo
 *~
@@ -186,3 +185,26 @@ ignore
 .DS_Store
 *.DS_Store
 Thumbs.db
+
+# ---- AI assistants / tooling -------------------------------------------------
+# Local agent state, code graphs, and assistant caches (never commit).
+graphify-out/
+.cursor/
+.aider*
+.continue/
+.windsurf/
+.cline/
+.copilot/
+.codeium/
+.claude/
+.opencode/
+.opencloud/
+.hermes/
+.gemini/
+.codex/
+.agents/
+.kiro/
+.roo/
+.factory/
+.amazonq/
+.tabnine/

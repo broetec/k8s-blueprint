@@ -1,4 +1,11 @@
-# Firewalld (Fedora/RHEL) — NAT and forward for lab VMs
+---
+# Firewalld rules for the KVM lab bridge (Fedora/RHEL hosts).
+# Imported when detect.yml sets kvm_firewall_backend to 'firewalld'.
+#
+# Moves the libvirt bridge into the libvirt-routed zone with masquerade enabled,
+# then adds permanent direct (iptables) FORWARD and NAT POSTROUTING rules so VMs
+# on kvm_network.subnet_cidr can reach external networks and receive return traffic.
+# Idempotent: direct rules are checked before insert; firewalld is reloaded at the end.
 
 - name: Remove lab bridge from libvirt zone (avoid conflict with libvirt-routed)
   ansible.posix.firewalld:

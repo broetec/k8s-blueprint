@@ -1,5 +1,9 @@
 ---
-# Auto-detect active firewall backend and apply lab NAT/FORWARD rules.
+# Host firewall entry point for KVM lab VM connectivity.
+# Runs detect.yml to set kvm_firewall_backend, then imports exactly one backend
+# task file (firewalld, ufw, or raw iptables) to apply NAT/FORWARD for
+# kvm_network.subnet_cidr. If no supported backend is active, logs a debug
+# message and skips host rules (common on misconfigured or Docker-only hosts).
 
 - name: Detect active firewall backend on the KVM host
   ansible.builtin.import_tasks: detect.yml

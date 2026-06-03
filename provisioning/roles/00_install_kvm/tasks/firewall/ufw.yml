@@ -1,4 +1,10 @@
-# UFW (Debian/Ubuntu) — NAT and forward for lab VMs
+---
+# UFW rules for the KVM lab bridge (Debian/Ubuntu hosts).
+# Imported when detect.yml sets kvm_firewall_backend to 'ufw'.
+#
+# Enables IP forwarding, sets DEFAULT_FORWARD_POLICY=ACCEPT, and injects NAT/FORWARD
+# blocks into /etc/ufw/before.rules so VMs on kvm_network.subnet_cidr can egress
+# and accept established return traffic. Reloads ufw only when configuration changes.
 
 - name: Enable IPv4 forwarding for lab NAT
   ansible.posix.sysctl:

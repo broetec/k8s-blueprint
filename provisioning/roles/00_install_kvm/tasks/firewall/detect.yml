@@ -1,6 +1,10 @@
 ---
 # Detect which firewall backend is active on the KVM host.
 # Priority: firewalld → ufw → iptables (FORWARD policy DROP).
+#
+# The result of this validation is stored as a host (fact) variable
+# called 'kvm_firewall_backend', making it globally available for
+# subsequent tasks and playbooks to use as a conditional filter.
 
 - name: Detect whether firewalld is active on the KVM host
   ansible.builtin.command: systemctl is-active firewalld
