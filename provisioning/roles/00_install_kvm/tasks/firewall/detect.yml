@@ -14,7 +14,7 @@
 #   kvm_firewall_backend (fact set by this file).
 #
 # Related commands
-#   make install-kvm KVM_HOST_FIREWALL=true
+#   make setup-host KVM_HOST_FIREWALL=true
 # =============================================================================
 
 - name: Detect whether firewalld is active on the KVM host

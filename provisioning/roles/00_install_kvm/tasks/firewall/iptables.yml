@@ -14,7 +14,7 @@
 #   Each rule checked with iptables -C before insert or append.
 #
 # Related commands
-#   make install-kvm KVM_HOST_FIREWALL=true
+#   make setup-host KVM_HOST_FIREWALL=true
 # =============================================================================
 
 - name: Enable IPv4 forwarding for lab NAT

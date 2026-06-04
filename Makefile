@@ -5,7 +5,7 @@
 #
 # Uso rápido:
 #   make setup-host   1ª vez (controlador + host KVM)
-#   make up           broetec-core: VM + SO + k8s (00–04, sem install-kvm)
+#   make up           broetec-core: VM + SO + k8s (01–04; role 00 só em setup-host)
 #   make up-all       todas as VMs do manifest.yml
 #   make deploy       só k8s (03 + 04) no overlay activo
 #
@@ -23,27 +23,26 @@ R := \033[31m
 N := \033[0m
 
 .DEFAULT_GOAL := help
-.PHONY: help sync venv deps keys inventory inventory-overlay network-refresh \
-	setup setup-host install-kvm create-vm prepare-vm install-rke2 deploy-k8s \
+.PHONY: help sync venv deps keys inventory inventory-overlay \
+	setup setup-host create-vm prepare-vm install-rke2 deploy-k8s \
 	deploy up up-all up-lab
 
 help: ## Lista targets e config actual
 	@printf "$(B)Setup (1ª vez):$(N)\n"
 	@printf "  $(G)setup$(N)          uv sync + deps + chaves\n"
-	@printf "  $(G)setup-host$(N)     setup + install-kvm (bootstrap via env/.env)\n"
+	@printf "  $(G)setup-host$(N)     setup + role 00 host KVM (bootstrap via env/.env)\n"
 	@printf "\n$(B)Lab (cotidiano):$(N)\n"
 	@printf "  $(G)up$(N)              create-vm + prepare-vm + deploy (OVERLAY=$(OVERLAY))\n"
 	@printf "  $(G)up-all$(N)          todos os overlays ($(LAB_OVERLAYS))\n"
 	@printf "  $(G)deploy$(N)          install-rke2 + deploy-k8s\n"
-	@printf "\n$(B)Etapas (00–04):$(N)\n"
-	@printf "  $(G)install-kvm$(N)    00 — re-aplicar host KVM (sem setup)\n"
+	@printf "\n$(B)Etapas (01–04):$(N)\n"
 	@printf "  $(G)create-vm$(N)      01 — libvirt + qcow2\n"
 	@printf "  $(G)prepare-vm$(N)     02 — SO na VM\n"
 	@printf "  $(G)install-rke2$(N)   03 — RKE2 (stub)\n"
 	@printf "  $(G)deploy-k8s$(N)     04 — manifests (stub)\n"
 	@printf "\n$(B)Operações:$(N)\n"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / { \
-		if ($$1 !~ /^(setup|setup-host|install-kvm|create-vm|prepare-vm|install-rke2|deploy-k8s|deploy|up|up-all)$$/) \
+		if ($$1 !~ /^(setup|setup-host|create-vm|prepare-vm|install-rke2|deploy-k8s|deploy|up|up-all)$$/) \
 		  printf "  $(G)%-18s$(N) %s\n", $$1, $$2 \
 	}' $(MAKEFILE_LIST)
 	@printf "\n$(B)Config:$(N) OVERLAY=$(OVERLAY)  VM=$(VM_NAME)@$(VM_IP)  KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP)\n"
@@ -90,17 +89,9 @@ inventory-overlay: sync ## Gera hosts.ini só do OVERLAY activo
 
 setup: sync deps keys ## Controlador: .venv, Galaxy, chave SSH
 
-setup-host: setup ## 1ª vez: controlador + host KVM (00)
-	@printf "$(B)==> setup-host: install-kvm (KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
-	@$(SUBMAKE) -f $(CURDIR)/Makefile install-kvm OVERLAY=$(OVERLAY)
-
-install-kvm: inventory-overlay deps ## 00 — re-aplicar host KVM (rede, firewall opt-in, bootstrap)
-	@printf "$(Y)==> [00] install-kvm (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
-	$(call run-playbook,$(INSTALL_KVM_TAGS),$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),$(INSTALL_KVM_EXTRA) $(EXTRA))
-
-network-refresh: inventory-overlay deps ## Reaplica rede libvirt NAT (gateway/pool)
-	@printf "$(Y)==> network-refresh $(KVM_NETWORK)$(N)\n"
-	$(call run-playbook,install_kvm,$(SUDO_FLAGS) $(INSTALL_KVM_ANSIBLE_FLAGS),-e kvm_network_force_restart=true --limit kvm_hosts)
+setup-host: setup inventory-overlay deps ## 1ª vez: controlador + host KVM (role 00)
+	@printf "$(B)==> [00] setup-host (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
+	$(call run-playbook,$(SETUP_HOST_TAGS),$(SUDO_FLAGS) $(SETUP_HOST_ANSIBLE_FLAGS),$(SETUP_HOST_EXTRA) $(EXTRA))
 
 create-vm: inventory-overlay deps keys ## 01 — qcow2, cloud-init, virt-install
 	@printf "$(Y)==> [01] create-vm (OVERLAY=$(OVERLAY))$(N)\n"

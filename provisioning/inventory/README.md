@@ -74,15 +74,11 @@ Confirme o MAC: `virsh dumpxml broetec-core | grep "mac address"` deve coincidir
 ## Sem internet na VM (IP correcto, ping 8.8.8.8 falha)
 
 Em hosts com **Docker** e firewall activo, a cadeia `FORWARD` pode bloquear tráfego
-`vnet* → wlan0`. Defina `KVM_HOST_FIREWALL=true` em `env/.env` e corra `make install-kvm`
+`vnet* → wlan0`. Defina `KVM_HOST_FIREWALL=true` em `env/.env` e corra `make setup-host`
 (a role `00_install_kvm` detecta firewalld, ufw ou iptables e aplica regras NAT).
 
-Correcção manual (uma vez):
-
-```bash
-make network-refresh OVERLAY=broetec-core
-# ou repita make up OVERLAY=broetec-core
-```
+Se a rede libvirt já existir mas a VM ainda não tiver internet, confirme o IP na VM
+e repita `make up OVERLAY=broetec-core` após corrigir o host.
 
 Teste na VM: `ping -c 2 8.8.8.8` e `curl -I http://example.com`.
 

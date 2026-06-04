@@ -15,7 +15,7 @@
 #
 # Variables
 #   kvm_network (name, bridge, gateway, netmask, dhcp_start, dhcp_end, domain,
-#   subnet_cidr for firewall tasks); kvm_network_force_restart (-e / make).
+#   subnet_cidr for firewall tasks).
 #
 # Pipeline
 #   1. Snapshot active networks (start vs restart baseline).
@@ -27,7 +27,7 @@
 #   spurious dnsmasq restarts when cosmetic XML differs.
 #
 # Related commands
-#   make install-kvm | make network-refresh (kvm_network_force_restart=true)
+#   make setup-host
 #
 # Manual checks
 #   virsh -c qemu:///system net-dumpxml broetec-lab
@@ -120,13 +120,10 @@
   register: kvm_net_fp_current
   changed_when: false
 
-- name: Set kvm_libvirt_net_runtime_needs_refresh from fingerprint diff or force flag
+- name: Set kvm_libvirt_net_runtime_needs_refresh from fingerprint diff
   ansible.builtin.set_fact:
     kvm_libvirt_net_runtime_needs_refresh: >-
-      {{
-        (kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim)
-        or (kvm_network_force_restart | default(false) | bool)
-      }}
+      {{ kvm_net_fp_wanted.stdout | trim != kvm_net_fp_current.stdout | trim }}
 
 - name: Run net-define for {{ kvm_network.name }} when absent or logical XML changed
   ansible.builtin.command: >-
@@ -144,7 +141,7 @@
   ansible.builtin.command: virsh -c qemu:///system net-start {{ kvm_network.name }}
   when: kvm_network.name not in libvirt_active_nets_initial.stdout_lines
 
-- name: Restart libvirt network {{ kvm_network.name }} after XML change or kvm_network_force_restart
+- name: Restart libvirt network {{ kvm_network.name }} after logical XML change
   ansible.builtin.shell: |
     set -euo pipefail
     virsh -c qemu:///system net-destroy "{{ kvm_network.name }}" 2>/dev/null || true

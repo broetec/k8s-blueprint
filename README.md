@@ -33,7 +33,7 @@ Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` pa
 
 | Etapa | Role | Target Make |
 |-------|------|-------------|
-| 00 | `00_install_kvm` | `make setup-host` (1ª vez) / `make install-kvm` (re-aplicar) |
+| 00 | `00_install_kvm` | `make setup-host` (uma vez) |
 | 01 | `01_create_vm` | `make create-vm` |
 | 02 | `02_prepare_vm` | `make prepare-vm` |
 | 03 | `03_install_rke2` | `make install-rke2` (stub) |

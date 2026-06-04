@@ -177,8 +177,6 @@ sequenceDiagram
 | `up` | 01 + 02 + 03 + 04 (default `OVERLAY=broetec-core`) |
 | `up-all` | loop `up` nos 3 overlays |
 | `deploy` | 03 + 04 |
-| `install-kvm` | 00 (re-aplicar host, sem `setup`) |
-
 ### Ordem das roles
 
 1. **00_install_kvm** — host (`kvm_hosts`): pacotes KVM, rede, firewall (opt-in)
@@ -198,7 +196,7 @@ sequenceDiagram
 | Variáveis Ansible partilhadas | `provisioning/inventory/_shared/group_vars/` |
 | Caminho dos discos | `env/.env` (`LAB_PATH`) ou `group_vars/all.yml` |
 | Pular instalação de pacotes no host | `env/.env` → `KVM_HOST_BOOTSTRAP=false` (ou `make setup-host KVM_HOST_BOOTSTRAP=false`) |
-| Regras NAT/FORWARD no host (Docker + firewall) | `env/.env` → `KVM_HOST_FIREWALL=true` (ou `make install-kvm KVM_HOST_FIREWALL=true`) |
+| Regras NAT/FORWARD no host (Docker + firewall) | `env/.env` → `KVM_HOST_FIREWALL=true` (ou `make setup-host KVM_HOST_FIREWALL=true`) |
 
 ---
 

@@ -16,7 +16,7 @@
 #   kvm_host_bootstrap, kvm_host_firewall (defaults/main.yml; Make: KVM_HOST_*).
 #
 # Related commands
-#   make setup-host | make install-kvm | make network-refresh
+#   make setup-host
 # =============================================================================
 
 - name: Bootstrap KVM host — install packages and libvirtd (tag bootstrap)

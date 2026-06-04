@@ -2,7 +2,7 @@
 # Ansible role metadata (not executed as tasks).
 #
 # galaxy_info  — catalog fields for Ansible Galaxy / tooling (author, tags, min version).
-#                Does not change make install-kvm or site.yml; documents the role.
+#                Does not change make setup-host or site.yml; documents the role.
 # dependencies — other roles Ansible runs before this one when listed (empty here).
 #                Galaxy collections (ansible.posix, etc.) belong in
 #                provisioning/collections/requirements.yml, not here.

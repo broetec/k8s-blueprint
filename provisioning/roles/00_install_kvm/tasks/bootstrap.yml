@@ -13,7 +13,7 @@
 #   kvm_host_bootstrap (default true) — when false, all tasks are skipped.
 #
 # Related commands
-#   make install-kvm KVM_HOST_BOOTSTRAP=false | --skip-tags bootstrap
+#   make setup-host KVM_HOST_BOOTSTRAP=false | --skip-tags bootstrap
 # =============================================================================
 
 - name: Install KVM/libvirt packages on the host

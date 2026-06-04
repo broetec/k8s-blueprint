@@ -15,7 +15,7 @@
 #   kvm_host_firewall, kvm_network.subnet_cidr, kvm_network.bridge.
 #
 # Related commands
-#   make install-kvm KVM_HOST_FIREWALL=true
+#   make setup-host KVM_HOST_FIREWALL=true
 # =============================================================================
 
 - name: Detect active firewall backend on the KVM host

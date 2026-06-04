@@ -1,165 +1,202 @@
 # `00_install_kvm` — prepare the KVM/libvirt host
 
 Ansible role **00** in the k8s-blueprint lab pipeline. It prepares the physical
-(or local) **KVM host** before [`01_create_vm`](../01_create_vm/) creates VMs.
+(or local) **KVM host** so [`01_create_vm`](../01_create_vm/) can provision VMs on a
+shared libvirt NAT network.
 
-This role is **not** part of `make up` (daily flow). Run it once via
-`make setup-host` (first time) or re-apply with `make install-kvm`.
+Run **once** with `make setup-host`. It is **not** part of `make up` (daily flow).
 
-## Purpose
+## Position in the pipeline
 
-Ensure the controller machine can run libvirt VMs with:
+`make setup-host` prepares the **controller** (Python/Ansible tooling on this machine) and
+the **KVM host** (libvirt network and optional packages/firewall). `make up` assumes that
+work is already done and only runs roles **01–04**.
 
-1. Required packages and `libvirtd` (optional bootstrap)
-2. A shared NAT libvirt network (lab VMs get static IPs via cloud-init on the seed ISO)
-3. Optional host firewall rules so lab VMs can reach the internet (opt-in)
+```mermaid
+flowchart TB
+  sh["make setup-host"]
 
-## What it does
+  subgraph ctrl ["Controller · local machine"]
+    direction TB
+    sync["sync · uv .venv + Ansible"]
+    deps["deps · Galaxy + virsh"]
+    keys["keys · SSH in env/"]
+    inv["inventory-overlay · hosts.ini"]
+    sync --> deps --> keys --> inv
+  end
 
-| Step | File | Description |
-|------|------|-------------|
-| Bootstrap | `tasks/bootstrap.yml` | Installs `qemu-kvm`, `libvirt`, `virt-install`, ISO tools; enables `libvirtd` |
-| Network | `tasks/network.yml` | Defines/updates libvirt NAT network (bridge, gateway, optional DHCP pool); restarts when base XML changes |
-| Firewall | `tasks/firewall/` | NAT/forward for the lab subnet when `kvm_host_firewall=true` (auto-detects backend) |
+  pb["ansible-playbook · role 00 · sudo"]
 
-```text
-bootstrap.yml  →  network.yml  →  firewall/ (opt-in)
-     (optional)        (always)      (KVM_HOST_FIREWALL=true)
+  subgraph host ["Host · kvm_hosts"]
+    direction TB
+    boot["bootstrap? · pacotes + libvirtd"]
+    net["network · broetec-lab NAT"]
+    fw["firewall? · NAT/FORWARD"]
+    boot --> net --> fw
+  end
+
+  subgraph daily ["Daily flow"]
+    direction TB
+    up["make up"]
+    steps["01 create-vm → 02–04"]
+    up --> steps
+  end
+
+  sh --> sync
+  inv --> pb --> boot
+  fw -.->|"once, before first make up"| up
 ```
 
-## Task file documentation
+`?` = skipped when the matching `KVM_HOST_*` flag in `env/.env` is `false` (see [Role steps](#role-steps-and-configuration)).
 
-Each file under `tasks/` starts with a short **header block** (comment banner) so
-you can read the role without opening this README first. Deeper architecture and
-troubleshooting will live in Sphinx later; YAML stays operational.
 
-| Style | When | Typical sections |
-|-------|------|------------------|
-| **Lite** | Most task files (`bootstrap.yml`, `firewall/*.yml`, `main.yml`) | Purpose, Variables, Related commands (+ optional Scope, Tags, or Pipeline) |
-| **Full** | Complex flows only (`tasks/network.yml`) | Lite sections plus Pipeline, Fingerprint, Manual checks |
+| Make target | What it runs |
+|-------------|--------------|
+| `make setup-host` | Controller chain above + role **00** (`KVM_HOST_*` in `env/.env`) |
+| `make up` | Roles **01–04** on the active overlay (no role 00) |
 
-**Runtime docs:** Ansible task `name:` fields describe each step in playbook
-output—no `# --- section ---` comments between tasks.
+## Quick start
 
-| File | Header |
-|------|--------|
-| [`tasks/main.yml`](tasks/main.yml) | Role entrypoint and import order |
-| [`tasks/bootstrap.yml`](tasks/bootstrap.yml) | Packages and `libvirtd` |
-| [`tasks/network.yml`](tasks/network.yml) | Shared libvirt NAT network (full header) |
-| [`tasks/firewall/`](tasks/firewall/) | Backend detect + firewalld / ufw / iptables |
+```bash
+cp env/.env.example env/.env
+# Optional: KVM_HOST_BOOTSTRAP=false on immutable OS; KVM_HOST_FIREWALL=true if Docker + host firewall
+make setup-host
+make up
+```
 
-### Firewall backends (`tasks/firewall/`)
+## Role steps and configuration
 
-When `kvm_host_firewall=true`, the role detects the active backend (first match wins):
+Copy [`env/.env.example`](../../../env/.env.example) to `env/.env`. The Makefile passes
+`KVM_HOST_BOOTSTRAP` and `KVM_HOST_FIREWALL` into the playbook via
+[`make/ansible.mk`](../../../make/ansible.mk) (tags, `--skip-tags`, and `-e` extra-vars).
+Command-line overrides work the same: `make setup-host KVM_HOST_FIREWALL=true`.
+
+| Step | Tasks | What it does on the KVM host | Control (`env/.env`) |
+|------|-------|------------------------------|----------------------|
+| **Bootstrap** | [`bootstrap.yml`](tasks/bootstrap.yml) | Installs `qemu-kvm`, libvirt, `virt-install`, and ISO tools (`genisoimage` / `xorriso`); enables and starts `libvirtd`. Required before `virt-install` on a fresh Fedora/RHEL host. | `KVM_HOST_BOOTSTRAP=true` (default): tags `install_kvm,bootstrap`. `false`: skips bootstrap (`--skip-tags bootstrap`, `kvm_host_bootstrap=false`) — use on immutable OS or when KVM is already installed. |
+| **Network** | [`network.yml`](tasks/network.yml) | Creates or updates the shared NAT libvirt network (`broetec-lab`): bridge, gateway, single DHCP pool. Compares a SHA256 fingerprint before `net-define`; restarts only if logical XML changed. | Always runs (tag `install_kvm`). Not gated by `KVM_HOST_*`. |
+| **Firewall** | [`firewall/`](tasks/firewall/) | Detects firewalld, ufw, or iptables (FORWARD DROP) and adds NAT/MASQUERADE plus FORWARD rules so traffic from lab `vnet*` interfaces can reach the internet through the host. | `KVM_HOST_FIREWALL=false` (default): entire block skipped. `true`: `-e kvm_host_firewall=true`; see [Host firewall](#host-firewall). |
+
+Task YAML files include short header comments; see [`tasks/network.yml`](tasks/network.yml)
+for fingerprint details.
+
+Prefer `KVM_HOST_*` in `env/.env` over inventory overrides for bootstrap and firewall.
+
+### `kvm_network` (inventory)
+
+Defined in [`provisioning/inventory/_shared/group_vars/all.yml`](../../inventory/_shared/group_vars/all.yml),
+not in this role:
+
+| Field | Default | Role |
+|-------|---------|------|
+| `name` | `broetec-lab` | Shared libvirt network for all overlays |
+| `bridge` | `virbr-broetec` | Host bridge |
+| `gateway` | `10.20.30.1` | NAT gateway |
+| `dhcp_start` / `dhcp_end` | `10.20.30.100`–`200` | Single DHCP pool on the virtual network |
+| `subnet_cidr` | `10.20.30.0/24` | Lab subnet (firewall tasks) |
+| `domain` | `{{ base_domain }}` | libvirt DNS domain |
+
+## Libvirt network model
+
+- One **persistent NAT network** (`broetec-lab`) shared by every overlay VM.
+- Libvirt exposes a **single DHCP range** (`dhcp_start` … `dhcp_end`) on that network.
+- **VM addresses are static inside the guest**: role `01_create_vm` writes `network-config`
+  on the NoCloud seed ISO ([`provisioning/templates/network-config.j2`](../../templates/network-config.j2));
+  lab VMs do not rely on libvirt DHCP for their final IP.
+
+The subnet `10.20.30.0/24` is chosen to avoid collision with typical home routers
+(`192.168.0.x` / `192.168.1.x`).
+
+## Host firewall
+
+Enable when the host runs an active firewall (often **Docker + firewalld/ufw**) and
+lab VMs have the correct IP but **no internet** (`ping 8.8.8.8` fails). Set
+`KVM_HOST_FIREWALL=true` in `env/.env` and run `make setup-host`.
+
+When `kvm_host_firewall=true`, the role detects the backend (first match wins):
 
 | Backend | When | Rules |
 |---------|------|-------|
 | firewalld | `systemctl is-active firewalld` == active | Zone `libvirt-routed`, masquerade, direct FORWARD + NAT |
 | ufw | ufw service active and `ufw status` shows active | `before.rules` NAT/FORWARD block, `DEFAULT_FORWARD_POLICY=ACCEPT` |
-| iptables | FORWARD chain policy is DROP | FORWARD accept + NAT MASQUERADE via `iptables` |
+| iptables | FORWARD chain policy is DROP | FORWARD accept + NAT MASQUERADE |
 | none | No match | Debug message; no host changes |
 
-Default is **off** (`KVM_HOST_FIREWALL=false` in `env/.env`). Most users without an
-active host firewall are unaffected.
-
-## Requirements
-
-- Target host in inventory group **`kvm_hosts`** (typically `localhost` with `ansible_connection=local`)
-- **`become: true`** (sudo) on the host
-- Collection **`ansible.posix`** (firewalld, sysctl modules)
-- After bootstrap: `virsh`, `virt-install` on `PATH`
-
-## Tags
-
-| Tag | Runs |
-|-----|------|
-| `install_kvm` | Network + firewall blocks (imported from `main.yml`) |
-| `bootstrap`, `install` | Package install + `libvirtd` service |
-
-By default, **`KVM_HOST_BOOTSTRAP=true`** in `env/.env` runs bootstrap together
-with the libvirt network. Firewall rules are **not** applied unless
-**`KVM_HOST_FIREWALL=true`**.
-
-Disable package install (immutable OS or pre-configured host):
-
-```bash
-# env/.env
-KVM_HOST_BOOTSTRAP=false
-```
-
-Enable host firewall rules (Docker + active firewall on the host):
-
-```bash
-# env/.env
-KVM_HOST_FIREWALL=true
-```
-
-Or on the command line:
-
-```bash
-make setup-host KVM_HOST_BOOTSTRAP=false
-make install-kvm KVM_HOST_FIREWALL=true
-```
-
-## Role variables
-
-### Defaults (`defaults/main.yml`)
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `kvm_host_bootstrap` | `true` | Install KVM packages and enable `libvirtd` when bootstrap tag runs |
-| `kvm_host_firewall` | `false` | Apply NAT/forward rules on the host (auto-detect firewalld, ufw, iptables) |
-
-### From inventory (`group_vars/all.yml`)
-
-These are **not** defined in the role; set them in shared inventory (see
-`provisioning/inventory/_shared/group_vars/all.yml`):
-
-| Variable | Purpose |
-|----------|---------|
-| `kvm_network` | Network name, bridge, gateway, DHCP pool range, domain |
-| `kvm_network_force_restart` | Force libvirt network restart (used by `make network-refresh`) |
-
-Via Make, prefer `KVM_HOST_FIREWALL=true` in `env/.env` over inventory overrides.
-
-## Outputs
-
-| Fact | Set by | Used by |
-|------|--------|---------|
-| `kvm_libvirt_net_runtime_needs_refresh` | `network.yml` | Internal; triggers net restart when base XML changes |
-| `kvm_firewall_backend` | `firewall/detect.yml` | Internal; selects firewalld, ufw, iptables, or none |
-
-**Note:** `kvm_vm_mac_by_host` is set by [`01_create_vm`](../01_create_vm/) for
-`virt-install` and `network-config` (not by this role).
-
-## Make targets
-
-| Command | Effect |
-|---------|--------|
-| `make setup-host` | `make setup` + role 00 (first-time controller + host; bootstrap from `env/.env`) |
-| `make install-kvm` | Role 00 only (re-apply network/firewall/bootstrap without re-running `setup`) |
-| `make network-refresh` | Reapply libvirt network with `kvm_network_force_restart=true` |
+Most hosts without an active firewall can leave `KVM_HOST_FIREWALL=false`.
 
 ## Immutable OS (Bazzite, Silverblue, Kinoite)
 
 Do **not** install RPMs via Ansible on immutable hosts:
 
-- Set `KVM_HOST_BOOTSTRAP=false` in `env/.env` (or `kvm_host_bootstrap: false` in inventory)
-- Install equivalent packages with `rpm-ostree` / distro docs manually
-- Then run `make setup-host` or `make install-kvm` for network (and firewall if needed)
+1. Set `KVM_HOST_BOOTSTRAP=false` in `env/.env`.
+2. Install `qemu-kvm`, `libvirt`, `virt-install`, and ISO tools with `rpm-ostree` / distro docs.
+3. Ensure `libvirtd` is running, then run `make setup-host` (network and optional firewall).
 
 ## Idempotency
 
-- **Network:** Compares a SHA256 fingerprint of logical XML (forward, bridge, gateway, DHCP pool) before `net-define`
-- **Firewall:** Skipped when `kvm_host_firewall=false`; when on, backend-specific checks (`-C`, `blockinfile` markers) avoid duplicate rules
-- **Bootstrap:** `package` and `service` modules are idempotent
+- **Bootstrap:** `package` and `service` modules report `ok` when already installed.
+- **Network:** SHA256 fingerprint of logical XML (forward, bridge, domain, gateway, DHCP
+  range) before `net-define`. Re-running `setup-host` does **not** restart the network
+  unless that fingerprint changes.
+- **Firewall:** Skipped when `kvm_host_firewall=false`; when on, backend checks (`-C`,
+  `blockinfile` markers) avoid duplicate rules.
 
-## Example playbook
+## Verification and troubleshooting
+
+```bash
+make setup-host
+
+virsh -c qemu:///system net-list --all
+virsh -c qemu:///system net-info broetec-lab
+virsh -c qemu:///system net-dumpxml broetec-lab
+systemctl is-active libvirtd
+```
+
+| Symptom | What to try |
+|---------|----------------|
+| `net-info broetec-lab` missing | Re-run `make setup-host`; check Ansible output for `net-define` / `net-start` |
+| VM has correct IP, no outbound internet | `KVM_HOST_FIREWALL=true` + `make setup-host`; see [inventory README — no internet in VM](../../inventory/README.md) |
+| `dnf` / RPM install fails on immutable OS | `KVM_HOST_BOOTSTRAP=false` and install packages manually |
+| Missing `virsh` / `virt-install` after skipping bootstrap | Install host packages before `make up` |
+
+## Requirements
+
+- Inventory group **`kvm_hosts`** (typically `localhost`, `ansible_connection=local`)
+- **`become: true`** (sudo)
+- Collection **`ansible.posix`** (firewalld, sysctl)
+- After bootstrap: `virsh`, `virt-install` on `PATH`
+
+## Advanced reference
+
+### Tags
+
+| Tag | Runs |
+|-----|------|
+| `install_kvm` | `network.yml`, `firewall/` (when enabled) |
+| `bootstrap`, `install` | `bootstrap.yml` (packages + `libvirtd`) |
+
+### Role variables (`defaults/main.yml`)
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `kvm_host_bootstrap` | `true` | Run bootstrap tasks |
+| `kvm_host_firewall` | `false` | Run host firewall tasks |
+
+### Facts (internal)
+
+| Fact | Set by | Used by |
+|------|--------|---------|
+| `kvm_libvirt_net_runtime_needs_refresh` | `network.yml` | Restart when logical XML changes |
+| `kvm_firewall_backend` | `firewall/detect.yml` | Select firewalld, ufw, iptables, or none |
+
+Per-VM MACs and `kvm_vm_mac_by_host` are set by **01_create_vm**, not this role.
+
+### Manual playbook run
 
 From [`provisioning/site.yml`](../../site.yml):
 
 ```yaml
-- name: "[1/5] Prepare KVM/libvirt host"
+- name: "[1/5] Preparar host KVM/libvirt"
   hosts: kvm_hosts
   become: true
   gather_facts: true
@@ -169,8 +206,6 @@ From [`provisioning/site.yml`](../../site.yml):
     - role: 00_install_kvm
 ```
 
-Manual run:
-
 ```bash
 uv run ansible-playbook \
   -i provisioning/inventory/broetec-core/hosts.ini \
@@ -179,20 +214,3 @@ uv run ansible-playbook \
   --limit kvm_hosts \
   -e kvm_host_firewall=true
 ```
-
-## Manual verification
-
-```bash
-make setup-host                              # first time (bootstrap on by default)
-make install-kvm                             # re-apply role 00 (network only)
-make install-kvm KVM_HOST_FIREWALL=true      # network + host firewall rules
-make install-kvm KVM_HOST_BOOTSTRAP=false    # skip package install
-make network-refresh
-
-virsh -c qemu:///system net-list --all
-virsh -c qemu:///system net-dumpxml broetec-lab
-```
-
-## License
-
-MIT (see repository)

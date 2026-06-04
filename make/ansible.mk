@@ -2,13 +2,13 @@
 # make/ansible.mk — ansible-playbook macro (single-line recipe)
 # =============================================================================
 
-# install-kvm only: whether role 00 runs host bootstrap (KVM packages + libvirtd).
+# setup-host (role 00): whether host bootstrap runs (KVM packages + libvirtd).
 # Controlled by KVM_HOST_BOOTSTRAP in env/.env or on the make command line.
-# When off, install-kvm still applies network (and firewall if KVM_HOST_FIREWALL=true).
-_install_kvm_tags_bootstrap := install_kvm,bootstrap
-INSTALL_KVM_TAGS := $(if $(KVM_HOST_BOOTSTRAP_ON),$(_install_kvm_tags_bootstrap),install_kvm)
-INSTALL_KVM_ANSIBLE_FLAGS := $(if $(KVM_HOST_BOOTSTRAP_ON),,--skip-tags bootstrap)
-INSTALL_KVM_EXTRA := \
+# When off, setup-host still applies network (and firewall if KVM_HOST_FIREWALL=true).
+_setup_host_tags_bootstrap := install_kvm,bootstrap
+SETUP_HOST_TAGS := $(if $(KVM_HOST_BOOTSTRAP_ON),$(_setup_host_tags_bootstrap),install_kvm)
+SETUP_HOST_ANSIBLE_FLAGS := $(if $(KVM_HOST_BOOTSTRAP_ON),,--skip-tags bootstrap)
+SETUP_HOST_EXTRA := \
   $(if $(KVM_HOST_BOOTSTRAP_ON),,-e kvm_host_bootstrap=false) \
   $(if $(KVM_HOST_FIREWALL_ON),-e kvm_host_firewall=true,-e kvm_host_firewall=false)
 
