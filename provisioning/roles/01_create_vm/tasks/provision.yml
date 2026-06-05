@@ -1,0 +1,172 @@
+---
+# =============================================================================
+# tasks/provision.yml — Clone disks, cloud-init, virt-install
+# =============================================================================
+#
+# Purpose
+#   Create new VMs from inventory: skip existing domains, clone qcow2, seed ISO,
+#   virt-install with inventory vm_mac, verify NIC MAC matches network-config.
+#
+# Variables
+#   groups['vms'], hostvars (vm_ip, vm_mac, vm_* overrides), vm_defaults,
+#   kvm_network, libvirt_pool, os_image, base_domain.
+#
+# Pipeline
+#   1. virsh dominfo → vms_to_create
+#   2. clone + resize disk
+#   3. render cloud-init templates → seed ISO
+#   4. virt-install --import
+#   5. assert MAC in dumpxml matches hostvars vm_mac
+#
+# Related commands
+#   make create-vm, make up
+# =============================================================================
+
+- name: Check which VMs already exist in libvirt
+  ansible.builtin.command: "virsh -c qemu:///system dominfo {{ item }}"
+  register: virsh_dominfo
+  loop: "{{ groups['vms'] }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Compute set of VMs still to create
+  ansible.builtin.set_fact:
+    vms_to_create: >-
+      {{ groups['vms']
+         | difference(
+             virsh_dominfo.results
+             | selectattr('rc', 'equalto', 0)
+             | map(attribute='item')
+             | list
+           )
+      }}
+
+- name: Clone base image to each new VM disk
+  ansible.builtin.copy:
+    src: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
+    dest: "{{ libvirt_pool.path }}/{{ item }}.qcow2"
+    remote_src: true
+    force: false
+    mode: "0644"
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Resize each new VM disk
+  ansible.builtin.command: >-
+    qemu-img resize
+    {{ libvirt_pool.path }}/{{ item }}.qcow2
+    {{ hostvars[item].vm_disk_size_gb | default(vm_defaults.disk_size_gb) }}G
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: true
+
+- name: Create temporary directory for cloud-init artifacts
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: "ci-{{ item }}"
+  loop: "{{ vms_to_create }}"
+  register: ci_tmpdirs
+  loop_control:
+    label: "{{ item }}"
+
+- name: Render user-data per VM (cloud-init)
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/cloud-init.j2"
+    dest: "{{ item.path }}/user-data"
+    mode: "0644"
+  vars:
+    vm_hostname: "{{ item.item }}"
+    vm_ip: "{{ hostvars[item.item].vm_ip }}"
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Render network-config per VM (static IP in guest)
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/network-config.j2"
+    dest: "{{ item.path }}/network-config"
+    mode: "0644"
+  vars:
+    vm_hostname: "{{ item.item }}"
+    vm_ip: "{{ hostvars[item.item].vm_ip }}"
+    vm_mac: "{{ hostvars[item.item].vm_mac }}"
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Generate meta-data per VM
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/meta-data"
+    mode: "0644"
+    content: |
+      instance-id: {{ item.item }}-{{ ansible_facts['date_time']['epoch'] }}
+      local-hostname: {{ item.item }}.{{ base_domain }}
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Build cloud-init seed ISO per VM
+  ansible.builtin.shell: |
+    set -euo pipefail
+    out="{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
+    u="{{ item.path }}/user-data"
+    m="{{ item.path }}/meta-data"
+    n="{{ item.path }}/network-config"
+    if command -v genisoimage >/dev/null 2>&1; then
+      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m" "$n"
+    elif command -v xorriso >/dev/null 2>&1; then
+      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m" "$n"
+    else
+      echo "Missing genisoimage or xorriso on PATH (install one or run role 00 bootstrap)." >&2
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ ci_tmpdirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Define and start each VM via virt-install
+  ansible.builtin.command: >-
+    virt-install
+    --connect qemu:///system
+    --name {{ item }}
+    --memory {{ hostvars[item].vm_memory_mb | default(vm_defaults.memory_mb) }}
+    --vcpus {{ hostvars[item].vm_vcpus | default(vm_defaults.vcpus) }}
+    --os-variant {{ vm_defaults.os_variant }}
+    --disk path={{ libvirt_pool.path }}/{{ item }}.qcow2,format=qcow2,bus=virtio
+    --disk path={{ libvirt_pool.path }}/{{ item }}-seed.iso,device=cdrom
+    --network network={{ kvm_network.name }},model={{ vm_defaults.network_iface_model }},mac={{ hostvars[item].vm_mac }}
+    --graphics none
+    --noautoconsole
+    --import
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+  register: virt_install
+  changed_when: virt_install.rc == 0
+
+- name: Dump domain XML to verify NIC MAC
+  ansible.builtin.command: virsh -c qemu:///system dumpxml {{ item }}
+  loop: "{{ vms_to_create }}"
+  loop_control:
+    label: "{{ item }}"
+  register: domif_out
+  changed_when: false
+  when: vms_to_create | length > 0
+
+- name: NIC MAC must match inventory vm_mac (network-config)
+  ansible.builtin.assert:
+    that:
+      - hostvars[item.item].vm_mac | lower in item.stdout | lower
+    fail_msg: |-
+      VM '{{ item.item }}' NIC MAC does not match inventory vm_mac ({{ hostvars[item.item].vm_mac }}).
+      Without a matching MAC, network-config will not apply the static IP.
+      Fix: make destroy && make up
+  loop: "{{ domif_out.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: vms_to_create | length > 0

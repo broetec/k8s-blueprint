@@ -1,0 +1,64 @@
+---
+# =============================================================================
+# tasks/preflight.yml — Pre-create validation
+# =============================================================================
+#
+# Purpose
+#   Fail early when SSH key, inventory MACs, or virt-install are missing.
+#
+# Variables
+#   ssh_public_key_path (inventory), hostvars[item].vm_mac per groups['vms'].
+#
+# Related commands
+#   make keys, make inventory, make create-vm
+# =============================================================================
+
+- name: Preflight — SSH public key file must exist
+  ansible.builtin.stat:
+    path: "{{ ssh_public_key_path }}"
+  register: ssh_pubkey_stat
+  check_mode: false
+
+- name: Fail when SSH public key is missing
+  ansible.builtin.fail:
+    msg: |-
+      SSH public key not found at: {{ ssh_public_key_path }}
+
+      Option A — from repo root (recommended):
+        make keys
+
+      Option B — generate manually in the repo:
+        ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
+
+      Option C — point to an existing key by overriding ssh_public_key_path
+      in inventory (e.g. group_vars/all.yml):
+        ssh_public_key_path: "{{ lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' }}"
+  when: not ssh_pubkey_stat.stat.exists
+
+- name: Preflight — each VM in inventory must define vm_mac
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].vm_mac is defined
+      - hostvars[item].vm_mac | length > 0
+    fail_msg: |-
+      Host '{{ item }}' has no vm_mac in inventory.
+      Regenerate hosts.ini: make inventory
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Preflight — virt-install must be on PATH
+  ansible.builtin.command: command -v virt-install
+  changed_when: false
+  failed_when: false
+  register: virt_install_lookup
+
+- name: Fail when virt-install is not installed
+  ansible.builtin.fail:
+    msg: |-
+      Command `virt-install` was not found on the libvirt host.
+
+      • Fedora/RHEL (dnf): run role 00 bootstrap — make setup-host
+      • Bazzite/Silverblue/immutable: install via rpm-ostree
+        (see provisioning/README.md, Fedora Atomic / Bazzite) and reboot
+  when: virt_install_lookup.rc != 0

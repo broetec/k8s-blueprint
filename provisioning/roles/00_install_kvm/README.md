@@ -215,7 +215,7 @@ systemctl is-active libvirtd
 | `kvm_libvirt_net_runtime_needs_refresh` | `network.yml` | Restart when logical XML changes |
 | `kvm_firewall_backend` | `firewall/detect.yml` | Select firewalld, ufw, iptables, or none |
 
-Per-VM MACs and `kvm_vm_mac_by_host` are set by **01_create_vm**, not this role.
+Per-VM `vm_mac` values come from inventory (`make inventory`), consumed by role **01_create_vm** for virt-install and cloud-init `network-config`.
 
 ### Manual playbook run
 

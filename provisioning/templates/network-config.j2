@@ -3,7 +3,7 @@ version: 2
 ethernets:
   lab0:
     match:
-      macaddress: "{{ kvm_vm_mac_by_host[vm_hostname] }}"
+      macaddress: "{{ vm_mac }}"
     dhcp4: false
     addresses:
       - "{{ vm_ip }}/{{ kvm_network.prefix }}"

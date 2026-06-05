@@ -1,250 +1,38 @@
 ---
 # =============================================================================
-# roles/01_create_vm/tasks/main.yml
+# tasks/main.yml — Role 01 entrypoint (libvirt VM provisioning)
 # =============================================================================
-# Cria VMs no KVM/libvirt iterando sobre `groups['vms']` do inventário.
 #
-# Pré-requisitos (role 00_install_kvm ou host já preparado):
-#   - Rede libvirt NAT activa (broetec-lab).
-#   - `virsh`, `virt-install`, `qemu-img`, `genisoimage` ou `xorriso` no PATH.
+# Purpose
+#   Clone Rocky cloud images, build NoCloud seed ISOs, and run virt-install
+#   for each host in groups['vms'] after role 00 (or equivalent host prep).
 #
-# Etapas:
-#   1. Preflight (chave SSH pública).
-#   2. Cache da imagem qcow2 do Rocky Linux (lab/cache).
-#   3. Clonar disco, cloud-init, virt-install por VM nova.
-#   4. Aguardar SSH em cada VM.
+# Pipeline
+#   1. preflight.yml — SSH key, vm_mac in inventory, virt-install on PATH.
+#   2. image_cache.yml — lab dirs + download base qcow2.
+#   3. provision.yml — clone, cloud-init, virt-install, MAC assert.
+#   4. wait_ssh.yml — wait for port 22 on each VM.
+#
+# Variables
+#   Inventory: vm_ip, vm_mac, vm_defaults, os_image, libvirt_pool, kvm_network.
+#   Role defaults: create_vm_ssh_wait_* (defaults/main.yml).
+#
+# Related commands
+#   make create-vm, make up
 # =============================================================================
 
-# ---------- 0. MAC por VM (mesma regra que 00_install_kvm/tasks/network.yml) ---
-# Necessário quando create_vm corre sem install_kvm na mesma invocação (make up).
-- name: "Definir MAC estável por VM (virt-install + match no network-config)"
-  ansible.builtin.set_fact:
-    kvm_vm_mac_by_host: "{{ kvm_vm_mac_by_host | default({}) | combine({ item: _vm_mac }) }}"
-  vars:
-    _vm_mac: >-
-      {{ hostvars[item].vm_mac | default(
-           '52:54:00:' ~ (item | hash('md5'))[0:2] ~ ':' ~
-           (item | hash('md5'))[2:4] ~ ':' ~ (item | hash('md5'))[4:6]
-         ) }}
-  loop: "{{ groups['vms'] }}"
-  loop_control:
-    label: "{{ item }}"
+- name: Preflight — SSH key, inventory MACs, virt-install
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [create_vm]
 
-# ---------- 1. Preflight -----------------------------------------------------
-- name: "Preflight: chave SSH pública configurada existe?"
-  ansible.builtin.stat:
-    path: "{{ ssh_public_key_path }}"
-  register: ssh_pubkey_stat
-  check_mode: false
+- name: Image cache — lab directories and Rocky qcow2 download
+  ansible.builtin.import_tasks: image_cache.yml
+  tags: [create_vm]
 
-- name: "Falhar com mensagem clara se a chave SSH pública não existir"
-  ansible.builtin.fail:
-    msg: |-
-      Chave SSH pública não encontrada em: {{ ssh_public_key_path }}
+- name: Provision — clone disks, cloud-init, virt-install
+  ansible.builtin.import_tasks: provision.yml
+  tags: [create_vm]
 
-      Solução A — na raiz do repositório (recomendado):
-        make keys
-
-      Solução B — gerar manualmente no repositório:
-        ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
-
-      Solução C — apontar para uma chave existente, sobrescrevendo
-      `ssh_public_key_path` no seu inventário (ex.: group_vars/all.yml):
-        ssh_public_key_path: "{{ '{{' }} lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' {{ '}}' }}"
-  when: not ssh_pubkey_stat.stat.exists
-
-# ---------- 2. Imagem base do Rocky Linux (cache) ----------------------------
-- name: "Garantir diretórios do lab libvirt (discos + cache no repositório)"
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ kvm_host_libvirt_user }}"
-    mode: "0755"
-  loop:
-    - "{{ libvirt_pool.path }}"
-    - "{{ os_image.cache_dir }}"
-  check_mode: false
-
-- name: "Baixar a imagem qcow2 do Rocky Linux (uma única vez)"
-  ansible.builtin.get_url:
-    url: "{{ os_image.url }}"
-    dest: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
-    mode: "0644"
-    force: false
-
-# ---------- 3. Provisionar cada VM do inventário -----------------------------
-- name: "Verificar quais VMs já existem no libvirt"
-  ansible.builtin.command: "virsh -c qemu:///system dominfo {{ item }}"
-  register: virsh_dominfo
-  loop: "{{ groups['vms'] }}"
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: "Calcular conjunto de VMs ainda a criar"
-  ansible.builtin.set_fact:
-    vms_to_create: >-
-      {{ groups['vms']
-         | difference(
-             virsh_dominfo.results
-             | selectattr('rc', 'equalto', 0)
-             | map(attribute='item')
-             | list
-           )
-      }}
-
-- name: "Clonar a imagem base para o disco de cada VM nova"
-  ansible.builtin.copy:
-    src: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
-    dest: "{{ libvirt_pool.path }}/{{ item }}.qcow2"
-    remote_src: true
-    force: false
-    mode: "0644"
-  loop: "{{ vms_to_create }}"
-  loop_control:
-    label: "{{ item }}"
-
-- name: "Redimensionar o disco de cada VM nova"
-  ansible.builtin.command: >-
-    qemu-img resize
-    {{ libvirt_pool.path }}/{{ item }}.qcow2
-    {{ hostvars[item].vm_disk_size_gb | default(vm_defaults.disk_size_gb) }}G
-  loop: "{{ vms_to_create }}"
-  loop_control:
-    label: "{{ item }}"
-  changed_when: true
-
-- name: "Criar diretório temporário para artefatos do cloud-init"
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: "ci-{{ item }}"
-  loop: "{{ vms_to_create }}"
-  register: ci_tmpdirs
-  loop_control:
-    label: "{{ item }}"
-
-- name: "Renderizar user-data por VM (cloud-init)"
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/templates/cloud-init.j2"
-    dest: "{{ item.path }}/user-data"
-    mode: "0644"
-  vars:
-    vm_hostname: "{{ item.item }}"
-    vm_ip: "{{ hostvars[item.item].vm_ip }}"
-  loop: "{{ ci_tmpdirs.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
-- name: "Renderizar network-config por VM (IP estático no guest)"
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/templates/network-config.j2"
-    dest: "{{ item.path }}/network-config"
-    mode: "0644"
-  vars:
-    vm_hostname: "{{ item.item }}"
-    vm_ip: "{{ hostvars[item.item].vm_ip }}"
-  loop: "{{ ci_tmpdirs.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
-- name: "Gerar meta-data por VM"
-  ansible.builtin.copy:
-    dest: "{{ item.path }}/meta-data"
-    mode: "0644"
-    content: |
-      instance-id: {{ item.item }}-{{ ansible_facts['date_time']['epoch'] }}
-      local-hostname: {{ item.item }}.{{ base_domain }}
-  loop: "{{ ci_tmpdirs.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
-- name: "Gerar seed ISO do cloud-init por VM"
-  ansible.builtin.shell: |
-    set -euo pipefail
-    out="{{ libvirt_pool.path }}/{{ item.item }}-seed.iso"
-    u="{{ item.path }}/user-data"
-    m="{{ item.path }}/meta-data"
-    n="{{ item.path }}/network-config"
-    if command -v genisoimage >/dev/null 2>&1; then
-      genisoimage -output "$out" -volid cidata -joliet -rock "$u" "$m" "$n"
-    elif command -v xorriso >/dev/null 2>&1; then
-      xorriso -as mkisofs -o "$out" -V cidata -joliet -rock "$u" "$m" "$n"
-    else
-      echo "Falta genisoimage ou xorriso no PATH (instale um dos pacotes ou rode com a tag bootstrap / role 00_install_kvm)." >&2
-      exit 1
-    fi
-  args:
-    executable: /bin/bash
-  loop: "{{ ci_tmpdirs.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
-- name: "Preflight: virt-install no PATH do host KVM?"
-  ansible.builtin.command: command -v virt-install
-  changed_when: false
-  failed_when: false
-  register: virt_install_lookup
-
-- name: "Falhar se virt-install não estiver instalado"
-  ansible.builtin.fail:
-    msg: |-
-      O comando `virt-install` não foi encontrado no host que corre o libvirt.
-
-      • Fedora/RHEL (dnf): `make up ANSIBLE_FLAGS=` (tag bootstrap / role 00_install_kvm).
-      • Bazzite/Silverblue/immutable: instale em camada com `rpm-ostree`
-        (lista em provisioning/README.md, secção «Fedora Atomic / Bazzite») e reinicie.
-  when: virt_install_lookup.rc != 0
-
-- name: "Definir e iniciar cada VM via virt-install"
-  ansible.builtin.command: >-
-    virt-install
-    --connect qemu:///system
-    --name {{ item }}
-    --memory {{ hostvars[item].vm_memory_mb | default(vm_defaults.memory_mb) }}
-    --vcpus {{ hostvars[item].vm_vcpus | default(vm_defaults.vcpus) }}
-    --os-variant {{ vm_defaults.os_variant }}
-    --disk path={{ libvirt_pool.path }}/{{ item }}.qcow2,format=qcow2,bus=virtio
-    --disk path={{ libvirt_pool.path }}/{{ item }}-seed.iso,device=cdrom
-    --network network={{ kvm_network.name }},model={{ vm_defaults.network_iface_model }},mac={{ kvm_vm_mac_by_host[item] }}
-    --graphics none
-    --noautoconsole
-    --import
-  loop: "{{ vms_to_create }}"
-  loop_control:
-    label: "{{ item }}"
-  register: virt_install
-  changed_when: virt_install.rc == 0
-
-- name: "Verificar MAC da VM vs kvm_vm_mac_by_host (network-config)"
-  ansible.builtin.command: virsh -c qemu:///system dumpxml {{ item }}
-  loop: "{{ vms_to_create }}"
-  loop_control:
-    label: "{{ item }}"
-  register: domif_out
-  changed_when: false
-  when: vms_to_create | length > 0
-
-- name: "MAC da NIC deve coincidir com kvm_vm_mac_by_host"
-  ansible.builtin.assert:
-    that:
-      - kvm_vm_mac_by_host[item.item] | lower in item.stdout | lower
-    fail_msg: |-
-      O MAC da VM '{{ item.item }}' não coincide com o esperado ({{ kvm_vm_mac_by_host[item.item] }}).
-      Sem o MAC correcto, o network-config não aplica o IP estático.
-      Correção: make destroy && make up
-  loop: "{{ domif_out.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when: vms_to_create | length > 0
-
-# ---------- 4. Esperar SSH responder em cada VM ------------------------------
-- name: "Aguardar o SSH responder em cada VM (cloud-init concluído)"
-  ansible.builtin.wait_for:
-    host: "{{ hostvars[item].vm_ip }}"
-    port: 22
-    state: started
-    delay: 15
-    timeout: 600
-  loop: "{{ groups['vms'] }}"
-  loop_control:
-    label: "{{ item }}"
+- name: Wait for SSH on each VM
+  ansible.builtin.import_tasks: wait_ssh.yml
+  tags: [create_vm]

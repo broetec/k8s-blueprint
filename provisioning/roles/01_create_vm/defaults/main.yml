@@ -1,3 +1,26 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for 01_create_vm
+# =============================================================================
+# defaults/main.yml — Role 01 defaults
+# =============================================================================
+#
+# Purpose
+#   Tunables for VM provisioning and SSH readiness (overridden via inventory or -e).
+#
+# Variables
+#   create_vm_ssh_wait_delay — seconds before first SSH poll after virt-install.
+#   create_vm_ssh_wait_timeout — max seconds to wait for SSH per VM.
+#
+# Inventory (not duplicated here)
+#   vm_defaults, os_image, libvirt_pool, kvm_network, ssh_public_key_path,
+#   vm_ip, vm_mac per host — see provisioning/inventory/_shared/group_vars/all.yml
+#   and hosts.ini (make inventory).
+#
+# Related
+#   kvm_host_libvirt_user — from role 00 defaults ($USER); owns lab/disks and lab/cache.
+#
+# Related commands
+#   make create-vm, make up
+# =============================================================================
+
+create_vm_ssh_wait_delay: 15
+create_vm_ssh_wait_timeout: 600

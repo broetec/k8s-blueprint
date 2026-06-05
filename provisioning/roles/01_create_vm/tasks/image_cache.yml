@@ -1,0 +1,32 @@
+---
+# =============================================================================
+# tasks/image_cache.yml — Rocky Linux cloud image cache
+# =============================================================================
+#
+# Purpose
+#   Ensure lab storage directories exist and download the base qcow2 once.
+#
+# Variables
+#   libvirt_pool.path, os_image (url, filename, cache_dir), kvm_host_libvirt_user.
+#
+# Related commands
+#   make create-vm, make up
+# =============================================================================
+
+- name: Ensure lab libvirt directories exist (disks + image cache)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ kvm_host_libvirt_user }}"
+    mode: "0755"
+  loop:
+    - "{{ libvirt_pool.path }}"
+    - "{{ os_image.cache_dir }}"
+  check_mode: false
+
+- name: Download Rocky Linux qcow2 cloud image (once)
+  ansible.builtin.get_url:
+    url: "{{ os_image.url }}"
+    dest: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
+    mode: "0644"
+    force: false

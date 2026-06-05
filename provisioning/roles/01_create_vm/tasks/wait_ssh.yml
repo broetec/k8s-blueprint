@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# tasks/wait_ssh.yml — Wait for SSH on each VM
+# =============================================================================
+#
+# Purpose
+#   Poll port 22 on each VM IP until cloud-init has finished and sshd is up.
+#
+# Variables
+#   hostvars[item].vm_ip, create_vm_ssh_wait_delay, create_vm_ssh_wait_timeout.
+#
+# Related commands
+#   make create-vm, make up
+# =============================================================================
+
+- name: Wait for SSH on each VM (cloud-init complete)
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[item].vm_ip }}"
+    port: 22
+    state: started
+    delay: "{{ create_vm_ssh_wait_delay }}"
+    timeout: "{{ create_vm_ssh_wait_timeout }}"
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"
