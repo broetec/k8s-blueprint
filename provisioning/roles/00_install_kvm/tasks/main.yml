@@ -8,9 +8,9 @@
 #   before role 01_create_vm provisions VMs.
 #
 # Pipeline
-#   1. bootstrap.yml — packages + libvirtd (tag bootstrap; optional).
-#   2. network.yml — shared broetec-lab network (tag install_kvm).
-#   3. firewall/main.yml — NAT/FORWARD when kvm_host_firewall (tag install_kvm).
+#   1. bootstrap.yml — packages + libvirtd + groups + SELinux lab (tag bootstrap; become: true).
+#   2. network.yml — shared broetec-lab network (tag install_kvm; no become).
+#   3. firewall/main.yml — NAT/FORWARD when kvm_host_firewall (tag install_kvm; become: true).
 #
 # Variables
 #   kvm_host_bootstrap, kvm_host_firewall (defaults/main.yml; Make: KVM_HOST_*).
@@ -21,6 +21,7 @@
 
 - name: Bootstrap KVM host — install packages and libvirtd (tag bootstrap)
   ansible.builtin.import_tasks: bootstrap.yml
+  become: true
 
 - name: Libvirt NAT network — define broetec-lab and start or restart
   ansible.builtin.import_tasks: network.yml
@@ -28,5 +29,6 @@
 
 - name: Host firewall — detect backend and apply lab NAT/FORWARD rules
   ansible.builtin.import_tasks: firewall/main.yml
+  become: true
   when: kvm_host_firewall | default(false) | bool
   tags: [install_kvm]

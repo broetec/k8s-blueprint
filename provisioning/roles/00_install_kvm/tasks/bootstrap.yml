@@ -4,7 +4,8 @@
 # =============================================================================
 #
 # Purpose
-#   Install libvirt/QEMU tooling and ensure libvirtd is running on the KVM host.
+#   Install libvirt/QEMU tooling, ensure libvirtd is running, add the lab operator
+#   to libvirt/kvm groups, and register SELinux virt_image_t for lab/ paths.
 #
 # Tags
 #   bootstrap, install — skip with --skip-tags bootstrap or kvm_host_bootstrap=false.
@@ -35,5 +36,46 @@
     name: libvirtd
     state: started
     enabled: true
+  when: kvm_host_bootstrap | default(true) | bool
+  tags: [bootstrap, install]
+
+- name: Add lab operator to libvirt and kvm groups (virsh / virt-install without sudo)
+  ansible.builtin.user:
+    name: "{{ kvm_host_libvirt_user }}"
+    groups:
+      - libvirt
+      - kvm
+    append: true
+  when: kvm_host_bootstrap | default(true) | bool
+  tags: [bootstrap, install]
+
+- name: SELinux — persistent virt_image_t for lab disk and cache paths
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for target in \
+      '{{ libvirt_pool.path }}(/.*)?' \
+      '{{ os_image.cache_dir }}(/.*)?'
+    do
+      if ! semanage fcontext -l | grep -Fq "${target}"; then
+        semanage fcontext -a -t virt_image_t "${target}"
+      fi
+    done
+    restorecon -Rv '{{ libvirt_pool.path }}' '{{ os_image.cache_dir }}'
+  args:
+    executable: /bin/bash
+  when:
+    - kvm_host_bootstrap | default(true) | bool
+    - ansible_facts.get('selinux', {}).get('status') == 'enabled'
+    - libvirt_pool.path is defined
+    - os_image.cache_dir is defined
+  changed_when: true
+  tags: [bootstrap, install]
+
+- name: Re-login required for libvirt and kvm group membership
+  ansible.builtin.debug:
+    msg: >-
+      Bootstrap added {{ kvm_host_libvirt_user }} to groups libvirt and kvm.
+      Open a new login session (or re-login) before make up / network-only
+      setup-host — virsh and virt-install need active group membership without sudo.
   when: kvm_host_bootstrap | default(true) | bool
   tags: [bootstrap, install]

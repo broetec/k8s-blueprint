@@ -91,11 +91,11 @@ setup: sync deps keys ## Controlador: .venv, Galaxy, chave SSH
 
 setup-host: setup inventory-overlay deps ## 1ª vez: controlador + host KVM (role 00)
 	@printf "$(B)==> [00] setup-host (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
-	$(call run-playbook,$(SETUP_HOST_TAGS),$(SUDO_FLAGS) $(SETUP_HOST_ANSIBLE_FLAGS),$(SETUP_HOST_EXTRA) $(EXTRA))
+	$(call run-playbook,$(SETUP_HOST_TAGS),$(SETUP_HOST_SUDO_FLAGS) $(SETUP_HOST_ANSIBLE_FLAGS),$(SETUP_HOST_EXTRA) $(EXTRA))
 
 create-vm: inventory-overlay deps keys ## 01 — qcow2, cloud-init, virt-install
 	@printf "$(Y)==> [01] create-vm (OVERLAY=$(OVERLAY))$(N)\n"
-	$(call run-playbook,create_vm,$(SUDO_FLAGS) $(ANSIBLE_FLAGS),$(EXTRA))
+	$(call run-playbook,create_vm,$(ANSIBLE_FLAGS),$(EXTRA))
 
 prepare-vm: inventory-overlay deps keys ## 02 — SO dentro da VM
 	@printf "$(Y)==> [02] prepare-vm (OVERLAY=$(OVERLAY))$(N)\n"

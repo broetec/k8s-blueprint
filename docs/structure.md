@@ -197,6 +197,7 @@ sequenceDiagram
 | Caminho dos discos | `env/.env` (`LAB_PATH`) ou `group_vars/all.yml` |
 | Pular instalação de pacotes no host | `env/.env` → `KVM_HOST_BOOTSTRAP=false` (ou `make setup-host KVM_HOST_BOOTSTRAP=false`) |
 | Regras NAT/FORWARD no host (Docker + firewall) | `env/.env` → `KVM_HOST_FIREWALL=true` (ou `make setup-host KVM_HOST_FIREWALL=true`) |
+| Host sem sudo no dia-a-dia | Bootstrap uma vez → re-login → grupos `libvirt` + `kvm`; ver [`00_install_kvm`](../provisioning/roles/00_install_kvm/README.md) |
 
 ---
 

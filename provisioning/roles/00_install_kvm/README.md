@@ -25,11 +25,11 @@ flowchart TB
     sync --> deps --> keys --> inv
   end
 
-  pb["ansible-playbook · role 00 · sudo"]
+  pb["ansible-playbook · role 00 · sudo só bootstrap/firewall?"]
 
   subgraph host ["Host · kvm_hosts"]
     direction TB
-    boot["bootstrap? · pacotes + libvirtd"]
+    boot["bootstrap? · pacotes libvirtd grupos"]
     net["network · broetec-lab NAT"]
     fw["firewall? · NAT/FORWARD"]
     boot --> net --> fw
@@ -61,6 +61,7 @@ flowchart TB
 cp env/.env.example env/.env
 # Optional: KVM_HOST_BOOTSTRAP=false on immutable OS; KVM_HOST_FIREWALL=true if Docker + host firewall
 make setup-host
+# Re-login (nova sessão) para grupos libvirt/kvm — ver abaixo
 make up
 ```
 
@@ -73,8 +74,8 @@ Command-line overrides work the same: `make setup-host KVM_HOST_FIREWALL=true`.
 
 | Step | Tasks | What it does on the KVM host | Control (`env/.env`) |
 |------|-------|------------------------------|----------------------|
-| **Bootstrap** | [`bootstrap.yml`](tasks/bootstrap.yml) | Installs `qemu-kvm`, libvirt, `virt-install`, and ISO tools (`genisoimage` / `xorriso`); enables and starts `libvirtd`. Required before `virt-install` on a fresh Fedora/RHEL host. | `KVM_HOST_BOOTSTRAP=true` (default): tags `install_kvm,bootstrap`. `false`: skips bootstrap (`--skip-tags bootstrap`, `kvm_host_bootstrap=false`) — use on immutable OS or when KVM is already installed. |
-| **Network** | [`network.yml`](tasks/network.yml) | Creates or updates the shared NAT libvirt network (`broetec-lab`): bridge, gateway, single DHCP pool. Compares a SHA256 fingerprint before `net-define`; restarts only if logical XML changed. | Always runs (tag `install_kvm`). Not gated by `KVM_HOST_*`. |
+| **Bootstrap** | [`bootstrap.yml`](tasks/bootstrap.yml) | Installs `qemu-kvm`, libvirt, `virt-install`, and ISO tools; enables `libvirtd`; adds `kvm_host_libvirt_user` (default: `$USER`) to groups **`libvirt`** and **`kvm`**; on SELinux enforcing, registers `virt_image_t` for `lab/disks` and `lab/cache` (one-time). | `KVM_HOST_BOOTSTRAP=true` (default): tags `install_kvm,bootstrap`. `false`: skips bootstrap — use on immutable OS or when KVM is already installed. |
+| **Network** | [`network.yml`](tasks/network.yml) | Creates or updates the shared NAT libvirt network (`broetec-lab`): bridge, gateway, single DHCP pool. Compares a SHA256 fingerprint before `net-define`; restarts only if logical XML changed. Runs **without sudo** when the operator is in group `libvirt` (active session). | Always runs (tag `install_kvm`). Not gated by `KVM_HOST_*`. |
 | **Firewall** | [`firewall/`](tasks/firewall/) | Detects firewalld, ufw, or iptables (FORWARD DROP) and adds NAT/MASQUERADE plus FORWARD rules so traffic from lab `vnet*` interfaces can reach the internet through the host. | `KVM_HOST_FIREWALL=false` (default): entire block skipped. `true`: `-e kvm_host_firewall=true`; see [Host firewall](#host-firewall). |
 
 Task YAML files include short header comments; see [`tasks/network.yml`](tasks/network.yml)
@@ -124,13 +125,35 @@ When `kvm_host_firewall=true`, the role detects the backend (first match wins):
 
 Most hosts without an active firewall can leave `KVM_HOST_FIREWALL=false`.
 
+## Host sem senha root (libvirt + kvm)
+
+After the **first** `make setup-host` with bootstrap (default), daily host work runs
+**without** host `sudo` when:
+
+1. The operator is in groups **`libvirt`** and **`kvm`** (bootstrap adds both).
+2. You opened a **new login session** after bootstrap (group membership is not
+   active in the same shell until re-login).
+3. `KVM_HOST_FIREWALL=false` (firewall tasks always use sudo).
+
+| Command | Host sudo? |
+|---------|------------|
+| First `make setup-host` (bootstrap on) | **Yes** — packages, `libvirtd`, groups, SELinux lab paths |
+| `make setup-host KVM_HOST_BOOTSTRAP=false KVM_HOST_FIREWALL=false` | **No** — `virsh` via Polkit + `libvirt` |
+| `make up` / `create-vm` (play `[2/5]`) | **No** — `virsh`, `virt-install`, `lab/` owned by `kvm_host_libvirt_user` |
+| `KVM_HOST_FIREWALL=true` | **Yes** — host firewall block |
+| `make prepare-vm` (role 02) | Sudo **inside the VM** as `rocky` (default `sudo_nopasswd: true`) |
+
+Role **01** needs **`kvm`** for `/dev/kvm`, not `libvirt` alone. Role **02** does not
+use the host `libvirt` group — it SSHs to the VM.
+
 ## Immutable OS (Bazzite, Silverblue, Kinoite)
 
 Do **not** install RPMs via Ansible on immutable hosts:
 
 1. Set `KVM_HOST_BOOTSTRAP=false` in `env/.env`.
 2. Install `qemu-kvm`, `libvirt`, `virt-install`, and ISO tools with `rpm-ostree` / distro docs.
-3. Ensure `libvirtd` is running, then run `make setup-host` (network and optional firewall).
+3. Ensure `libvirtd` is running; add `$USER` to **`libvirt`** and **`kvm`**; re-login.
+4. Run `make setup-host` (network and optional firewall).
 
 ## Idempotency
 
@@ -158,13 +181,15 @@ systemctl is-active libvirtd
 | VM has correct IP, no outbound internet | `KVM_HOST_FIREWALL=true` + `make setup-host`; see [inventory README — no internet in VM](../../inventory/README.md) |
 | `dnf` / RPM install fails on immutable OS | `KVM_HOST_BOOTSTRAP=false` and install packages manually |
 | Missing `virsh` / `virt-install` after skipping bootstrap | Install host packages before `make up` |
+| `virsh` / `virt-install`: permission denied | Re-login after bootstrap; confirm `groups` lists `libvirt` and `kvm` |
+| `virt-install` SELinux error on `lab/disks` | Run bootstrap once (registers `virt_image_t`) or `semanage` manually |
 
 ## Requirements
 
 - Inventory group **`kvm_hosts`** (typically `localhost`, `ansible_connection=local`)
-- **`become: true`** (sudo)
+- Play [`site.yml`](../../site.yml) uses **`become: false`**; sudo only inside bootstrap and firewall imports (`become: true` on those blocks)
 - Collection **`ansible.posix`** (firewalld, sysctl)
-- After bootstrap: `virsh`, `virt-install` on `PATH`
+- After bootstrap + re-login: `virsh`, `virt-install` on `PATH`; groups **`libvirt`** + **`kvm`**
 
 ## Advanced reference
 
@@ -181,6 +206,7 @@ systemctl is-active libvirtd
 |----------|---------|---------|
 | `kvm_host_bootstrap` | `true` | Run bootstrap tasks |
 | `kvm_host_firewall` | `false` | Run host firewall tasks |
+| `kvm_host_libvirt_user` | `$USER` | Account added to `libvirt` and `kvm` during bootstrap |
 
 ### Facts (internal)
 
@@ -198,7 +224,7 @@ From [`provisioning/site.yml`](../../site.yml):
 ```yaml
 - name: "[1/5] Preparar host KVM/libvirt"
   hosts: kvm_hosts
-  become: true
+  become: false
   gather_facts: true
   tags:
     - install_kvm

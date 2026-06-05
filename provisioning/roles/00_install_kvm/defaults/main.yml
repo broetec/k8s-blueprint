@@ -9,6 +9,7 @@
 # Variables
 #   kvm_host_bootstrap — install packages and libvirtd (tasks/bootstrap.yml).
 #   kvm_host_firewall — apply lab NAT/FORWARD on host (tasks/firewall/).
+#   kvm_host_libvirt_user — host account for libvirt/kvm groups (default: $USER).
 #
 # Related commands
 #   KVM_HOST_BOOTSTRAP / KVM_HOST_FIREWALL in env/.env (see make/config.mk).
@@ -16,3 +17,4 @@
 
 kvm_host_bootstrap: true
 kvm_host_firewall: false
+kvm_host_libvirt_user: "{{ lookup('env', 'USER') }}"

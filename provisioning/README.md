@@ -80,8 +80,8 @@ salta `bootstrap`):
 
 ```bash
 sudo systemctl enable --now libvirtd
-sudo usermod -aG libvirt "$USER"
-# novo login na sessão para o grupo `libvirt` fazer efeito
+sudo usermod -aG libvirt,kvm "$USER"
+# novo login na sessão para os grupos fazerem efeito
 ```
 
 Fedora **Workstation** clássico (dnf): se preferir que o Ansible instale tudo, use
@@ -155,8 +155,10 @@ bloco do playbook pode falhar mesmo com `forks=1`.
   com `ping` sem `become`.
 - Se ainda falhar: corra `make up` num **terminal fora do IDE** ou experimente
   outro `UV_PYTHON` (ex.: `make sync UV_PYTHON=3.13`).
-- Com `--ask-become-pass`, pode pedir senha na play do host; nas plays `vms`
-  use `env/vm-become.pass` ou conta `rocky` com `NOPASSWD` (ver `make help`).
+- Com `--ask-become-pass`, o Make só pede senha de host quando bootstrap ou
+  `KVM_HOST_FIREWALL=true` correm (`SETUP_HOST_SUDO_FLAGS`). `make up` / `create-vm`
+  não usam sudo no host. Nas plays `vms` use `env/vm-become.pass` ou conta `rocky`
+  com `NOPASSWD` (ver `make help`).
 
 ### Avisos `ssh_strict_fopen` / `packet type 80` (libssh)
 
@@ -249,23 +251,28 @@ KVM_HOST_FIREWALL=true
 
 Ou na linha de comando: `make setup-host KVM_HOST_BOOTSTRAP=false`.
 
-No caminho manual com `ansible-playbook`, use `--skip-tags bootstrap` para o mesmo efeito:
+No caminho manual com `ansible-playbook`, use `--skip-tags bootstrap` para o mesmo efeito.
+Com bootstrap e firewall desactivados, **não** é necessário `--ask-become-pass` no host
+(desde que o utilizador esteja nos grupos `libvirt` e `kvm` numa sessão activa):
 
 ```bash
 uv run ansible-playbook \
   -i provisioning/inventory/broetec-core/hosts.ini \
   provisioning/site.yml \
   --skip-tags bootstrap \
-  --ask-become-pass
+  --tags install_kvm \
+  --limit kvm_hosts
 ```
+
+Com `KVM_HOST_FIREWALL=true` ou bootstrap activo, use `--ask-become-pass` ou
+`env/become.pass` apenas nessas tasks (imports com `become: true` na role 00).
 
 Os caminhos `env/k8s-blueprint` estão definidos em `group_vars/all.yml`
 (`_repo_root`). Gere a chave antes com `make keys` ou `ssh-keygen … -f env/k8s-blueprint`.
 
-`--skip-tags bootstrap` pula as duas tasks que instalariam pacotes e
-habilitariam `libvirtd` no host. `--ask-become-pass` é necessário porque a
-primeira play roda no `localhost` com `become: true` para criar `lab/disks` e
-`lab/cache` (seed ISO, discos e cache da imagem base — gitignored).
+`--skip-tags bootstrap` pula pacotes, `libvirtd`, grupos `libvirt`/`kvm` e SELinux lab
+na role 00. O primeiro `make setup-host` com bootstrap default faz isso uma vez; depois
+re-login e `make up` correm sem sudo no host.
 
 Alternativa em inventário (sem Make):
 
@@ -293,7 +300,7 @@ Como usar:
 
   ```bash
   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini \
-    provisioning/site.yml --skip-tags bootstrap --ask-become-pass --check --diff
+    provisioning/site.yml --skip-tags bootstrap --check --diff
   ```
 
 ---

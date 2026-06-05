@@ -1,38 +1,25 @@
-Role Name
-=========
+# `01_create_vm` — provision lab VMs on libvirt
 
-A brief description of the role goes here.
+Ansible role **01** in the k8s-blueprint pipeline. Clones the Rocky cloud image,
+builds cloud-init seed ISOs, and runs `virt-install` for each host in `groups['vms']`.
 
-Requirements
-------------
+Requires role **00** (or equivalent host prep): NAT network `broetec-lab`, tools on `PATH`.
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+## Host privileges
 
-Role Variables
---------------
+Play [`site.yml`](../../site.yml) runs this role with **`become: false`**. The operator
+needs:
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+- Group **`libvirt`** — `virsh -c qemu:///system`, `virt-install --connect qemu:///system`
+- Group **`kvm`** — access to `/dev/kvm`
+- **Active session** after bootstrap (re-login once; see [`00_install_kvm`](../00_install_kvm/README.md))
+- Writable `lab/disks` and `lab/cache` (owned by `kvm_host_libvirt_user`, default `$USER`)
 
-Dependencies
-------------
+SELinux `virt_image_t` for lab paths is configured once in role **00** bootstrap.
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+## Related commands
 
-Example Playbook
-----------------
-
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
-
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
-
-License
--------
-
-BSD
-
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+```bash
+make create-vm
+make up    # includes create-vm
+```

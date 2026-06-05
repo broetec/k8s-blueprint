@@ -16,7 +16,7 @@ num `.venv` local.
 
 ```bash
 make sync              # .venv (uv sync)
-make setup-host        # 1ª vez: deps + host KVM (bootstrap)
+make setup-host        # 1ª vez: deps + host KVM (bootstrap; re-login depois)
 make up                # broetec-core: VM + SO + k8s (01–04)
 make ssh               # rocky@10.20.30.40
 make up-all            # core + storage + monitor (3 VMs)
@@ -27,7 +27,7 @@ make clean             # reset completo
 
 Outros overlays: `make up OVERLAY=broetec-storage`
 
-Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` para saltar pacotes · `KVM_HOST_FIREWALL=true` para regras NAT no host · `make help`
+Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` para saltar pacotes · re-login após bootstrap · `KVM_HOST_FIREWALL=true` para regras NAT no host · `make help`
 
 ## Pipeline Ansible (00–04)
 
