@@ -10,7 +10,7 @@
 galaxy_info:
   author: Broetec
   description: Prepare the KVM/libvirt host (bootstrap, NAT network, optional host firewall).
-  license: MIT
+  license: Apache-2.0
   min_ansible_version: "2.14"
   galaxy_tags:
     - kvm
