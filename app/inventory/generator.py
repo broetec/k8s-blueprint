@@ -1,4 +1,17 @@
-"""Gera hosts.ini e liga group_vars partilhados por overlay."""
+"""Generate hosts.ini and wire shared group_vars per overlay.
+
+Purpose
+    Render Ansible inventory from manifest.yml (+ env/.env overrides).
+
+Inputs
+    provisioning/inventory/manifest.yml, optional env/.env.
+
+Outputs
+    Per overlay: hosts.ini, 50_overlay.generated.yml, symlinks to _shared/.
+
+Related
+    app/inventory/README.md, make inventory, provisioning/inventory/README.md
+"""
 
 from __future__ import annotations
 
@@ -75,9 +88,9 @@ class InventoryGenerator:
         vm_connection = self._resolve_vm_connection(manifest, env)
         lines = [
             '; =============================================================================',
-            '; Gerado automaticamente — NÃO EDITAR.',
-            '; Fonte: provisioning/inventory/manifest.yml (+ env/.env se aplicável)',
-            '; Regenerar: make inventory  |  uv run python -m app.inventory.cli generate',
+            '; Auto-generated — DO NOT EDIT.',
+            '; Source: provisioning/inventory/manifest.yml (+ env/.env when applicable)',
+            '; Regenerate: make inventory  |  uv run python -m app.inventory.cli generate',
             f'; Overlay: {overlay.overlay_id} — {overlay.label}',
             '; =============================================================================',
             '',
@@ -85,7 +98,7 @@ class InventoryGenerator:
             f'{d.kvm_host} ansible_connection={d.ansible_connection}',
             '',
             '[vms]',
-            '; Hostname = nome libvirt (--name). vm_ip/ansible_host = cloud-init.',
+            '; Hostname = libvirt domain name (--name). vm_ip/ansible_host = cloud-init.',
         ]
         for vm in overlay.vms:
             mac = vm.resolved_mac()
@@ -98,7 +111,7 @@ class InventoryGenerator:
                 '[vms:vars]',
                 f'ansible_user={d.ansible_user}',
                 f'vm_role={overlay.role}',
-                '; libssh: evita worker dead no Cursor/AppImage. Requer make deps.',
+                '; libssh: avoids worker dead in Cursor/AppImage. Requires make deps.',
                 f'ansible_connection={vm_connection}',
                 f'ansible_host_key_checking={str(d.ansible_host_key_checking)}',
             ],
@@ -123,8 +136,8 @@ class InventoryGenerator:
         }
         payload.update(overlay.extra_vars_dict())
         header = (
-            '# Gerado automaticamente — NÃO EDITAR.\n'
-            '# Fonte: manifest.yml (+ env/.env se aplicável). Regenerar: make inventory\n'
+            '# Auto-generated — DO NOT EDIT.\n'
+            '# Source: manifest.yml (+ env/.env when applicable). Regenerate: make inventory\n'
             '---\n'
         )
         return header + yaml.dump(
@@ -168,15 +181,15 @@ class InventoryGenerator:
         return hosts_ini
 
     def _ensure_group_vars(self, overlay_dir: Path, overlay: OverlaySpec) -> None:
-        """group_vars/all/ em camadas: shared → overlay (manifest) → local."""
+        """Layered group_vars/all/: shared symlink → generated overlay → local 90_local.yml."""
         gv_root = overlay_dir / _GROUP_VARS_DIR
         legacy_link = gv_root
         if legacy_link.is_symlink():
             legacy_link.unlink()
         elif legacy_link.is_dir() and not (legacy_link / 'all').is_dir():
             msg = (
-                f'{legacy_link} existe mas não segue group_vars/all/ — '
-                'migre manualmente ou remova'
+                f'{legacy_link} exists but is not group_vars/all/ layout — '
+                'migrate manually or remove'
             )
             raise FileExistsError(msg)
 
@@ -202,7 +215,7 @@ class InventoryGenerator:
                 return
             link.unlink()
         elif link.exists():
-            msg = f'{link} existe e não é symlink para {target}'
+            msg = f'{link} exists and is not a symlink to {target}'
             raise FileExistsError(msg)
         link.symlink_to(rel)
 
@@ -212,7 +225,7 @@ def find_repo_root(start: Path | None = None) -> Path:
     for directory in (current, *current.parents):
         if (directory / 'provisioning/inventory/manifest.yml').is_file():
             return directory
-    msg = 'Raiz do repositório não encontrada (provisioning/inventory/manifest.yml)'
+    msg = 'Repository root not found (provisioning/inventory/manifest.yml)'
     raise FileNotFoundError(msg)
 
 

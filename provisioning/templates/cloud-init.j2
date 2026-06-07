@@ -1,20 +1,20 @@
 #cloud-config
 # =============================================================================
-# cloud-init — user-data + meta-data (seed ISO NoCloud)
+# cloud-init — user-data + meta-data (NoCloud seed ISO)
 # =============================================================================
-# Este template é renderizado pela role `01_create_vm` para cada host do grupo
-# `vms` e gravado como `user-data` no seed ISO (NoCloud datasource).
+# Rendered by role `01_create_vm` for each host in group `vms` and written as
+# `user-data` on the seed ISO (NoCloud datasource).
 #
-# IP da interface: network-config no seed ISO (estático por MAC; ver network-config.j2).
+# Interface IP: network-config on the same seed ISO (static by MAC; see network-config.j2).
 #
-# Variáveis injetadas pela role:
-#   - vm_hostname           : hostname curto (ex.: node-01)
-#   - vm_ip                 : IP estático da VM (ex.: 10.20.30.40)
-#   - base_domain           : domínio base (ex.: local.broetec.com.br)
+# Variables injected by the role:
+#   - vm_hostname           : short hostname (e.g. broetec-core)
+#   - vm_ip                 : static VM IP (e.g. 10.20.30.40)
+#   - base_domain           : base domain (e.g. local.broetec.com.br)
 #   - kvm_network.*         : prefix, gateway, dns_servers
 #   - cloud_init.*          : default_user, timezone, locale, ssh_authorized_keys,
 #                             password_hash (SHA-512), ssh_password_login,
-#                             sudo_nopasswd (sudo com senha na VM para o Ansible)
+#                             sudo_nopasswd (passwordless sudo for Ansible)
 # =============================================================================
 
 {% set _pwd = cloud_init.password_hash | default('') %}
@@ -51,13 +51,13 @@ users:
       - "{{ key }}"
 {% endfor %}
 
-{# ssh_pwauth: só afecta o serviço SSH. Consola SPICE/VNC usa login local (palavra-passe do user). #}
+{# ssh_pwauth: affects SSH service only. SPICE/VNC console uses local user password. #}
 ssh_pwauth: {{ _ssh_pwauth | bool | ternary('true', 'false') }}
 disable_root: true
 
 write_files:
   # -------------------------------------------------------------------------
-  # /etc/hosts — resolve o FQDN da própria VM no domínio Broetec.
+  # /etc/hosts — resolve this VM's FQDN on the Broetec lab domain.
   # -------------------------------------------------------------------------
   - path: /etc/hosts
     permissions: "0644"
@@ -70,4 +70,4 @@ write_files:
 runcmd:
   - [ hostnamectl, set-hostname, "{{ vm_hostname }}.{{ base_domain }}" ]
 
-final_message: "cloud-init concluído em {{ vm_hostname }}.{{ base_domain }} ({{ vm_ip }}) após $UPTIME segundos."
+final_message: "cloud-init finished on {{ vm_hostname }}.{{ base_domain }} ({{ vm_ip }}) after $UPTIME seconds."

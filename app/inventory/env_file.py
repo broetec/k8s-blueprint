@@ -1,4 +1,4 @@
-"""Leitura mínima de ficheiros estilo .env (KEY=VALUE)."""
+"""Minimal .env file reader (KEY=VALUE lines)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def overlay_env_overrides(
     env: dict[str, str],
     overlay_id: str,
 ) -> dict[str, str]:
-    """Sobrescritas VM_NAME/VM_IP quando OVERLAY no .env coincide."""
+    """Apply VM_NAME/VM_IP overrides when OVERLAY in .env matches overlay_id."""
     env_overlay = env.get('OVERLAY', '').strip()
     if env_overlay and env_overlay != overlay_id:
         return {}

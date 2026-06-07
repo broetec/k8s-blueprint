@@ -152,7 +152,7 @@ ssh rocky@10.20.30.40
 From [`provisioning/site.yml`](../../site.yml):
 
 ```yaml
-- name: "[2/5] Criar VMs no libvirt"
+- name: "[2/5] Create libvirt VMs"
   hosts: kvm_hosts
   become: false
   gather_facts: true

@@ -9,6 +9,7 @@
 #                     Avoids forking the system ssh binary; helps with Cursor integrated terminal.
 #
 # Add a collection here when a role or connection plugin needs it, then re-run `make deps`.
+# See provisioning/collections/README.md.
 collections:
   - name: ansible.posix
   - name: ansible.netcommon

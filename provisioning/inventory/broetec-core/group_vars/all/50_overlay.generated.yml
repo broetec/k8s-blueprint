@@ -1,6 +1,6 @@
-# Gerado automaticamente — NÃO EDITAR.
-# Fonte: manifest.yml (+ env/.env se aplicável). Regenerar: make inventory
+# Auto-generated — DO NOT EDIT.
+# Source: manifest.yml (+ env/.env when applicable). Regenerate: make inventory
 ---
 vm_role: core
 overlay_id: broetec-core
-overlay_label: Nó core (control plane / referência do lab)
+overlay_label: Core node (control plane / lab reference)

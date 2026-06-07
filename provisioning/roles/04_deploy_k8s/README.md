@@ -1,9 +1,9 @@
-# `04_deploy_k8s` — deploy manifests Kubernetes (stub)
+# `04_deploy_k8s` — Kubernetes manifest deploy (stub)
 
-Placeholder para aplicar manifests do cluster (Helm, kubectl, etc.).
+Placeholder for applying cluster manifests (Helm, kubectl, etc.).
 
-**Estado:** stub (`ping` + `debug`) — substituir o conteúdo de `tasks/main.yml`.
+**Status:** stub (`ping` + `debug`) — replace `tasks/main.yml` when implementing.
 
-**Manifests futuros:** [k8s/](../../k8s/)
+**Future manifests:** [k8s/](../../../k8s/)
 
-**Invocação:** `make deploy-k8s` ou `make deploy` ou `make up`.
+**Invocation:** `make deploy-k8s`, `make deploy`, or `make up`.

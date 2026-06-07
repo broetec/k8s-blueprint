@@ -1,4 +1,30 @@
-# network-config v2 — IP estático no guest (NoCloud seed ISO).
+# =============================================================================
+# network-config — static guest networking (NoCloud seed ISO)
+# =============================================================================
+# Rendered by role `01_create_vm` for each host in group `vms` and written as
+# `network-config` on the seed ISO (NoCloud datasource).
+#
+# Purpose
+#   Bind static IPv4 to the NIC matching vm_mac (interface name lab0 in guest).
+#   Lab VMs do not rely on libvirt DHCP for their final address.
+#
+# Variables (from inventory + group_vars)
+#   vm_mac              — matched in ethernets.lab0.match.macaddress
+#   vm_ip               — static address (with kvm_network.prefix)
+#   kvm_network.gateway — default route
+#   kvm_network.dns_servers — resolver list
+#
+# Scope
+#   vm_mac must match virt-install --mac and hosts.ini. If IP/MAC change in
+#   manifest.yml without recreating the VM, the guest may keep the old address.
+#
+# Related commands
+#   make inventory, make create-vm, make up
+#
+# See also
+#   provisioning/templates/cloud-init.j2 (user-data on same ISO)
+#   provisioning/templates/README.md
+# =============================================================================
 version: 2
 ethernets:
   lab0:

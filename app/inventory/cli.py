@@ -1,4 +1,4 @@
-"""CLI do inventário — base para futura interface terminal."""
+"""Inventory CLI — entrypoint for make inventory and future terminal UI."""
 
 from __future__ import annotations
 
@@ -14,46 +14,46 @@ from app.inventory.models import InventoryManifest
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog='k8s-blueprint-inventory',
-        description='Gera hosts.ini a partir de provisioning/inventory/manifest.yml',
+        description='Generate hosts.ini from provisioning/inventory/manifest.yml',
     )
     parser.add_argument(
         '--repo-root',
         type=Path,
         default=None,
-        help='Raiz do repositório (auto-detecta por defeito)',
+        help='Repository root (auto-detected by default)',
     )
     parser.add_argument(
         '--env-file',
         type=Path,
         default=None,
-        help='Ficheiro .env (default: env/.env)',
+        help='.env file (default: env/.env)',
     )
     sub = parser.add_subparsers(dest='command', required=True)
 
-    gen = sub.add_parser('generate', help='Gera hosts.ini para overlay(s)')
+    gen = sub.add_parser('generate', help='Generate hosts.ini for overlay(s)')
     gen.add_argument(
         '--overlay',
         '-o',
         action='append',
         dest='overlays',
         metavar='NAME',
-        help='Overlay a gerar (repetível)',
+        help='Overlay to generate (repeatable)',
     )
     gen.add_argument(
         '--all',
         action='store_true',
-        help='Gera todos os overlays do manifesto',
+        help='Generate all overlays from manifest',
     )
     gen.add_argument(
         '--dry-run',
         action='store_true',
-        help='Não escreve ficheiros; imprime no stdout',
+        help='Do not write files; print to stdout',
     )
 
-    sub.add_parser('list', help='Lista overlays definidos no manifesto')
+    sub.add_parser('list', help='List overlays defined in manifest')
 
-    show = sub.add_parser('show', help='Mostra VMs de um overlay')
-    show.add_argument('overlay', help='ID do overlay')
+    show = sub.add_parser('show', help='Show VMs for one overlay')
+    show.add_argument('overlay', help='Overlay id')
 
     return parser
 
@@ -89,7 +89,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
     paths = generator.generate(overlay_ids)
     for path in paths:
-        print(f'Gerado: {path}')
+        print(f'Written: {path}')
     return 0
 
 

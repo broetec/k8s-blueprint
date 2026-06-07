@@ -1,6 +1,6 @@
-# Gerado automaticamente — NÃO EDITAR.
-# Fonte: manifest.yml (+ env/.env se aplicável). Regenerar: make inventory
+# Auto-generated — DO NOT EDIT.
+# Source: manifest.yml (+ env/.env when applicable). Regenerate: make inventory
 ---
 vm_role: storage
 overlay_id: broetec-storage
-overlay_label: Nó de storage
+overlay_label: Storage node

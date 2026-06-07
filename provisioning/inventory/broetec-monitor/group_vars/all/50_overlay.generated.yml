@@ -1,6 +1,6 @@
-# Gerado automaticamente — NÃO EDITAR.
-# Fonte: manifest.yml (+ env/.env se aplicável). Regenerar: make inventory
+# Auto-generated — DO NOT EDIT.
+# Source: manifest.yml (+ env/.env when applicable). Regenerate: make inventory
 ---
 vm_role: monitor
 overlay_id: broetec-monitor
-overlay_label: Nó de telemetria / monitorização
+overlay_label: Telemetry / monitoring node

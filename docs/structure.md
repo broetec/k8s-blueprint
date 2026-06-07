@@ -58,22 +58,22 @@ geradas por CLI ou UI Python.
 
 ## provisioning
 
-Toda a configuração **Ansible** do laboratório.
+All **Ansible** configuration for the lab.
 
-| Ficheiro / pasta | Função |
-|------------------|--------|
-| `ansible.cfg` | Timeouts, SSH, libssh (estabilidade no terminal) |
-| `site.yml` | Playbook mestre — 5 plays (00–04) |
-| `inventory/` | `manifest.yml`, overlays `broetec-*` |
-| `roles/00_install_kvm/` | Bootstrap host, rede libvirt, firewall (opt-in) |
-| `roles/01_create_vm/` | qcow2, cloud-init, virt-install |
-| `roles/02_prepare_vm/` | swap, SELinux, firewalld na VM |
-| `roles/03_install_rke2/` | RKE2 (stub) |
-| `roles/04_deploy_k8s/` | manifests k8s (stub) |
-| `templates/cloud-init.j2` | user-data cloud-init por VM |
-| `collections/requirements.yml` | Coleções Galaxy (`ansible.posix`, `ansible.netcommon`) |
-
-Documentação detalhada: [provisioning/README.md](../provisioning/README.md).
+| Path | Purpose |
+|------|---------|
+| [provisioning/README.md](../provisioning/README.md) | Hub — prerequisites, `make up`, SSH, doc map |
+| `ansible.cfg` | Timeouts, SSH, libssh (terminal stability) |
+| `site.yml` | Master playbook — 5 plays (00–04) |
+| [inventory/README.md](../provisioning/inventory/README.md) | `manifest.yml`, overlays `broetec-*`, group_vars |
+| [app/inventory/README.md](../app/inventory/README.md) | `make inventory` generator (Python) |
+| [roles/00_install_kvm/](../provisioning/roles/00_install_kvm/README.md) | Host bootstrap, libvirt network, firewall (opt-in) |
+| [roles/01_create_vm/](../provisioning/roles/01_create_vm/README.md) | qcow2, cloud-init, virt-install |
+| [roles/02_prepare_vm/](../provisioning/roles/02_prepare_vm/README.md) | swap, SELinux, firewalld in VM |
+| [roles/03_install_rke2/](../provisioning/roles/03_install_rke2/README.md) | RKE2 (stub) |
+| [roles/04_deploy_k8s/](../provisioning/roles/04_deploy_k8s/README.md) | k8s manifests (stub) |
+| [templates/README.md](../provisioning/templates/README.md) | NoCloud seed ISO templates |
+| [collections/README.md](../provisioning/collections/README.md) | Galaxy collections (`ansible.posix`, `ansible.netcommon`) |
 
 **Nota:** o grupo de inventário `[kvm_hosts]` e variáveis como
 `kvm_host_bootstrap` mantêm nomes técnicos Ansible; só as **pastas das roles**

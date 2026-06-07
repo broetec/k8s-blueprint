@@ -1,8 +1,28 @@
 # =============================================================================
-# Manifesto de overlays — fonte de verdade para hosts.ini gerados
+# manifest.yml — Overlay source of truth for generated inventory
 # =============================================================================
-# Regenerar inventários: make inventory
-# Sobrescrever IP/nome do overlay ativo: env/.env (VM_NAME, VM_IP) + make inventory
+#
+# Purpose
+#   Declares lab overlays (VM name, IP, role). Generator writes hosts.ini and
+#   50_overlay.generated.yml per overlay.
+#
+# Schema
+#   defaults     — connection settings for [kvm_hosts] and [vms:vars]
+#   overlays     — map of overlay id → label, role, vms[], optional vars{}
+#   vms[].name   — libvirt domain name (--name)
+#   vms[].ip     — static guest IP (cloud-init network-config)
+#   vms[].mac    — optional; derived as 52:54:00:<md5(name)> if omitted
+#
+# Regenerate
+#   make inventory              # all overlays
+#   make inventory OVERLAY=id   # one overlay
+#
+# env/.env overrides (active OVERLAY only)
+#   VM_NAME, VM_IP — see app/inventory/env_file.py
+#   ANSIBLE_VM_CONNECTION=ssh|libssh — VM connection plugin
+#
+# Related
+#   provisioning/inventory/README.md, app/inventory/README.md
 # =============================================================================
 
 defaults:
@@ -16,21 +36,21 @@ defaults:
 
 overlays:
   broetec-core:
-    label: Nó core (control plane / referência do lab)
+    label: Core node (control plane / lab reference)
     role: core
     vms:
       - name: broetec-core
         ip: 10.20.30.40
 
   broetec-storage:
-    label: Nó de storage
+    label: Storage node
     role: storage
     vms:
       - name: broetec-storage
         ip: 10.20.30.50
 
   broetec-monitor:
-    label: Nó de telemetria / monitorização
+    label: Telemetry / monitoring node
     role: monitor
     vms:
       - name: broetec-monitor

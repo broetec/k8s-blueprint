@@ -61,7 +61,7 @@ flowchart TB
 cp env/.env.example env/.env
 # Optional: KVM_HOST_BOOTSTRAP=false on immutable OS; KVM_HOST_FIREWALL=true if Docker + host firewall
 make setup-host
-# Re-login (nova sessão) para grupos libvirt/kvm — ver abaixo
+# Re-login (new session) for libvirt/kvm groups — see below
 make up
 ```
 
@@ -222,7 +222,7 @@ Per-VM `vm_mac` values come from inventory (`make inventory`), consumed by role 
 From [`provisioning/site.yml`](../../site.yml):
 
 ```yaml
-- name: "[1/5] Preparar host KVM/libvirt"
+- name: "[1/5] Prepare KVM/libvirt host"
   hosts: kvm_hosts
   become: false
   gather_facts: true

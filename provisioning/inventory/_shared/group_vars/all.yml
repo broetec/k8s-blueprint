@@ -1,51 +1,48 @@
 ---
 # =============================================================================
-# Variáveis globais partilhadas — todos os overlays Broetec
+# Shared global variables — all Broetec overlays
 # =============================================================================
-# Consumidas pelas roles 00_install_kvm, 01_create_vm (host KVM) e 02_prepare_vm (VMs).
-# Cada overlay em provisioning/inventory/<nome>/ liga group_vars -> _shared.
-# Sobrescreva por overlay com group_vars/all.yml local (opcional).
+# Consumed by roles 00_install_kvm, 01_create_vm (KVM host) and 02_prepare_vm (VMs).
+# Each overlay links group_vars/all/00_shared.yml → this file via make inventory.
+# Override per overlay in 90_local.yml or host vars in hosts.ini.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Domínio base
+# Base domain
 # -----------------------------------------------------------------------------
-# A Broetec possui o domínio `local.broetec.com.br` apontando (via DNS)
-# para o IP de teste do laboratório local. As VMs ganham FQDN do tipo
-# `broetec-core.local.broetec.com.br`.
+# Broetec uses local.broetec.com.br for lab FQDNs, e.g.
+# broetec-core.local.broetec.com.br.
 base_domain: local.broetec.com.br
 
-# Raiz do repositório (hosts.ini está em provisioning/inventory/<overlay>/).
+# Repository root (hosts.ini lives under provisioning/inventory/<overlay>/).
 _repo_root: "{{ inventory_dir | dirname | dirname | dirname }}"
 
 # -----------------------------------------------------------------------------
-# Bootstrap do host KVM
+# KVM host bootstrap
 # -----------------------------------------------------------------------------
-# Quando `true` (padrão), a role `00_install_kvm` instala qemu-kvm/libvirt/etc. e
-# habilita o serviço libvirtd no host. Em distros imutáveis (Bazzite,
-# Silverblue, Kinoite) ou em hosts onde o KVM já está pronto, defina como
-# `false` para que o playbook NÃO toque na configuração do host.
-# Via Make: prefira `KVM_HOST_BOOTSTRAP=false` em env/.env (controla --skip-tags bootstrap).
+# When true (default), role 00_install_kvm installs qemu-kvm/libvirt/etc. and
+# enables libvirtd. On immutable distros (Bazzite, Silverblue, Kinoite) or when
+# KVM is already ready, set false so the playbook does not touch host packages.
+# Via Make: prefer KVM_HOST_BOOTSTRAP=false in env/.env (--skip-tags bootstrap).
 kvm_host_bootstrap: true
 
 # -----------------------------------------------------------------------------
-# Defaults da VM
+# VM defaults
 # -----------------------------------------------------------------------------
-# Podem ser sobrescritos por host na `hosts.ini` (ex.: vm_vcpus=8).
+# Override per host in hosts.ini (e.g. vm_vcpus=8) or in 90_local.yml.
 vm_defaults:
   vcpus: 4
   memory_mb: 8192
   disk_size_gb: 60
-  # id curto do libosinfo (virt-install --osinfo list | grep -i rocky).
-  # Use `rocky10`, não `rocky10.0` — só existe o major em RL10.
-  # Em hosts antigos: `rocky9.0`, `rhel9.2`, etc.
+  # libosinfo id (virt-install --osinfo list | grep -i rocky).
+  # Use rocky10, not rocky10.0 — Rocky 10 only publishes major version.
+  # Older hosts: rocky9.0, rhel9.2, etc.
   os_variant: rocky10
   network_iface_model: virtio
 
 # -----------------------------------------------------------------------------
-# Rede libvirt — usamos a subrede 10.20.30.0/24 deliberadamente
-# para evitar colisão com roteadores domésticos (que normalmente usam
-# 192.168.0.x ou 192.168.1.x).
+# libvirt network — 10.20.30.0/24 avoids collision with home routers
+# (typically 192.168.0.x or 192.168.1.x).
 # -----------------------------------------------------------------------------
 kvm_network:
   name: broetec-lab
@@ -61,27 +58,25 @@ kvm_network:
     - 8.8.8.8
   domain: "{{ base_domain }}"
 
-# Firewall no host KVM (opt-in via Make): KVM_HOST_FIREWALL=true em env/.env
-# aplica regras NAT/FORWARD quando firewalld, ufw ou iptables (FORWARD DROP) estiver activo.
+# Host KVM firewall (opt-in via Make): KVM_HOST_FIREWALL=true in env/.env
+# applies NAT/FORWARD rules when firewalld, ufw, or iptables FORWARD DROP is active.
 
 # -----------------------------------------------------------------------------
-# Armazenamento libvirt (dentro do repositório — lab descartável)
+# libvirt storage (inside repo — disposable lab/)
 # -----------------------------------------------------------------------------
-# Discos das VMs, seed ISOs e cache da qcow2 base ficam em lab/ (gitignored).
-# `make clean` remove a VM/rede e apaga lab/; ver lab/README.md.
-# O Makefile pode sobrepor via -e lab_disks_path / lab_cache_dir.
+# VM disks, seed ISOs, and base qcow2 cache live under lab/ (gitignored).
+# make clean removes VM/network and lab/; see lab/README.md.
+# Makefile may override via -e lab_disks_path / lab_cache_dir.
 libvirt_pool:
   name: k8s-blueprint-lab
   path: "{{ lab_disks_path | default(_repo_root ~ '/lab/disks', true) }}"
 
 # -----------------------------------------------------------------------------
-# Imagem base (cloud image) — Rocky Linux qcow2
+# Base cloud image — Rocky Linux qcow2
 # -----------------------------------------------------------------------------
-# A imagem é baixada uma única vez para `cache_dir` e clonada por VM.
-# Atenção: a partir do Rocky 10 o nome publicado tem o sufixo `-Base`
-# (`Rocky-10-GenericCloud-Base.latest.x86_64.qcow2`). O Rocky 9 ainda
-# mantinha o nome legacy sem sufixo. Confira em:
-#   https://dl.rockylinux.org/pub/rocky/<versao>/images/x86_64/
+# Downloaded once to cache_dir and cloned per VM.
+# Rocky 10 publishes -Base suffix (Rocky-10-GenericCloud-Base.latest.x86_64.qcow2).
+#   https://dl.rockylinux.org/pub/rocky/<version>/images/x86_64/
 os_image:
   distribution: rocky
   version: "10"
@@ -91,21 +86,21 @@ os_image:
   cache_dir: "{{ lab_cache_dir | default(_repo_root ~ '/lab/cache', true) }}"
 
 # -----------------------------------------------------------------------------
-# Chave SSH do laboratório (nome explícito: k8s-blueprint em env/)
+# Lab SSH key (explicit name: k8s-blueprint in env/)
 # -----------------------------------------------------------------------------
-# Os ficheiros ficam em `<repo>/env/k8s-blueprint` e `.pub`, gerados por
-# `make keys` / `make up`. O `Makefile` pode sobrescrever estes caminhos via `-e`.
+# Files at <repo>/env/k8s-blueprint and .pub, created by make keys / make up.
+# Makefile may override paths via -e.
 #
-# Para gerar manualmente na raiz do repositório:
+# Manual generation at repo root:
 #   ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
 #
-# Para usar outra chave, sobrescreva no seu overlay:
+# Custom key in your overlay:
 #   ssh_public_key_path: "{{ lookup('env', 'HOME') ~ '/.ssh/id_rsa.pub' }}"
 ssh_public_key_path: "{{ _repo_root }}/env/k8s-blueprint.pub"
 ansible_ssh_private_key_file: "{{ _repo_root }}/env/k8s-blueprint"
 
 # -----------------------------------------------------------------------------
-# cloud-init — utilizador rocky, fuso, locale, chaves SSH e (opcional) senha
+# cloud-init — user, timezone, locale, SSH keys, optional password
 # -----------------------------------------------------------------------------
 cloud_init:
   default_user: broetec
@@ -117,6 +112,7 @@ cloud_init:
   # Generate hash: openssl passwd -6   or   mkpasswd --method=SHA-512
   password_hash: '$6$EzA6FoPmrHWE/XXL$toMAlFTNt9t1U/ys2orLE2tj66mE/W/5N7x./PA0AunILctST8AX5M9Cpzsnb1t4yWgMb2H9USjaE2qaTfQ9B/'
   ssh_password_login: false
-  # true = lab conveniente (Ansible become sem senha na VM). false = sudo pede senha;
-  # nesse caso define password_hash (consola) e ansible_become_password em group_vars/vms.yml.
+  # true = convenient lab (Ansible become without VM password).
+  # false = sudo prompts for password; set password_hash and ansible_become_password
+  # in group_vars/vms.yml.
   sudo_nopasswd: true

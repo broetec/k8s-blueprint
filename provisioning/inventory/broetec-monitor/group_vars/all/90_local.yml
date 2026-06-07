@@ -1,6 +1,6 @@
 ---
-# Variáveis locais do overlay broetec-monitor — editável, não sobrescrito por make inventory.
+# broetec-monitor local overrides — editable, not overwritten by make inventory.
 
-# Nó de telemetria: recursos mais leves que core/storage.
+# Telemetry node: lighter resources than core/storage.
 vm_vcpus: 2
 vm_memory_mb: 4096

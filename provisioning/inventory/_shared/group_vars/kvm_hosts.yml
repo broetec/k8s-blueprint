@@ -1,6 +1,22 @@
 ---
-# Play local (kvm_hosts): módulos no mesmo Python que `uv run ansible-playbook` (.venv).
+# =============================================================================
+# kvm_hosts group vars — localhost KVM controller only
+# =============================================================================
+#
+# Purpose
+#   Variables merged only for inventory group [kvm_hosts] (plays 1–2 in site.yml).
+#   Symlinked as <overlay>/group_vars/kvm_hosts.yml by make inventory.
+#
+# Variables
+#   ansible_python_interpreter — same Python as uv run ansible-playbook (.venv).
+#                                Set via ansible_playbook_python extra-var from Makefile.
+#   kvm_host_libvirt_user      — operator account on KVM host (owns lab/, libvirt groups).
+#                                Not the SSH user for VMs (ansible_user in manifest).
+#
+# Related
+#   provisioning/inventory/README.md, role 00_install_kvm, role 01_create_vm
+# =============================================================================
+
 ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
-# Conta do operador no host KVM (lab/, grupos libvirt/kvm). Não confundir com ansible_user das VMs.
 kvm_host_libvirt_user: "{{ lookup('env', 'USER') }}"

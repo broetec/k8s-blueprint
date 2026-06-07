@@ -1,4 +1,17 @@
-"""Modelos do manifesto de inventário."""
+"""Inventory manifest models and validation.
+
+Purpose
+    Parse manifest.yml into typed specs (VmSpec, OverlaySpec, InventoryManifest).
+
+Inputs
+    YAML file at provisioning/inventory/manifest.yml.
+
+Outputs
+    Validated dataclasses used by InventoryGenerator.
+
+Related
+    app/inventory/README.md, app/inventory/mac.py
+"""
 
 from __future__ import annotations
 
@@ -26,10 +39,10 @@ class VmSpec:
 
     def __post_init__(self) -> None:
         if not self.name.strip():
-            msg = 'Nome da VM não pode ser vazio'
+            msg = 'VM name cannot be empty'
             raise ValueError(msg)
         if not _IPV4_RE.match(self.ip):
-            msg = f'IP inválido: {self.ip!r}'
+            msg = f'Invalid IP: {self.ip!r}'
             raise ValueError(msg)
         ip_address(self.ip)
         if self.mac is not None:
@@ -76,12 +89,12 @@ class InventoryManifest:
     def load(cls, path: Path) -> InventoryManifest:
         raw = yaml.safe_load(path.read_text(encoding='utf-8'))
         if not isinstance(raw, dict):
-            msg = f'Manifesto inválido: {path}'
+            msg = f'Invalid manifest: {path}'
             raise ValueError(msg)
         defaults = _parse_defaults(raw.get('defaults') or {})
         overlays_raw = raw.get('overlays') or {}
         if not overlays_raw:
-            msg = 'Manifesto sem overlays'
+            msg = 'Manifest has no overlays'
             raise ValueError(msg)
         overlays: dict[str, OverlaySpec] = {}
         for overlay_id, spec in overlays_raw.items():
@@ -95,7 +108,7 @@ class InventoryManifest:
         try:
             return self.overlays[overlay_id]
         except KeyError as exc:
-            msg = f'Overlay desconhecido: {overlay_id!r}. Disponíveis: {self.overlay_ids()}'
+            msg = f'Unknown overlay: {overlay_id!r}. Available: {self.overlay_ids()}'
             raise KeyError(msg) from exc
 
 
@@ -122,12 +135,12 @@ def _parse_defaults(data: dict[str, Any]) -> InventoryDefaults:
 def _parse_overlay(overlay_id: str, data: dict[str, Any]) -> OverlaySpec:
     vms_raw = data.get('vms') or []
     if not vms_raw:
-        msg = f'Overlay {overlay_id!r} sem VMs'
+        msg = f'Overlay {overlay_id!r} has no VMs'
         raise ValueError(msg)
     vms: list[VmSpec] = []
     for entry in vms_raw:
         if not isinstance(entry, dict):
-            msg = f'VM inválida em {overlay_id}'
+            msg = f'Invalid VM entry in {overlay_id}'
             raise ValueError(msg)
         name = str(entry['name'])
         ip = str(entry['ip'])
@@ -135,7 +148,7 @@ def _parse_overlay(overlay_id: str, data: dict[str, Any]) -> OverlaySpec:
         vms.append(VmSpec(name=name, ip=ip, mac=str(mac) if mac else None))
     extra_raw = data.get('vars') or {}
     if not isinstance(extra_raw, dict):
-        msg = f'Overlay {overlay_id!r}: vars deve ser um mapa'
+        msg = f'Overlay {overlay_id!r}: vars must be a map'
         raise ValueError(msg)
     extra_vars = tuple(sorted(extra_raw.items(), key=lambda item: item[0]))
     return OverlaySpec(

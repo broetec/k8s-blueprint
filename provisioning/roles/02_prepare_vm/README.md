@@ -136,7 +136,7 @@ ssh rocky@10.20.30.40 sudo firewall-cmd --list-all --zone=public
 From [`provisioning/site.yml`](../../site.yml):
 
 ```yaml
-- name: "[3/5] Preparar SO das VMs"
+- name: "[3/5] Prepare guest OS"
   hosts: vms
   become: true
   gather_facts: false

@@ -1,268 +1,267 @@
 # `provisioning/` — Ansible · KVM · cloud-init
 
-> Mapa geral do repositório: [`docs/structure.md`](../docs/structure.md)
+> Repository map: [`docs/structure.md`](../docs/structure.md)
 
-Fase **imperativa** do k8s-blueprint da Broetec: este Ansible cria a rede libvirt
-`10.20.30.0/24`, baixa a imagem qcow2 do Rocky Linux, gera o seed ISO de
-cloud-init e provisiona as VMs definidas no inventário (overlays `broetec-*`),
-deixando o sistema operacional pronto para etapas posteriores.
+**Imperative** phase of the Broetec k8s-blueprint: this Ansible stack creates the
+libvirt network `10.20.30.0/24`, downloads the Rocky Linux qcow2 image, builds
+cloud-init seed ISOs, and provisions VMs from inventory overlays (`broetec-*`),
+leaving the guest OS ready for later stages.
 
 ```text
 provisioning/
-├── ansible.cfg                    # timeouts, SSH, libssh (Makefile define ANSIBLE_CONFIG)
-├── site.yml                       # playbook mestre
+├── README.md                      # this hub — prerequisites, make up, SSH
+├── ansible.cfg                    # timeouts, SSH, libssh (Makefile sets ANSIBLE_CONFIG)
+├── site.yml                       # master playbook (5 plays, roles 00–04)
+├── collections/
+│   ├── README.md                  # Galaxy deps, make deps, troubleshooting
+│   └── requirements.yml
 ├── inventory/
-│   ├── manifest.yml               # fonte de verdade (gera hosts.ini)
-│   ├── _shared/group_vars/all.yml # variáveis Ansible partilhadas
-│   ├── broetec-core/              # core @ 10.20.30.40
-│   ├── broetec-storage/           # storage @ 10.20.30.50
-│   └── broetec-monitor/           # telemetria @ 10.20.30.60
+│   ├── README.md                  # overlays, manifest, group_vars layers
+│   ├── manifest.yml               # source of truth → hosts.ini
+│   └── _shared/group_vars/all.yml # shared Ansible variables
 ├── templates/
-│   ├── cloud-init.j2              # user-data (utilizador, hostname, /etc/hosts)
-│   └── network-config.j2          # IP estático no guest (seed ISO NoCloud)
+│   ├── README.md                  # NoCloud seed ISO templates
+│   ├── cloud-init.j2              # user-data (user, hostname, /etc/hosts)
+│   └── network-config.j2          # static guest IP (NoCloud seed ISO)
 └── roles/
-    ├── 00_install_kvm/            # bootstrap host, rede libvirt, firewall (opt-in)
-    ├── 01_create_vm/              # qcow2, seed ISO, virt-install
-    ├── 02_prepare_vm/             # swap, SELinux, firewalld dentro da VM
-    ├── 03_install_rke2/           # RKE2 (stub)
-    └── 04_deploy_k8s/             # manifests k8s (stub)
+    ├── 00_install_kvm/README.md   # host bootstrap, libvirt network, firewall
+    ├── 01_create_vm/README.md     # qcow2, seed ISO, virt-install
+    ├── 02_prepare_vm/README.md    # swap, SELinux, firewalld inside VM
+    ├── 03_install_rke2/README.md  # RKE2 (stub)
+    └── 04_deploy_k8s/README.md    # k8s manifests (stub)
 ```
+
+Generator for `make inventory`: [`app/inventory/README.md`](../app/inventory/README.md).
+
+## Documentation map
+
+| Topic | Where to read |
+|-------|---------------|
+| Master playbook, tags, Make targets | [`site.yml`](site.yml) banner, [roles READMEs](roles/) |
+| Ansible.cfg (forks, libssh) | [`ansible.cfg`](ansible.cfg), [`collections/README.md`](collections/README.md) |
+| Overlays, manifest, group_vars | [`inventory/README.md`](inventory/README.md) |
+| Shared variables | [`inventory/_shared/group_vars/all.yml`](inventory/_shared/group_vars/all.yml) |
+| Cloud-init / network templates | [`templates/README.md`](templates/README.md) |
+| Galaxy collections | [`collections/README.md`](collections/README.md) |
+| Inventory generator (Python) | [`app/inventory/README.md`](../app/inventory/README.md) |
+| Disposable disk artifacts | [`lab/README.md`](../lab/README.md) |
+| env/.env defaults | [`env/README.md`](../env/README.md) |
 
 ---
 
-## Pré-requisitos
+## Prerequisites
 
-- **Host com KVM/libvirt funcionando.** Verifique com:
+- **KVM/libvirt host working.** Verify with:
   ```bash
   systemctl is-active libvirtd
   virsh -c qemu:///system list --all
   command -v virt-install qemu-img && { command -v genisoimage >/dev/null || command -v xorriso >/dev/null; }
   ```
-  Em distros imutáveis (Bazzite, Silverblue, Kinoite), defina
-  `KVM_HOST_BOOTSTRAP=false` em `env/.env` — o Ansible **não** chama `dnf`/`rpm` no host.
-  Instale os pacotes à mão (secção seguinte) e configure o `libvirtd` antes do `make up`.
-- **Chave SSH** — com `make up` ela é criada em `env/k8s-blueprint[.pub]` (ver
-  `env/README.md`). No caminho manual (sem Make), use uma chave própria ou
-  gere no repositório:
+  On immutable distros (Bazzite, Silverblue, Kinoite), set `KVM_HOST_BOOTSTRAP=false`
+  in `env/.env` — Ansible will **not** run `dnf`/`rpm` on the host. Install packages
+  manually (next section) and configure `libvirtd` before `make up`.
+- **SSH key** — `make up` creates `env/k8s-blueprint[.pub]` (see `env/README.md`).
+  Manual path without Make:
   ```bash
   ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
   ```
-  O utilizador na VM é sempre **`rocky`** (cloud-init não copia a chave para
-  outras contas). Ex.: `ssh -i env/k8s-blueprint rocky@<vm_ip>` — não uses só
-  `ssh <ip>` ou vais autenticar como o teu utilizador no laptop e levas *Permission denied*.
-- **[uv](https://docs.astral.sh/uv/)** no `PATH` e **Python 3.12+** (o `Makefile` usa
-  `make sync` → `uv sync` com o lock do repositório; ver secção seguinte).
+  SSH user for Ansible plays is **`rocky`** (`manifest.yml` defaults). Cloud-init
+  creates `cloud_init.default_user` (see `all.yml`). Example:
+  `ssh -i env/k8s-blueprint rocky@<vm_ip>` — do not use bare `ssh <ip>` or you
+  authenticate as your laptop user and get *Permission denied*.
+- **[uv](https://docs.astral.sh/uv/)** on `PATH` and **Python 3.12+** (`make sync` →
+  `uv sync` with the repo lock; see below).
 
-### Fedora Atomic / Bazzite — equivalente à tag `bootstrap`
+### Fedora Atomic / Bazzite — equivalent to tag `bootstrap`
 
-A role `00_install_kvm` instala estes RPMs no host KVM (quando a tag `bootstrap`
-corre). Em **Bazzite** faça a camada equivalente com `rpm-ostree`, **reinicie**, e só
-depois rode `make up`:
+Role `00_install_kvm` installs these RPMs on the KVM host when tag `bootstrap`
+runs. On **Bazzite**, use `rpm-ostree`, **reboot**, then `make up`:
 
-| Pacote | Uso neste projeto |
-|--------|-------------------|
-| `qemu-kvm` | hypervisor e `qemu-img` (clonar/redimensionar qcow2) |
-| `libvirt` | daemon e ferramentas base |
+| Package | Use in this project |
+|---------|---------------------|
+| `qemu-kvm` | hypervisor and `qemu-img` (clone/resize qcow2) |
+| `libvirt` | daemon and base tools |
 | `libvirt-client` | `virsh` |
-| `virt-install` | criar a VM (`virt-install --import`) |
-| `libguestfs-tools` | utilitários guestfs (a role segue o playbook original) |
-| `xorriso` **ou** `genisoimage` | gerar o seed ISO do cloud-init (basta um dos dois) |
+| `virt-install` | create VM (`virt-install --import`) |
+| `libguestfs-tools` | guestfs utilities (role follows original playbook) |
+| `xorriso` **or** `genisoimage` | cloud-init seed ISO (either is enough) |
 
-Comando típico (um dos ISO tools chega):
+Typical command (one ISO tool is enough):
 
 ```bash
 rpm-ostree install qemu-kvm libvirt libvirt-client virt-install libguestfs-tools xorriso
 sudo systemctl reboot
 ```
 
-Após o reboot, garanta o serviço e permissões (o playbook **não** faz isto quando
-salta `bootstrap`):
+After reboot, ensure service and permissions (playbook **skips** this when
+bootstrap is off):
 
 ```bash
 sudo systemctl enable --now libvirtd
 sudo usermod -aG libvirt,kvm "$USER"
-# novo login na sessão para os grupos fazerem efeito
+# new login for groups to take effect
 ```
 
-Fedora **Workstation** clássico (dnf): se preferir que o Ansible instale tudo, use
-`make up ANSIBLE_FLAGS=` (sem saltar a tag `bootstrap`).
+Classic Fedora **Workstation** (dnf): if you prefer Ansible to install everything,
+use `make up ANSIBLE_FLAGS=` (do not skip tag `bootstrap`).
 
 ---
 
-## Ansible e Python (caminho padronizado: `uv` + `pyproject.toml`)
+## Ansible and Python (`uv` + `pyproject.toml`)
 
-As versões de **ansible-core** e **ansible-pylibssh** ficam fixadas no repositório
-(`pyproject.toml` + `uv.lock`), para o mesmo ambiente em qualquer distro Linux
-onde o `uv` consiga obter o interpretador (`UV_PYTHON`, por defeito 3.12).
+**ansible-core** and **ansible-pylibssh** versions are pinned in the repo
+(`pyproject.toml` + `uv.lock`) for a consistent environment on any Linux distro
+where `uv` can obtain the interpreter (`UV_PYTHON`, default 3.12).
 
-> **Por que não `libvirt-python`?** As roles `00_install_kvm` e `01_create_vm` usam
-> apenas o binário `virsh` (que você já tem instalado com o KVM). Isso evita
-> compilar `libvirt-python` no controller — o que exigiria `libvirt-devel`,
-> `pkgconf` e `gcc` instalados como camada `rpm-ostree` no Bazzite.
+> **Why no `libvirt-python`?** Roles `00_install_kvm` and `01_create_vm` use only
+> the `virsh` binary (installed with KVM). That avoids compiling `libvirt-python` on
+> the controller — which would require `libvirt-devel`, `pkgconf`, and `gcc` as an
+> `rpm-ostree` layer on Bazzite.
 
-### Instalar o `uv` e sincronizar o projeto
+### Install `uv` and sync the project
 
 ```bash
-# Caso ainda não tenha o uv:
+# If you do not have uv yet:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Na raiz do repositório (cria/atualiza .venv a partir do lock):
+# At repo root (creates/updates .venv from lock):
 make sync
-# ou:  uv sync --python 3.12 --frozen
+# or:  uv sync --python 3.12 --frozen
 ```
 
-O `Makefile` invoca o Ansible com **`uv run`** a partir da raiz do projeto
-(usa sempre o `.venv` do lock). Ferramentas opcionais (ex.: `ansible-lint`)
-podem ser adicionadas em `[project.optional-dependencies]` no `pyproject.toml`
-e instaladas com `uv sync --extra …` se precisar.
+The `Makefile` invokes Ansible with **`uv run`** from the project root (always
+uses the lock `.venv`). Optional tools (e.g. `ansible-lint`) can go in
+`[project.optional-dependencies]` in `pyproject.toml`.
 
-**Armazenamento KVM no repositório:** discos das VMs (`*.qcow2`), seed ISOs e o
-cache da imagem Rocky ficam em `lab/` na raiz do projeto (`lab/disks`, `lab/cache`;
-gitignored — ver `lab/README.md`). `make clean` apaga essa árvore; não usa
-`/var/lib/libvirt/images` do sistema.
+**KVM storage in the repo:** VM disks (`*.qcow2`), seed ISOs, and Rocky image
+cache live under `lab/` (`lab/disks`, `lab/cache`; gitignored — see `lab/README.md`).
+`make clean` removes that tree; does not use system `/var/lib/libvirt/images`.
 
-**Dois “Pythons” no lab:** no **controlador** (laptop + play `kvm_hosts` local) corre
-sempre o interpretador do `.venv` (`ansible_playbook_python` em
-`_shared/group_vars/kvm_hosts.yml`, ligado por overlay via `make inventory`). Nas **VMs** (`vms`), os módulos Ansible executam o
-Python instalado no Rocky (`interpreter_python = auto_silent` em `provisioning/ansible.cfg`) —
-não copie nem aponte o `.venv` do repositório para o inventário das VMs.
+**Two Pythons in the lab:** on the **controller** (laptop + local `kvm_hosts` play),
+always the `.venv` interpreter (`ansible_playbook_python` in
+`_shared/group_vars/kvm_hosts.yml`, symlinked per overlay via `make inventory`).
+On **VMs** (`vms`), Ansible modules use Rocky’s system Python
+(`interpreter_python = auto_silent` in `provisioning/ansible.cfg`) — do not point
+VM inventory at the repo `.venv`.
 
-### Coleções Galaxy (`ansible.posix`, `ansible.netcommon`)
+### Galaxy collections
 
-- **`ansible.posix`**: firewalld/sysctl na role `00_install_kvm` (host) e `firewalld` na role `02_prepare_vm` (VM).
-- **`ansible.netcommon`**: plugin `libssh` para SSH às VMs sem fork do binário
-  `ssh` (evita *worker dead* no terminal integrado do Cursor).
+See [`collections/README.md`](collections/README.md) for full detail. Summary:
 
-O alvo **`make deps`** instala ambas a partir de
-`provisioning/collections/requirements.yml`. Manualmente:
+- **`ansible.posix`**: firewalld/sysctl on role 00 (host) and role 02 (VM).
+- **`ansible.netcommon`**: `libssh` plugin for VM SSH without forking system `ssh`.
 
 ```bash
+make deps
+# or manually:
 uv run ansible-galaxy collection install -r provisioning/collections/requirements.yml
 ```
 
-### Erro `A worker was found in a dead state`
+### Error `A worker was found in a dead state`
 
-O Ansible usa *workers* em processos filhos; em alguns ambientes (terminal
-integrado do Cursor, AppImage, ou processo pai com *threads* extra) o segundo
-bloco do playbook pode falhar mesmo com `forks=1`.
+Ansible uses worker child processes; in some environments (Cursor integrated
+terminal, AppImage, or parent with extra threads) the second playbook block can
+fail even with `forks=1`.
 
-- Por defeito, `make up` corre **várias** invocações do `ansible-playbook`
-  (create-vm, prepare-vm, install-rke2, deploy-k8s), uma por etapa, para
-  reiniciar o processo Python entre plays.
-- O inventário usa **`ansible_connection=ansible.netcommon.libssh`**
-  (bindings Python, não o subprocesso `ssh` do sistema). Há **pipelining
-  desactivado** em `provisioning/ansible.cfg`; a role `02_prepare_vm` começa
-  com `ping` sem `become`.
-- Se ainda falhar: corra `make up` num **terminal fora do IDE** ou experimente
-  outro `UV_PYTHON` (ex.: `make sync UV_PYTHON=3.13`).
-- Com `--ask-become-pass`, o Make só pede senha de host quando bootstrap ou
-  `KVM_HOST_FIREWALL=true` correm (`SETUP_HOST_SUDO_FLAGS`). `make up` / `create-vm`
-  não usam sudo no host. Nas plays `vms` use `env/vm-become.pass` ou conta `rocky`
-  com `NOPASSWD` (ver `make help`).
+- By default, `make up` runs **multiple** `ansible-playbook` invocations
+  (create-vm, prepare-vm, install-rke2, deploy-k8s) — fresh Python process per stage.
+- Inventory uses **`ansible_connection=ansible.netcommon.libssh`** (Python bindings,
+  not system `ssh` subprocess). **Pipelining is off** in `provisioning/ansible.cfg`;
+  role `02_prepare_vm` starts with `ping` without `become`.
+- If it still fails: run `make up` in a **terminal outside the IDE** or try another
+  `UV_PYTHON` (e.g. `make sync UV_PYTHON=3.13`).
+- With `--ask-become-pass`, Make only asks for host password when bootstrap or
+  `KVM_HOST_FIREWALL=true` run. `make up` / `create-vm` do not use sudo on the host.
+  For `vms` plays use `env/vm-become.pass` or `rocky` with `NOPASSWD` (see `make help`).
 
-### Avisos `ssh_strict_fopen` / `packet type 80` (libssh)
+### Warnings `ssh_strict_fopen` / `packet type 80` (libssh)
 
-Por defeito o blueprint **não altera ficheiros do sistema** (`/etc/ssh/…`).
+By default the blueprint **does not modify system files** (`/etc/ssh/…`).
 
-**Mitigação sem root (default):**
+**Mitigation without root (default):**
 
-1. `make setup-host` corre `ensure-user-known-hosts` (uma vez no controlador):
-   `~/.ssh/known_hosts`, `env/global-known_hosts_stub` e `env/ssh_config_lab`.
-2. O inventário aponta `ansible_libssh_config_file` para esse config (rede lab
-   `10.20.30.*`).
-3. `ssh-host-key-refresh` regista a chave da VM antes de plays contra `vms`
-   (`make up`, ou `prepare-vm` / `deploy` isolados).
-4. O Make passa `ansible_prune_ssh_known_hosts=false` — evita que o `site.yml`
-   remova a chave logo após o refresh.
+1. `make setup-host` runs `ensure-user-known-hosts` once on the controller:
+   `~/.ssh/known_hosts`, `env/global-known_hosts_stub`, `env/ssh_config_lab`.
+2. Inventory sets `ansible_libssh_config_file` to that config (lab network `10.20.30.*`).
+3. `ssh-host-key-refresh` records the VM key before plays against `vms`.
+4. Make passes `ansible_prune_ssh_known_hosts=false` — avoids `site.yml` removing
+   the key right after refresh.
 
-Quem salta `setup-host` obtém o mesmo via `make keys` ou `make up` (fallback).
+Skipping `setup-host` still works via `make keys` or `make up` (fallback).
 
-| Variável (`env/.env`) | Default | Efeito |
+| Variable (`env/.env`) | Default | Effect |
 |---|---|---|
-| `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` | `true` → `sudo` cria `/etc/ssh/ssh_known_hosts` vazio (silencia `ssh_strict_fopen`) |
-| `ANSIBLE_VM_CONNECTION` | `libssh` | `ssh` → OpenSSH (sem ruído libssh; risco *worker dead* no Cursor) |
-| `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS` | `false` | `true` → `site.yml` faz `ssh-keygen -R` (uso manual de `ansible-playbook`) |
+| `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` | `true` → `sudo` creates empty `/etc/ssh/ssh_known_hosts` (silences `ssh_strict_fopen`) |
+| `ANSIBLE_VM_CONNECTION` | `libssh` | `ssh` → OpenSSH (less libssh noise; worker-dead risk in Cursor) |
+| `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS` | `false` | `true` → `site.yml` runs `ssh-keygen -R` (manual `ansible-playbook` use) |
 
-O aviso `ssh_strict_fopen: … /etc/ssh/ssh_known_hosts` vem da biblioteca C
-**libssh**, que tenta ler o ficheiro global opcional do SO. Com a config do lab
-pode reduzir-se; para silêncio total use `CREATE_SSH_GLOBAL_KNOWN_HOSTS=true`.
+`packet type 80` is usually libssh↔Rocky `sshd` handshake noise. For real connection
+failures, update `ansible-pylibssh` / `ansible.netcommon`.
 
-`packet type 80` costuma ser ruído do handshake libssh↔`sshd` da Rocky. Se houver
-falhas reais de ligação, actualize `ansible-pylibssh` / `ansible.netcommon`.
+### `env/.env` (Make defaults)
 
-### Ficheiro `env/.env` (defaults do Make)
-
-Copie `env/.env.example` → `env/.env` (gitignored; ver `env/README.md`).
-Variáveis úteis: `OVERLAY`, `VM_IP`, `VM_NAME`, `CREATE_SSH_GLOBAL_KNOWN_HOSTS`,
-`ANSIBLE_VM_CONNECTION`, `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS`.
+Copy `env/.env.example` → `env/.env` (gitignored; see `env/README.md`).
+Useful keys: `OVERLAY`, `VM_IP`, `VM_NAME`, `CREATE_SSH_GLOBAL_KNOWN_HOSTS`,
+`ANSIBLE_VM_CONNECTION`, `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS`, `KVM_HOST_BOOTSTRAP`,
+`KVM_HOST_FIREWALL`.
 
 ---
 
-## Executar o exemplo
+## Run the lab
 
-### Caminho recomendado — `make up` (na raiz do projeto)
+### Recommended — `make up` (repo root)
 
-Há um `Makefile` na raiz que orquestra todo o ciclo de vida da VM. Ele
-gera uma chave SSH **local de lab** em `env/k8s-blueprint[.pub]` (gitignored,
-criada apenas na primeira execução), passa essa chave como override para o
-Ansible e roda o playbook automaticamente. Você nunca precisa criar chave
-manualmente nem editar `~/.ssh/`.
+The root `Makefile` orchestrates the VM lifecycle: generates a **local lab SSH key**
+at `env/k8s-blueprint[.pub]` (gitignored, first run only), passes it to Ansible,
+and runs the playbook. No manual key setup or `~/.ssh` edits required.
 
 ```bash
-# 1ª vez (cp env/.env.example env/.env antes, se ainda não tiver):
+# First time (cp env/.env.example env/.env if needed):
 make setup-host
 
-# Uso diário (default broetec-core):
+# Daily use (default broetec-core):
 make sync
-make up         # 01–04: VM + SO + k8s (stubs 03/04)
+make inventory          # required after fresh clone
+make up                 # 01–04: VM + OS + k8s (stubs 03/04)
 make ssh
 make status
 make destroy
 make clean
 
 # Overlays:
-make inventory
 make up OVERLAY=broetec-core
-make up-all     # core + storage + monitor (3 VMs)
-make deploy OVERLAY=broetec-core   # só k8s (03 + 04)
+make up-all             # core + storage + monitor (3 VMs)
+make deploy OVERLAY=broetec-core   # k8s only (03 + 04)
 make ssh OVERLAY=broetec-storage
 make destroy OVERLAY=broetec-monitor
 ```
 
-`make help` lista todos os targets e mostra a config atual.
+`make help` lists all targets and current config.
 
-### Caminho manual — `ansible-playbook` (didático)
+### Manual — `ansible-playbook` (educational)
 
-Útil para entender o que o `Makefile` faz por baixo do capô. Corra **`make sync`**
-antes (ou `uv sync`) para ter o mesmo `ansible-core` do lock. Use **`uv run`**
-na raiz do repositório para carregar o `.venv` e respeitar `provisioning/ansible.cfg`.
+Run **`make sync`** first (or `uv sync`) for the locked `ansible-core`. Use **`uv run`**
+at repo root to load `.venv` and honor `provisioning/ansible.cfg`.
 
-Antes:
+Before running:
 
-- Crie sua própria chave SSH (caso não use `make keys`), na raiz do repo:
+- Create your SSH key (if not using `make keys`):
   ```bash
   ssh-keygen -t ed25519 -C "k8s-blueprint" -f env/k8s-blueprint -N ""
   ```
-- Ou ajuste `ssh_public_key_path` em `inventory/<overlay>/group_vars/all.yml`
-  para apontar para uma chave existente.
+- Or set `ssh_public_key_path` in overlay `90_local.yml` to an existing key.
 
-Depois, da raiz:
-
-Para saltar a instalação de pacotes no host (Bazzite/imutáveis ou KVM já pronto),
-defina em `env/.env`:
+To skip host package install (Bazzite/immutable or KVM already ready), in `env/.env`:
 
 ```bash
 KVM_HOST_BOOTSTRAP=false
-
-# Regras NAT/FORWARD no host (firewalld, ufw ou iptables):
-KVM_HOST_FIREWALL=true
+KVM_HOST_FIREWALL=true   # NAT/FORWARD rules on host
 ```
 
-Ou na linha de comando: `make setup-host KVM_HOST_BOOTSTRAP=false`.
+Or: `make setup-host KVM_HOST_BOOTSTRAP=false`.
 
-No caminho manual com `ansible-playbook`, use `--skip-tags bootstrap` para o mesmo efeito.
-Com bootstrap e firewall desactivados, **não** é necessário `--ask-become-pass` no host
-(desde que o utilizador esteja nos grupos `libvirt` e `kvm` numa sessão activa):
+Manual equivalent: `--skip-tags bootstrap`. With bootstrap and firewall off, **no**
+`--ask-become-pass` on the host (user in `libvirt` and `kvm` groups, active session):
 
 ```bash
 uv run ansible-playbook \
@@ -273,39 +272,27 @@ uv run ansible-playbook \
   --limit kvm_hosts
 ```
 
-Com `KVM_HOST_FIREWALL=true` ou bootstrap activo, use `--ask-become-pass` ou
-`env/become.pass` apenas nessas tasks (imports com `become: true` na role 00).
+With `KVM_HOST_FIREWALL=true` or bootstrap on, use `--ask-become-pass` or
+`env/become.pass` for role 00 tasks with `become: true`.
 
-Os caminhos `env/k8s-blueprint` estão definidos em `group_vars/all.yml`
-(`_repo_root`). Gere a chave antes com `make keys` ou `ssh-keygen … -f env/k8s-blueprint`.
+Key paths are in `group_vars/all.yml` (`_repo_root`). Generate with `make keys` or
+`ssh-keygen … -f env/k8s-blueprint`.
 
-`--skip-tags bootstrap` pula pacotes, `libvirtd`, grupos `libvirt`/`kvm` e SELinux lab
-na role 00. O primeiro `make setup-host` com bootstrap default faz isso uma vez; depois
-re-login e `make up` correm sem sudo no host.
-
-Alternativa em inventário (sem Make):
+Inventory alternative without Make:
 
 ```yaml
-# inventory/<overlay>/group_vars/all.yml
+# inventory/<overlay>/group_vars/all/90_local.yml
 kvm_host_bootstrap: false
 ```
 
-### Modo dry-run (`--check --diff`) — limitações
+### Dry-run (`--check --diff`) — limitations
 
-`--check` simula tudo sem aplicar; `--diff` mostra o que seria escrito. **No
-primeiro run, porém, ele vai falhar a partir do momento em que precisar de
-artefatos que ainda não existem** (a qcow2 base que seria baixada, o seed ISO,
-etc.) — porque o Ansible não pode "simular" o `get_url`/`copy` em algo que
-não existe no host. Algumas tasks também aparecem como `skipping` porque o
-módulo `command` é, por design, pulado em `--check` (existem alguns que
-marcamos com `check_mode: false` por serem read-only seguras, como
-`virsh net-list`).
+`--check` simulates without applying; `--diff` shows pending writes. **On first
+run it fails** when tasks need artifacts that do not exist yet (qcow2 download, seed
+ISO, etc.). Some `command` tasks show `skipping` in check mode by design.
 
-Como usar:
-
-- **Primeira execução:** rode `make up` (ou o `ansible-playbook` direto).
-- **Re-execuções (após o cache da qcow2 já existir):** aí sim,
-  `--check --diff` é útil para confirmar que nada inesperado mudou:
+- **First run:** use `make up` (or direct `ansible-playbook`).
+- **Re-runs** (after qcow2 cache exists): `--check --diff` is useful:
 
   ```bash
   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini \
@@ -314,24 +301,23 @@ Como usar:
 
 ---
 
-## Derrubar tudo
+## Tear down
 
-A forma mais simples é `make clean` (destrói VM + rede + `lab/` + chave do lab).
-`make destroy` e `make clean` **não pedem sudo no host** no fluxo normal: `virsh`
-usa Polkit (grupos `libvirt` + `kvm` após `make setup-host` e re-login) e os
-ficheiros em `lab/disks/` pertencem ao directório do operador — apagar um
-`*.qcow2` ou `*-seed.iso` com dono `qemu:qemu` só exige escrita em `lab/disks/`,
-não root.
+Simplest: `make clean` (destroys VM + network + `lab/` + lab SSH key).
+`make destroy` and `make clean` **do not require host sudo** in the normal flow:
+`virsh` uses Polkit (`libvirt` + `kvm` groups after `make setup-host` and re-login);
+files in `lab/disks/` are owned by the operator — deleting `*.qcow2` or `*-seed.iso`
+only needs write access to `lab/disks/`, not root.
 
-Se quiser fazer manualmente para entender o que acontece:
+Manual equivalent:
 
 ```bash
-virsh -c qemu:///system destroy broetec || true
-virsh -c qemu:///system undefine broetec --remove-all-storage
+virsh -c qemu:///system destroy broetec-core || true
+virsh -c qemu:///system undefine broetec-core --remove-all-storage
 
 virsh -c qemu:///system net-destroy broetec-lab || true
 virsh -c qemu:///system net-undefine broetec-lab
 
-rm -rf lab/cache lab/disks    # discos, seed ISO e cache da qcow2 base
-rm -f env/k8s-blueprint env/k8s-blueprint.pub   # remove a chave SSH local
+rm -rf lab/cache lab/disks
+rm -f env/k8s-blueprint env/k8s-blueprint.pub
 ```

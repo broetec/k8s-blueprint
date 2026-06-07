@@ -1,20 +1,45 @@
 ---
 # =============================================================================
-# site.yml — Playbook mestre (Broetec k8s-blueprint)
+# site.yml — Master playbook (Broetec k8s-blueprint)
 # =============================================================================
-# Pipeline 00–04 (uma role por play):
 #
-#   00_install_kvm  -> kvm_hosts: bootstrap, rede libvirt, firewall (opt-in)
-#   01_create_vm    -> kvm_hosts: qcow2, cloud-init, virt-install
-#   02_prepare_vm   -> vms: swap, SELinux, firewalld
-#   03_install_rke2   -> vms: RKE2 (stub)
-#   04_deploy_k8s     -> vms: manifests k8s (stub)
+# Purpose
+#   Five plays (roles 00–04): KVM host prep, VM creation, guest OS prep, RKE2, k8s.
 #
-#   make setup-host   → 00
-#   make up           → 01 + 02 + 03 + 04
+# Pipeline
+#   Play | Hosts     | Role            | Tag(s)              | Make target
+#   -----|-----------|-----------------|---------------------|------------------
+#   1/5  | kvm_hosts | 00_install_kvm  | install_kvm         | make setup-host
+#   2/5  | kvm_hosts | 01_create_vm    | create_vm           | make create-vm, make up
+#   3/5  | vms       | 02_prepare_vm   | prepare_vm          | make prepare-vm, make up
+#   4/5  | vms       | 03_install_rke2 | install_rke2, k8s   | make install-rke2, make up
+#   5/5  | vms       | 04_deploy_k8s   | deploy_k8s, k8s     | make deploy-k8s, make up
+#
+#   make up runs plays 2–5 (not play 1). make deploy = install-rke2 + deploy-k8s.
+#
+# Pre-task (play 3 only)
+#   ssh-keygen -R on localhost when ansible_prune_ssh_known_hosts=true.
+#   Default false via make/ansible.mk (ANSIBLE_PRUNE_SSH_KNOWN_HOSTS).
+#
+# gather_facts
+#   true on kvm_hosts plays; false on vms plays (libssh stability, faster SSH runs).
+#
+# Tags
+#   bootstrap — host package install (role 00); skip with --skip-tags bootstrap or
+#               KVM_HOST_BOOTSTRAP=false in env/.env.
+#   k8s       — plays 4–5 (stubs today).
+#
+# Examples
+#   make setup-host OVERLAY=broetec-core
+#   uv run ansible-playbook -i provisioning/inventory/broetec-core/hosts.ini \
+#     provisioning/site.yml --tags create_vm --limit kvm_hosts
+#   uv run ansible-playbook ... --skip-tags bootstrap --tags install_kvm
+#
+# Related
+#   provisioning/ansible.cfg, provisioning/README.md, roles/*/README.md
 # =============================================================================
 
-- name: "[1/5] Preparar host KVM/libvirt"
+- name: "[1/5] Prepare KVM/libvirt host"
   hosts: kvm_hosts
   become: false
   gather_facts: true
@@ -23,7 +48,7 @@
   roles:
     - role: 00_install_kvm
 
-- name: "[2/5] Criar VMs no libvirt"
+- name: "[2/5] Create libvirt VMs"
   hosts: kvm_hosts
   become: false
   gather_facts: true
@@ -32,14 +57,14 @@
   roles:
     - role: 01_create_vm
 
-- name: "[3/5] Preparar SO das VMs"
+- name: "[3/5] Prepare guest OS"
   hosts: vms
   become: true
   gather_facts: false
   tags:
     - prepare_vm
   pre_tasks:
-    - name: "Limpar entrada SSH obsoleta no controlador (ssh-keygen -R)"
+    - name: "Remove stale SSH known_hosts entry on controller (ssh-keygen -R)"
       when: ansible_prune_ssh_known_hosts | default(false) | bool
       ansible.builtin.command:
         argv:
@@ -58,7 +83,7 @@
   roles:
     - role: 02_prepare_vm
 
-- name: "[4/5] Instalar RKE2 (stub)"
+- name: "[4/5] Install RKE2 (stub)"
   hosts: vms
   become: true
   gather_facts: false
@@ -68,7 +93,7 @@
   roles:
     - role: 03_install_rke2
 
-- name: "[5/5] Deploy manifests k8s (stub)"
+- name: "[5/5] Deploy k8s manifests (stub)"
   hosts: vms
   become: true
   gather_facts: false

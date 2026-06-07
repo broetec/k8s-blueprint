@@ -1,5 +1,5 @@
 ---
-# Variáveis locais do overlay broetec-storage — editável, não sobrescrito por make inventory.
+# broetec-storage local overrides — editable, not overwritten by make inventory.
 
-# Disco maior para dados persistentes (consumido por roles/01_create_vm via hostvars).
+# Larger disk for persistent data (consumed by role 01_create_vm via hostvars).
 vm_disk_size_gb: 120

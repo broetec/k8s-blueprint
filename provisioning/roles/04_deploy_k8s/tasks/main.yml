@@ -1,14 +1,14 @@
 ---
-# Stub — substituir por kubectl apply / Helm (manifests em k8s/).
+# Stub — replace with kubectl apply / Helm (manifests under k8s/).
 
-- name: "Alive check antes de deploy_k8s (stub)"
+- name: "Alive check before deploy_k8s (stub)"
   become: false
   ansible.builtin.ping:
 
-- name: "Placeholder — deploy k8s pendente"
+- name: "Placeholder — k8s deploy pending"
   ansible.builtin.debug:
     msg: >-
-      04_deploy_k8s: implementação pendente.
+      04_deploy_k8s: implementation pending.
       Host={{ inventory_hostname }}
       role={{ vm_role | default('n/a') }}.
-      Manifests futuros: k8s/
+      Future manifests: k8s/

@@ -1,4 +1,4 @@
-"""MAC derivado do hostname (mesma regra que a role 00_install_kvm no Ansible)."""
+"""MAC derived from hostname (same rule as Ansible role 00_install_kvm)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _MAC_RE = re.compile(
 
 
 def derive_mac(hostname: str) -> str:
-    """52:54:00 + primeiros 6 hex do MD5 do hostname (compatível com Ansible hash)."""
+    """52:54:00 + first 6 hex chars of MD5(hostname) — compatible with Ansible hash."""
     digest = hashlib.md5(hostname.encode()).hexdigest()
     return f'52:54:00:{digest[0:2]}:{digest[2:4]}:{digest[4:6]}'
 
@@ -20,7 +20,7 @@ def derive_mac(hostname: str) -> str:
 def normalize_mac(mac: str) -> str:
     value = mac.strip().lower()
     if not _MAC_RE.match(value):
-        msg = f'MAC inválido: {mac!r}'
+        msg = f'Invalid MAC: {mac!r}'
         raise ValueError(msg)
     return value
 

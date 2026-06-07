@@ -1,9 +1,9 @@
-# `03_install_rke2` — instalação RKE2 (stub)
+# `03_install_rke2` — RKE2 installation (stub)
 
-Placeholder para a instalação do cluster RKE2 na VM.
+Placeholder for RKE2 cluster installation on the VM.
 
-**Estado:** stub (`ping` + `debug`) — substituir o conteúdo de `tasks/main.yml`.
+**Status:** stub (`ping` + `debug`) — replace `tasks/main.yml` when implementing.
 
-**Referência:** [docs/bootstrap/README.md](../../docs/bootstrap/README.md)
+**Reference:** [docs/bootstrap/README.md](../../../docs/bootstrap/README.md)
 
-**Invocação:** `make install-rke2` ou `make deploy` ou `make up`.
+**Invocation:** `make install-rke2`, `make deploy`, or `make up`.

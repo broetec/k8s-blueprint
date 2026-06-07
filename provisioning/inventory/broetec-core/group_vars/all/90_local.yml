@@ -1,5 +1,10 @@
 ---
-# Variáveis locais do overlay broetec-core — editável, não sobrescrito por make inventory.
-# Sobrepõe 00_shared.yml e 50_overlay.generated.yml quando as chaves coincidem.
+# broetec-core local overrides — editable, not overwritten by make inventory.
+# Merges over 00_shared.yml and 50_overlay.generated.yml when keys match.
 
-# Referência do lab; usa os defaults globais de vm_defaults em _shared/group_vars/all.yml.
+# Lab reference node; uses global vm_defaults from _shared/group_vars/all.yml.
+# Examples (uncomment to override):
+# vm_vcpus: 4
+# vm_memory_mb: 8192
+# vm_disk_size_gb: 60
+# kvm_host_bootstrap: false

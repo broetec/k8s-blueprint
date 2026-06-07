@@ -1,98 +1,187 @@
-# Inventário Ansible — overlays Broetec
+# Ansible inventory — Broetec overlays
 
-## Overlays versionados
+Source of truth for lab VMs: [`manifest.yml`](manifest.yml) → `make inventory` →
+`hosts.ini` and layered `group_vars/`. All overlays share
+[`provisioning/site.yml`](../site.yml) and roles **00–04**.
 
-| Overlay | VM (libvirt) | IP | Papel (`vm_role`) |
-|---------|--------------|-----|-------------------|
+Generator architecture: [`app/inventory/README.md`](../../app/inventory/README.md).
+
+## Versioned overlays
+
+| Overlay | VM (libvirt) | IP | Role (`vm_role`) |
+|---------|--------------|-----|------------------|
 | `broetec-core` | broetec-core | 10.20.30.40 | `core` |
 | `broetec-storage` | broetec-storage | 10.20.30.50 | `storage` |
 | `broetec-monitor` | broetec-monitor | 10.20.30.60 | `monitor` |
 
-Todos partilham o mesmo playbook (`provisioning/site.yml`) e roles
-(`00_install_kvm`, `01_create_vm`, `02_prepare_vm`).
+## Position in the pipeline
 
-## Camadas de variáveis (por overlay)
+```mermaid
+flowchart TB
+  MAN["manifest.yml"]
+  ENV["env/.env optional"]
+  GEN["make inventory"]
+  ART["hosts.ini + group_vars/"]
+  PLAY["site.yml roles 00-04"]
 
-Cada overlay tem `group_vars/all/` com merge automático (ordem alfabética):
+  MAN --> GEN
+  ENV --> GEN
+  GEN --> ART --> PLAY
+```
 
-| Ficheiro | Origem | Função |
-|----------|--------|--------|
-| `00_shared.yml` | symlink → `_shared/group_vars/all.yml` | Base comum (rede, imagem, cloud-init) |
-| `50_overlay.generated.yml` | **gerado** (`make inventory`) | `vm_role`, `overlay_id`, `vars` do manifest |
-| `90_local.yml` | **versionado, manual** | Overrides por máquina (disco, vCPUs, etc.) |
+| Make target | Inventory step |
+|-------------|----------------|
+| `make inventory` | Regenerate all overlays |
+| `make inventory OVERLAY=broetec-core` | Single overlay |
+| `make setup-host` | Runs `inventory-overlay` first |
+| `make up` | Runs `inventory-overlay` before playbook |
 
-Só para o grupo **`[kvm_hosts]`** (`localhost` na play KVM), o gerador cria também:
+## First step after clone
 
-| Ficheiro | Origem | Função |
-|----------|--------|--------|
-| `group_vars/kvm_hosts.yml` | symlink → `_shared/group_vars/kvm_hosts.yml` | Python do controlador (`.venv` via `ansible_playbook_python`) |
+A fresh clone **does not** include generated symlinks until you run inventory:
 
-Edite **`manifest.yml`** para identidade (IP, role, vars declarativas) e **`90_local.yml`** para ajustes finos por overlay.
-
-### `become` nas VMs (opcional)
-
-Variáveis só do grupo `[vms]` podem ir em `group_vars/vms.yml` (crie manualmente no overlay, não é gerado). Ex.: `ansible_become_password` quando `cloud_init.sudo_nopasswd: false` — use ficheiro local `env/vm-rocky.pass` (gitignored) ou Ansible Vault; ver comentários em `provisioning/README.md`.
-
-## Gerar `hosts.ini`
+- `<overlay>/group_vars/all/00_shared.yml` → `_shared/group_vars/all.yml`
+- `<overlay>/group_vars/kvm_hosts.yml` → `_shared/group_vars/kvm_hosts.yml`
 
 ```bash
 make inventory
-# ou um overlay:
+```
+
+Without this, Ansible may fail to resolve shared variables.
+
+## Variable layers (per overlay)
+
+Each overlay has `group_vars/all/` merged in alphabetical order:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `00_shared.yml` | symlink → `_shared/group_vars/all.yml` | Shared base (network, image, cloud-init) |
+| `50_overlay.generated.yml` | **generated** (`make inventory`) | `vm_role`, `overlay_id`, manifest `vars` |
+| `90_local.yml` | **versioned, manual** | Per-overlay overrides (disk, vCPUs, etc.) |
+
+For group **`[kvm_hosts]`** only, the generator also creates:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `group_vars/kvm_hosts.yml` | symlink → `_shared/group_vars/kvm_hosts.yml` | Controller Python (`.venv` via `ansible_playbook_python`) |
+
+Edit **`manifest.yml`** for identity (IP, role, declarative vars) and **`90_local.yml`** for fine-tuning per overlay.
+
+### Optional `become` on VMs
+
+VM-only variables can live in `group_vars/vms.yml` (create manually per overlay; not generated).
+Example: `ansible_become_password` when `cloud_init.sudo_nopasswd: false` — use gitignored
+`env/vm-rocky.pass` or Ansible Vault; see [`provisioning/README.md`](../README.md).
+
+## Generate `hosts.ini`
+
+```bash
+make inventory
+# or one overlay:
 make inventory OVERLAY=broetec-core
 ```
 
-Não edite `hosts.ini` à mão — inclui `vm_role` em `[vms:vars]`.
+Do not edit `hosts.ini` by hand — it includes `vm_role` in `[vms:vars]` and libssh settings.
 
-## Overlay local (gitignored)
+## `manifest.yml` schema
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `defaults` | yes | Connection defaults for kvm host and VMs |
+| `defaults.kvm_host` | yes | Inventory hostname for KVM plays (usually `localhost`) |
+| `defaults.ansible_connection_vm` | yes | VM plugin (`ansible.netcommon.libssh` or `ssh`) |
+| `overlays.<id>` | yes | One lab profile per overlay id |
+| `overlays.<id>.role` | yes | Becomes `vm_role` in generated vars |
+| `overlays.<id>.vms[]` | yes | At least one VM: `name`, `ip`, optional `mac` |
+| `overlays.<id>.vars` | no | Extra keys merged into `50_overlay.generated.yml` |
+
+Example overlay entry:
+
+```yaml
+overlays:
+  broetec-core:
+    label: Core node (control plane / lab reference)
+    role: core
+    vms:
+      - name: broetec-core
+        ip: 10.20.30.40
+        # mac: "52:54:00:aa:bb:cc"  # optional; derived from name if omitted
+```
+
+## `90_local.yml` override examples
+
+Per-overlay manual overrides (not overwritten by `make inventory`):
+
+```yaml
+# broetec-storage — larger disk for persistent data
+vm_disk_size_gb: 120
+
+# broetec-monitor — lighter telemetry node
+vm_vcpus: 2
+vm_memory_mb: 4096
+
+# broetec-core — optional tuning (defaults from vm_defaults in all.yml)
+# vm_vcpus: 4
+# vm_memory_mb: 8192
+# kvm_host_bootstrap: false
+```
+
+Full variable catalog: [`_shared/group_vars/all.yml`](_shared/group_vars/all.yml).
+
+## Local overlay (gitignored)
 
 ```bash
-# 1. Adicione entrada em manifest.yml (no seu fork) ou copie um overlay versionado
-cp -r broetec-core ../meu-lab   # fora do git — ver .gitignore
+# 1. Add entry in manifest.yml (in your fork) or copy a versioned overlay
+cp -r broetec-core ../my-lab   # outside git — see .gitignore
 
-# 2. Ou use só env/.env para sobrescrever IP/nome do overlay ativo:
+# 2. Or override active overlay via env/.env only:
 #    OVERLAY=broetec-core
 #    VM_IP=10.20.30.45
 make inventory
 ```
 
-## IP errado (ex.: 10.20.30.118 em vez de .40)
+## Troubleshooting
 
-O IP estático vem do **`network-config` no seed ISO** (cloud-init), gerado por
-`01_create_vm` a partir de `vm_ip` / `vm_mac` no inventário (`make inventory`).
-Se mudou IP ou MAC no `manifest.yml` sem recriar a VM, o SO pode manter o endereço antigo
-ou cair no pool DHCP da rede (`.100–.200`).
+### Wrong IP (e.g. 10.20.30.118 instead of .40)
+
+Static IP comes from **`network-config` on the seed ISO** (cloud-init), rendered by
+role **01** from `vm_ip` / `vm_mac` in inventory (`make inventory`).
+If you changed IP or MAC in `manifest.yml` without recreating the VM, the guest may
+keep the old address or fall back to the libvirt DHCP pool (`.100–.200`).
 
 ```bash
 make inventory OVERLAY=broetec-core
-make destroy OVERLAY=broetec-core    # ou apague lab/disks/<vm>-seed.iso e a VM
+make destroy OVERLAY=broetec-core    # or remove lab/disks/<vm>-seed.iso and the domain
 make up OVERLAY=broetec-core
 ```
 
-Confirme o MAC: `virsh dumpxml broetec-core | grep "mac address"` deve coincidir com
-`vm_mac` em `hosts.ini`. Confirme o IP na VM: `ip -4 addr show`.
+Verify MAC: `virsh dumpxml broetec-core | grep "mac address"` must match `vm_mac` in
+`hosts.ini`. Verify IP in VM: `ip -4 addr show`.
 
-## Sem internet na VM (IP correcto, ping 8.8.8.8 falha)
+See also [`templates/README.md`](../templates/README.md).
 
-Em hosts com **Docker** e firewall activo, a cadeia `FORWARD` pode bloquear tráfego
-`vnet* → wlan0`. Defina `KVM_HOST_FIREWALL=true` em `env/.env` e corra `make setup-host`
-(a role `00_install_kvm` detecta firewalld, ufw ou iptables e aplica regras NAT).
+### No internet in VM (correct IP, ping 8.8.8.8 fails)
 
-Se a rede libvirt já existir mas a VM ainda não tiver internet, confirme o IP na VM
-e repita `make up OVERLAY=broetec-core` após corrigir o host.
+On hosts with **Docker** and an active firewall, `FORWARD` may block `vnet* → wlan0`.
+Set `KVM_HOST_FIREWALL=true` in `env/.env` and run `make setup-host`
+(role **00** detects firewalld, ufw, or iptables and applies NAT rules).
 
-Teste na VM: `ping -c 2 8.8.8.8` e `curl -I http://example.com`.
+If the libvirt network exists but the VM still has no internet, confirm the guest IP
+and re-run `make up OVERLAY=broetec-core` after fixing the host.
 
-## Subir o lab completo (3 VMs)
+Test inside VM: `ping -c 2 8.8.8.8` and `curl -I http://example.com`.
+
+## Full lab (3 VMs)
 
 ```bash
 make up-all
 ```
 
-Cada overlay cria uma VM na mesma rede libvirt `broetec-lab` (10.20.30.0/24).
+Each overlay creates one VM on shared libvirt network `broetec-lab` (10.20.30.0/24).
 
-## Roles futuras por papel
+## Future roles by `vm_role`
 
-Use `vm_role` em plays condicionais:
+Use `vm_role` in conditional plays:
 
 ```yaml
 - hosts: vms
