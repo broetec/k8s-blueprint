@@ -1,0 +1,40 @@
+---
+# =============================================================================
+# tasks/preflight.yml — SSH connectivity and host facts
+# =============================================================================
+#
+# Purpose
+#   First SSH contact without become (libssh stability), then gather primary
+#   NIC facts for later tasks.
+#
+# Variables
+#   Sets facts: os_prepare_primary_iface.
+#
+# Scope
+#   Runs on each host in groups['vms'] via SSH.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Alive check — SSH without become
+  become: false
+  ansible.builtin.ping:
+
+- name: Discover primary IPv4 interface (default route or first NIC)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    IFACE=$(ip -4 route get 8.8.8.8 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }' || true)
+    if [ -z "${IFACE}" ]; then
+      IFACE=$(ip -o link show | awk -F': ' '$2 !~ /^lo(@|$)/ { gsub(/@.*/, "", $2); print $2; exit }')
+    fi
+    printf '%s' "${IFACE}"
+  args:
+    executable: /bin/bash
+  register: os_prep_iface
+  changed_when: false
+
+- name: Store primary interface fact for firewalld
+  ansible.builtin.set_fact:
+    os_prepare_primary_iface: "{{ os_prep_iface.stdout | trim }}"
+  when: os_prep_iface.stdout | trim | length > 0

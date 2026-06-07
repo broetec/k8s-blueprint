@@ -1,0 +1,20 @@
+---
+# Ansible role metadata (not executed as tasks).
+#
+# galaxy_info  — catalog fields for Ansible Galaxy / tooling (author, tags, min version).
+#                Does not change make prepare-vm or site.yml; documents the role.
+# dependencies — other roles Ansible runs before this one when listed (empty here).
+#                Galaxy collections (ansible.posix, etc.) belong in
+#                provisioning/collections/requirements.yml, not here.
+#
+galaxy_info:
+  author: Broetec
+  description: Prepare Rocky Linux VMs for k8s (swap off, SELinux, firewalld baseline).
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  galaxy_tags:
+    - rocky
+    - firewalld
+    - kubernetes
+
+dependencies: []

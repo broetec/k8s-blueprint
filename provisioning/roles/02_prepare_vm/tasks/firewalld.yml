@@ -1,0 +1,62 @@
+---
+# =============================================================================
+# tasks/firewalld.yml — Baseline firewalld inside the VM
+# =============================================================================
+#
+# Purpose
+#   Install and enable firewalld; set default zone; bind primary NIC; allow ssh and icmp.
+#   Uses immediate/permanent rules (no global reload) to avoid dropping SSH on re-runs.
+#
+# Variables
+#   prepare_vm_firewalld_zone, os_prepare_primary_iface (preflight fact).
+#
+# Scope
+#   Without binding the default NIC to the target zone, the interface may stay in
+#   Docker/internal/WSL zones and public rules (ssh, icmp) do not apply — symptom:
+#   correct IP but ping/SSH dead.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Install firewalld
+  ansible.builtin.package:
+    name: firewalld
+    state: present
+
+- name: Enable and start firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: Set firewalld default zone
+  ansible.builtin.command: "firewall-cmd --set-default-zone={{ prepare_vm_firewalld_zone }}"
+  register: fw_default_zone
+  changed_when: "'ZONE_ALREADY_SET' not in fw_default_zone.stderr"
+  failed_when: fw_default_zone.rc != 0 and 'ZONE_ALREADY_SET' not in fw_default_zone.stderr
+
+- name: Bind primary IPv4 interface to target zone
+  ansible.posix.firewalld:
+    interface: "{{ os_prepare_primary_iface }}"
+    zone: "{{ prepare_vm_firewalld_zone }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: os_prepare_primary_iface is defined
+
+- name: Allow SSH in target zone (baseline)
+  ansible.posix.firewalld:
+    service: ssh
+    zone: "{{ prepare_vm_firewalld_zone }}"
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Allow ICMP (ping) in target zone
+  ansible.posix.firewalld:
+    protocol: icmp
+    zone: "{{ prepare_vm_firewalld_zone }}"
+    permanent: true
+    immediate: true
+    state: enabled

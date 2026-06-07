@@ -1,0 +1,21 @@
+---
+# =============================================================================
+# tasks/swap.yml — Disable swap (runtime + fstab)
+# =============================================================================
+#
+# Purpose
+#   Turn off swap immediately and comment swap entries in /etc/fstab for k8s readiness.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Disable swap at runtime
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Comment swap entries in /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\s+swap\s+.*)$'
+    replace: '# \1'

@@ -1,0 +1,17 @@
+---
+# =============================================================================
+# tasks/cloud_init.yml — Wait for cloud-init on first boot
+# =============================================================================
+#
+# Purpose
+#   Block until cloud-init finishes so subsequent tasks see a fully configured guest.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Wait for cloud-init to finish boot configuration
+  ansible.builtin.command: cloud-init status --wait
+  register: cloud_init_status
+  changed_when: false
+  failed_when: false

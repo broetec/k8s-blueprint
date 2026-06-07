@@ -1,0 +1,27 @@
+---
+# =============================================================================
+# tasks/selinux.yml — SELinux mode for lab VMs
+# =============================================================================
+#
+# Purpose
+#   Set SELinux to prepare_vm_selinux_mode at runtime and in /etc/selinux/config.
+#
+# Variables
+#   prepare_vm_selinux_mode (defaults/main.yml).
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Apply SELinux mode at runtime
+  ansible.builtin.command: "setenforce {{ '1' if prepare_vm_selinux_mode == 'enforcing' else '0' }}"
+  changed_when: false
+  failed_when: false
+  when: prepare_vm_selinux_mode in ['enforcing', 'permissive']
+
+- name: Persist SELinux mode in /etc/selinux/config
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: "SELINUX={{ prepare_vm_selinux_mode }}"
+    state: present

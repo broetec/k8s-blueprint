@@ -1,0 +1,22 @@
+---
+# =============================================================================
+# defaults/main.yml — Role 02 defaults
+# =============================================================================
+#
+# Purpose
+#   Tunables for OS baseline inside each VM (overridden via inventory or -e).
+#
+# Variables
+#   prepare_vm_selinux_mode — SELINUX= value in /etc/selinux/config; setenforce at runtime when enforcing/permissive.
+#   prepare_vm_firewalld_zone — default zone and ssh/icmp rules target.
+#
+# Inventory (not duplicated here)
+#   cloud_init (sudo_nopasswd, default_user), ansible_user — see
+#   provisioning/inventory/_shared/group_vars/all.yml and hosts.ini.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+prepare_vm_selinux_mode: enforcing
+prepare_vm_firewalld_zone: public
