@@ -54,13 +54,13 @@ destroy: ssh-host-key-forget ## Remove VMs do overlay activo (mantém cache qcow
 	  printf "$(Y)==> Removendo VM '%s'...$(N)\n" "$$vm"; \
 	  virsh -c qemu:///system destroy "$$vm" 2>/dev/null || true; \
 	  virsh -c qemu:///system undefine "$$vm" --remove-all-storage 2>/dev/null || true; \
-	  sudo rm -f "$(LAB_DISKS_PATH)/$$vm-seed.iso" 2>/dev/null || true; \
+	  rm -f "$(LAB_DISKS_PATH)/$$vm-seed.iso" 2>/dev/null || true; \
 	done
 	@printf "$(G)==> VM(s) do overlay removida(s) (cache preservado).$(N)\n"
 
 clean: destroy ## VM + rede + lab/ + chave SSH
 	-virsh -c qemu:///system net-destroy $(KVM_NETWORK)
 	-virsh -c qemu:///system net-undefine $(KVM_NETWORK)
-	-sudo rm -rf $(LAB_DISKS_PATH) $(LAB_CACHE_PATH)
+	-rm -rf $(LAB_DISKS_PATH) $(LAB_CACHE_PATH)
 	-rm -f $(LAB_KEY) $(LAB_KEY).pub
 	@printf "$(G)==> Limpo. Próximo $(B)make up$(N) começa do zero.$(N)\n"

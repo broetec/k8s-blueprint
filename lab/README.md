@@ -32,6 +32,10 @@ make clean          # remove VM, rede libvirt e apaga lab/cache + lab/disks (man
 rm -rf lab/cache lab/disks   # só os artefactos, sem tocar na VM (manual)
 ```
 
+`make destroy` e `make clean` não usam `sudo` no host: o directório `lab/` fica
+sob o utilizador que corre o lab, mesmo quando o libvirt muda o dono dos discos
+para `qemu:qemu`.
+
 Se migrou de uma versão antiga que usava `var/libvirt/`, pode apagar essa pasta
 à mão depois de `make clean`:
 

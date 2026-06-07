@@ -308,6 +308,12 @@ Como usar:
 ## Derrubar tudo
 
 A forma mais simples é `make clean` (destrói VM + rede + `lab/` + chave do lab).
+`make destroy` e `make clean` **não pedem sudo no host** no fluxo normal: `virsh`
+usa Polkit (grupos `libvirt` + `kvm` após `make setup-host` e re-login) e os
+ficheiros em `lab/disks/` pertencem ao directório do operador — apagar um
+`*.qcow2` ou `*-seed.iso` com dono `qemu:qemu` só exige escrita em `lab/disks/`,
+não root.
+
 Se quiser fazer manualmente para entender o que acontece:
 
 ```bash
@@ -317,6 +323,6 @@ virsh -c qemu:///system undefine broetec --remove-all-storage
 virsh -c qemu:///system net-destroy broetec-lab || true
 virsh -c qemu:///system net-undefine broetec-lab
 
-sudo rm -rf lab/cache lab/disks    # discos, seed ISO e cache da qcow2 base
+rm -rf lab/cache lab/disks    # discos, seed ISO e cache da qcow2 base
 rm -f env/k8s-blueprint env/k8s-blueprint.pub   # remove a chave SSH local
 ```
