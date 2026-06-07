@@ -75,6 +75,33 @@ def test_generate_hosts_ini(repo_tree: Path) -> None:
     assert 'ansible.netcommon.libssh' in text
 
 
+def test_generate_hosts_ini_libssh_config(repo_tree: Path) -> None:
+    manifest_path = repo_tree / 'provisioning/inventory/manifest.yml'
+    raw = yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
+    raw['defaults']['ansible_libssh_config_file'] = 'env/ssh_config_lab'
+    manifest_path.write_text(yaml.dump(raw), encoding='utf-8')
+    gen = InventoryGenerator(repo_tree)
+    manifest = gen.load_manifest()
+    overlay = manifest.get_overlay('broetec-core')
+    text = gen.render_hosts_ini(overlay, manifest)
+    expected = str((repo_tree / 'env/ssh_config_lab').resolve())
+    assert f'ansible_libssh_config_file={expected}' in text
+
+
+def test_generate_hosts_ini_openssh_override(repo_tree: Path) -> None:
+    gen = InventoryGenerator(repo_tree)
+    manifest = gen.load_manifest()
+    overlay = manifest.get_overlay('broetec-core')
+    text = gen.render_hosts_ini(
+        overlay,
+        manifest,
+        {'ANSIBLE_VM_CONNECTION': 'ssh'},
+    )
+    assert 'ansible_connection=ssh' in text
+    assert 'ansible_libssh_host_key_auto_add' not in text
+    assert 'ansible_libssh_config_file' not in text
+
+
 def test_generate_writes_files(repo_tree: Path) -> None:
     gen = InventoryGenerator(repo_tree)
     paths = gen.generate(['broetec-core'])

@@ -62,11 +62,20 @@ KVM_HOST_FIREWALL_ON := $(filter 1 true yes TRUE YES,$(KVM_HOST_FIREWALL))
 ANSIBLE_FLAGS ?=
 ANSIBLE_FORKS ?= 1
 ANSIBLE_CFG ?= $(CURDIR)/provisioning/ansible.cfg
-ANSIBLE_SSH_ARGS ?= -C -o ControlMaster=no -o ControlPersist=no
 ANSIBLE_UNWRAP ?= env -u LD_PRELOAD -u LD_LIBRARY_PATH -u PYTHONPATH PYTHONNOUSERSITE=1 MALLOC_ARENA_MAX=2
 COLLECTIONS_REQ ?= provisioning/collections/requirements.yml
 
-# --- SSH global known_hosts (opt-in) -------------------------------------------
+# --- SSH controlador (user-space) ----------------------------------------------
+LAB_SSH_CONFIG ?= env/ssh_config_lab
+LAB_SSH_CONFIG_ABS := $(CURDIR)/$(LAB_SSH_CONFIG)
+LAB_SSH_CONFIG_EXAMPLE ?= env/ssh_config_lab.example
+LAB_SSH_GLOBAL_STUB ?= env/global-known_hosts_stub
+
+# libssh (default) | ssh (OpenSSH — pode causar worker dead no Cursor)
+ANSIBLE_VM_CONNECTION ?= libssh
+ANSIBLE_PRUNE_SSH_KNOWN_HOSTS ?= false
+
+# --- SSH global known_hosts (opt-in root) --------------------------------------
 CREATE_SSH_GLOBAL_KNOWN_HOSTS ?= false
 SSH_GLOBAL_KNOWN_HOSTS_ENABLED := $(filter 1 true yes TRUE YES,$(CREATE_SSH_GLOBAL_KNOWN_HOSTS))
 
@@ -79,4 +88,4 @@ UV ?= uv
 UV_PYTHON ?= 3.12
 VENV := $(CURDIR)/.venv
 VENV_PYTHON := $(VENV)/bin/python
-ANSIBLE_FRONT = $(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_HOST_KEY_CHECKING=False ANSIBLE_SSH_ARGS='$(ANSIBLE_SSH_ARGS)' ANSIBLE_CONFIG=$(ANSIBLE_CFG) ANSIBLE_FORKS=$(ANSIBLE_FORKS) ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(UV) run --directory "$(CURDIR)"
+ANSIBLE_FRONT = $(ANSIBLE_UNWRAP) no_proxy='*' NO_PROXY='*' ANSIBLE_HOST_KEY_CHECKING=False ANSIBLE_CONFIG=$(ANSIBLE_CFG) ANSIBLE_FORKS=$(ANSIBLE_FORKS) ANSIBLE_PRIVATE_KEY_FILE=$(LAB_KEY_ABS) $(UV) run --directory "$(CURDIR)"

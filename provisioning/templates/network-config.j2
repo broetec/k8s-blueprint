@@ -8,7 +8,7 @@ ethernets:
     addresses:
       - "{{ vm_ip }}/{{ kvm_network.prefix }}"
     routes:
-      - to: default
+      - to: 0.0.0.0/0
         via: "{{ kvm_network.gateway }}"
     nameservers:
       addresses:

@@ -163,21 +163,29 @@ bloco do playbook pode falhar mesmo com `forks=1`.
 ### Avisos `ssh_strict_fopen` / `packet type 80` (libssh)
 
 Por defeito o blueprint **não altera ficheiros do sistema** (`/etc/ssh/…`).
-Chaves de host do lab ficam em **`$HOME/.ssh/known_hosts`** (`make
-ssh-host-key-refresh`, `make ssh`, plugin libssh).
+
+**Mitigação sem root (default):**
+
+1. `make setup-host` corre `ensure-user-known-hosts` (uma vez no controlador):
+   `~/.ssh/known_hosts`, `env/global-known_hosts_stub` e `env/ssh_config_lab`.
+2. O inventário aponta `ansible_libssh_config_file` para esse config (rede lab
+   `10.20.30.*`).
+3. `ssh-host-key-refresh` regista a chave da VM antes de plays contra `vms`
+   (`make up`, ou `prepare-vm` / `deploy` isolados).
+4. O Make passa `ansible_prune_ssh_known_hosts=false` — evita que o `site.yml`
+   remova a chave logo após o refresh.
+
+Quem salta `setup-host` obtém o mesmo via `make keys` ou `make up` (fallback).
+
+| Variável (`env/.env`) | Default | Efeito |
+|---|---|---|
+| `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` | `true` → `sudo` cria `/etc/ssh/ssh_known_hosts` vazio (silencia `ssh_strict_fopen`) |
+| `ANSIBLE_VM_CONNECTION` | `libssh` | `ssh` → OpenSSH (sem ruído libssh; risco *worker dead* no Cursor) |
+| `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS` | `false` | `true` → `site.yml` faz `ssh-keygen -R` (uso manual de `ansible-playbook`) |
 
 O aviso `ssh_strict_fopen: … /etc/ssh/ssh_known_hosts` vem da biblioteca C
-**libssh**, que tenta ler o ficheiro global opcional do SO (distinto de
-`~/.ssh/known_hosts`). Em Bazzite/Fedora Atomic esse ficheiro muitas vezes não
-existe; o playbook pode continuar com `failed=0`.
-
-**Opt-in** (só se quiseres criar o ficheiro global no controlador):
-
-```bash
-cp env/.env.example env/.env
-# Edite: CREATE_SSH_GLOBAL_KNOWN_HOSTS=true
-make up   # ou: make ensure-ssh-global-known-hosts
-```
+**libssh**, que tenta ler o ficheiro global opcional do SO. Com a config do lab
+pode reduzir-se; para silêncio total use `CREATE_SSH_GLOBAL_KNOWN_HOSTS=true`.
 
 `packet type 80` costuma ser ruído do handshake libssh↔`sshd` da Rocky. Se houver
 falhas reais de ligação, actualize `ansible-pylibssh` / `ansible.netcommon`.
@@ -185,7 +193,8 @@ falhas reais de ligação, actualize `ansible-pylibssh` / `ansible.netcommon`.
 ### Ficheiro `env/.env` (defaults do Make)
 
 Copie `env/.env.example` → `env/.env` (gitignored; ver `env/README.md`).
-Variáveis úteis: `OVERLAY`, `VM_IP`, `VM_NAME`, `CREATE_SSH_GLOBAL_KNOWN_HOSTS`.
+Variáveis úteis: `OVERLAY`, `VM_IP`, `VM_NAME`, `CREATE_SSH_GLOBAL_KNOWN_HOSTS`,
+`ANSIBLE_VM_CONNECTION`, `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS`.
 
 ---
 

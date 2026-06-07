@@ -1,0 +1,12 @@
+# =============================================================================
+# Config SSH do lab — template (sem segredos)
+# =============================================================================
+# Instância local (caminhos absolutos): make ensure-user-known-hosts
+# Usado pelo Ansible via ansible_libssh_config_file no inventário [vms:vars].
+# =============================================================================
+
+Host 10.20.30.*
+  UserKnownHostsFile ~/.ssh/known_hosts
+  GlobalKnownHostsFile @REPO_ROOT@/env/global-known_hosts_stub
+  StrictHostKeyChecking accept-new
+  IdentityFile @REPO_ROOT@/env/k8s-blueprint

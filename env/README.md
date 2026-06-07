@@ -26,6 +26,8 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 | `KVM_HOST_FIREWALL` | `false` (padrão): não altera firewall do host; `true`: regras NAT/FORWARD para VMs lab (firewalld, ufw ou iptables) |
 | `LAB_PATH` | raiz de `lab/` (discos + cache qcow2; ver `lab/README.md`) |
 | `CREATE_SSH_GLOBAL_KNOWN_HOSTS` | `false` (padrão) = só `~/.ssh/known_hosts`; `true` = criar `/etc/ssh/ssh_known_hosts` no controlador (sudo, opt-in) |
+| `ANSIBLE_VM_CONNECTION` | `libssh` (padrão) = plugin Python; `ssh` = OpenSSH (menos ruído libssh, risco de *worker dead* no Cursor) |
+| `ANSIBLE_PRUNE_SSH_KNOWN_HOSTS` | `false` (padrão) = Make gere chaves; `true` = `site.yml` remove entradas obsoletas com `ssh-keygen -R` |
 
 ## Conteúdo gerado automaticamente
 
@@ -33,8 +35,14 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 |---|---|---|
 | `k8s-blueprint` | `make keys` / `make up` (1ª execução) | chave **privada** usada pelo Ansible (via `--private-key` e `-e ansible_ssh_private_key_file=...`) e pelo `make ssh` para conectar nas VMs do lab |
 | `k8s-blueprint.pub` | mesma origem | chave **pública** injetada no usuário `rocky` da VM via cloud-init (Ansible recebe via `-e ssh_public_key_path=...`) |
+| `ssh_config_lab` | `make ensure-user-known-hosts` / `make setup-host` | config SSH do lab para o plugin libssh (`ansible_libssh_config_file`) |
+| `global-known_hosts_stub` | `make ensure-user-known-hosts` | ficheiro vazio user-space para `GlobalKnownHostsFile` (evita depender de `/etc/ssh/…`) |
 
 A geração é idempotente: se a chave já existe, o Make pula esse passo.
+
+`make setup-host` (ou `make keys` / `make up` como fallback) corre `ensure-user-known-hosts`
+uma vez no controlador. O registo da chave da VM (`ssh-host-key-refresh`) corre no ciclo
+`make up` ou antes de `prepare-vm` / `deploy` isolados.
 
 ## O que NÃO colocar aqui
 

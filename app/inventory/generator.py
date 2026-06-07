@@ -52,12 +52,27 @@ class InventoryGenerator:
             written.append(path)
         return written
 
+    def _resolve_vm_connection(
+        self,
+        manifest: InventoryManifest,
+        env: dict[str, str],
+    ) -> str:
+        override = env.get('ANSIBLE_VM_CONNECTION', '').strip().lower()
+        if override == 'ssh':
+            return 'ssh'
+        if override == 'libssh':
+            return 'ansible.netcommon.libssh'
+        return manifest.defaults.ansible_connection_vm
+
     def render_hosts_ini(
         self,
         overlay: OverlaySpec,
         manifest: InventoryManifest,
+        env: dict[str, str] | None = None,
     ) -> str:
         d = manifest.defaults
+        env = env or {}
+        vm_connection = self._resolve_vm_connection(manifest, env)
         lines = [
             '; =============================================================================',
             '; Gerado automaticamente — NÃO EDITAR.',
@@ -84,12 +99,20 @@ class InventoryGenerator:
                 f'ansible_user={d.ansible_user}',
                 f'vm_role={overlay.role}',
                 '; libssh: evita worker dead no Cursor/AppImage. Requer make deps.',
-                f'ansible_connection={d.ansible_connection_vm}',
+                f'ansible_connection={vm_connection}',
                 f'ansible_host_key_checking={str(d.ansible_host_key_checking)}',
-                f'ansible_libssh_host_key_auto_add={str(d.ansible_libssh_host_key_auto_add)}',
-                '',
             ],
         )
+        if vm_connection == 'ansible.netcommon.libssh':
+            lines.append(
+                f'ansible_libssh_host_key_auto_add={str(d.ansible_libssh_host_key_auto_add)}',
+            )
+            if d.ansible_libssh_config_file:
+                config_path = (
+                    self.repo_root / d.ansible_libssh_config_file
+                ).resolve()
+                lines.append(f'ansible_libssh_config_file={config_path}')
+        lines.append('')
         return '\n'.join(lines)
 
     def render_overlay_group_vars(self, overlay: OverlaySpec) -> str:
@@ -135,7 +158,8 @@ class InventoryGenerator:
     ) -> Path:
         overlay_dir = self.inventory_root / overlay.overlay_id
         hosts_ini = overlay_dir / 'hosts.ini'
-        content = self.render_hosts_ini(overlay, manifest)
+        env = load_dotenv(self.env_path)
+        content = self.render_hosts_ini(overlay, manifest, env)
         if dry_run:
             return hosts_ini
         overlay_dir.mkdir(parents=True, exist_ok=True)

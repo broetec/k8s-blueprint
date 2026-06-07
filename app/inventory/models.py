@@ -63,6 +63,7 @@ class InventoryDefaults:
     ansible_connection_vm: str
     ansible_host_key_checking: bool
     ansible_libssh_host_key_auto_add: bool
+    ansible_libssh_config_file: str | None
 
 
 @dataclass
@@ -109,6 +110,11 @@ def _parse_defaults(data: dict[str, Any]) -> InventoryDefaults:
         ansible_host_key_checking=bool(data.get('ansible_host_key_checking', False)),
         ansible_libssh_host_key_auto_add=bool(
             data.get('ansible_libssh_host_key_auto_add', True),
+        ),
+        ansible_libssh_config_file=(
+            str(data['ansible_libssh_config_file'])
+            if data.get('ansible_libssh_config_file')
+            else None
         ),
     )
 

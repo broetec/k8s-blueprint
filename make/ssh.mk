@@ -2,7 +2,19 @@
 # make/ssh.mk — SSH, known_hosts e utilitários libvirt
 # =============================================================================
 
-.PHONY: ensure-ssh-global-known-hosts ssh ssh-add-lab ssh-host-key-forget ssh-host-key-refresh status destroy clean
+.PHONY: ensure-user-known-hosts ensure-ssh-global-known-hosts ssh ssh-add-lab \
+	ssh-host-key-forget ssh-host-key-refresh status destroy clean
+
+ensure-user-known-hosts: ## Prepara ~/.ssh e stubs SSH do lab no controlador (sem sudo)
+	@mkdir -p $(HOME)/.ssh && chmod 700 $(HOME)/.ssh 2>/dev/null || true
+	@touch $(HOME)/.ssh/known_hosts && chmod 644 $(HOME)/.ssh/known_hosts 2>/dev/null || true
+	@mkdir -p env
+	@touch $(LAB_SSH_GLOBAL_STUB)
+	@test -f $(LAB_SSH_CONFIG_EXAMPLE) \
+	  || { printf "$(R)Falta $(LAB_SSH_CONFIG_EXAMPLE)$(N)\n"; exit 1; }
+	@sed 's|@REPO_ROOT@|$(CURDIR)|g' $(LAB_SSH_CONFIG_EXAMPLE) > $(LAB_SSH_CONFIG).tmp
+	@mv $(LAB_SSH_CONFIG).tmp $(LAB_SSH_CONFIG)
+	@printf "$(G)==> SSH do controlador pronto (~/.ssh/known_hosts, $(LAB_SSH_CONFIG)).$(N)\n"
 
 ensure-ssh-global-known-hosts: ## Cria /etc/ssh/ssh_known_hosts se CREATE_SSH_GLOBAL_KNOWN_HOSTS=true
 ifneq ($(SSH_GLOBAL_KNOWN_HOSTS_ENABLED),)

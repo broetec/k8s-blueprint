@@ -17,5 +17,5 @@ SETUP_HOST_SUDO_FLAGS := $(if $(filter 1,$(KVM_HOST_BOOTSTRAP_ON) $(KVM_HOST_FIR
 
 # Shared wrapper for all playbook targets (inventory, keys, lab paths).
 define run-playbook
-$(ANSIBLE_FRONT) ansible-playbook --forks=$(ANSIBLE_FORKS) -i $(INVENTORY) $(PLAYBOOK) --tags $(1) $(2) --private-key=$(LAB_KEY_ABS) -e ssh_public_key_path=$(LAB_KEY_ABS).pub -e ansible_ssh_private_key_file=$(LAB_KEY_ABS) $(ANSIBLE_LAB_EXTRA) $(3)
+$(ANSIBLE_FRONT) ansible-playbook --forks=$(ANSIBLE_FORKS) -i $(INVENTORY) $(PLAYBOOK) --tags $(1) $(2) --private-key=$(LAB_KEY_ABS) -e ssh_public_key_path=$(LAB_KEY_ABS).pub -e ansible_ssh_private_key_file=$(LAB_KEY_ABS) -e ansible_prune_ssh_known_hosts=$(ANSIBLE_PRUNE_SSH_KNOWN_HOSTS) $(ANSIBLE_LAB_EXTRA) $(3)
 endef

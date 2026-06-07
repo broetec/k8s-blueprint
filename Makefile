@@ -73,7 +73,7 @@ deps: sync ## Verifica .venv, virsh, ssh-keygen e coleções Galaxy
 	  || { printf "$(R)Falta ssh-keygen$(N)\n"; exit 1; }
 	@$(ANSIBLE_FRONT) ansible-galaxy collection install -r $(COLLECTIONS_REQ)
 
-keys: $(LAB_KEY).pub ## Gera par SSH do lab (idempotente)
+keys: ensure-user-known-hosts $(LAB_KEY).pub ## Gera par SSH do lab (idempotente)
 
 $(LAB_KEY).pub:
 	@mkdir -p $(dir $(LAB_KEY))
@@ -89,7 +89,7 @@ inventory-overlay: sync ## Gera hosts.ini só do OVERLAY activo
 
 setup: sync deps keys ## Controlador: .venv, Galaxy, chave SSH
 
-setup-host: setup inventory-overlay deps ## 1ª vez: controlador + host KVM (role 00)
+setup-host: setup inventory-overlay deps ensure-user-known-hosts ## 1ª vez: controlador + host KVM (role 00)
 	@printf "$(B)==> [00] setup-host (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
 	$(call run-playbook,$(SETUP_HOST_TAGS),$(SETUP_HOST_SUDO_FLAGS) $(SETUP_HOST_ANSIBLE_FLAGS),$(SETUP_HOST_EXTRA) $(EXTRA))
 
@@ -97,15 +97,15 @@ create-vm: inventory-overlay deps keys ## 01 — qcow2, cloud-init, virt-install
 	@printf "$(Y)==> [01] create-vm (OVERLAY=$(OVERLAY))$(N)\n"
 	$(call run-playbook,create_vm,$(ANSIBLE_FLAGS),$(EXTRA))
 
-prepare-vm: inventory-overlay deps keys ## 02 — SO dentro da VM
+prepare-vm: inventory-overlay deps keys ssh-host-key-refresh ## 02 — SO dentro da VM
 	@printf "$(Y)==> [02] prepare-vm (OVERLAY=$(OVERLAY))$(N)\n"
 	$(call run-playbook,prepare_vm,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))
 
-install-rke2: inventory-overlay deps keys ## 03 — RKE2 (stub)
+install-rke2: inventory-overlay deps keys ssh-host-key-refresh ## 03 — RKE2 (stub)
 	@printf "$(Y)==> [03] install-rke2 (OVERLAY=$(OVERLAY))$(N)\n"
 	$(call run-playbook,install_rke2,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))
 
-deploy-k8s: inventory-overlay deps keys ## 04 — manifests k8s (stub)
+deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — manifests k8s (stub)
 	@printf "$(Y)==> [04] deploy-k8s (OVERLAY=$(OVERLAY))$(N)\n"
 	$(call run-playbook,deploy_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))
 
