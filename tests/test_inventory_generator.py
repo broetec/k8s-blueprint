@@ -57,7 +57,7 @@ def test_manifest_load(repo_tree: Path) -> None:
 
 
 def test_invalid_ip() -> None:
-    with pytest.raises(ValueError, match='IP inválido'):
+    with pytest.raises(ValueError, match='Invalid IP'):
         VmSpec(name='x', ip='not-an-ip')
 
 
@@ -84,8 +84,7 @@ def test_generate_hosts_ini_libssh_config(repo_tree: Path) -> None:
     manifest = gen.load_manifest()
     overlay = manifest.get_overlay('broetec-core')
     text = gen.render_hosts_ini(overlay, manifest)
-    expected = str((repo_tree / 'env/ssh_config_lab').resolve())
-    assert f'ansible_libssh_config_file={expected}' in text
+    assert 'ansible_libssh_config_file=env/ssh_config_lab' in text
 
 
 def test_generate_hosts_ini_openssh_override(repo_tree: Path) -> None:
@@ -107,7 +106,7 @@ def test_generate_writes_files(repo_tree: Path) -> None:
     paths = gen.generate(['broetec-core'])
     hosts = paths[0]
     assert hosts.name == 'hosts.ini'
-    assert 'Gerado automaticamente' in hosts.read_text(encoding='utf-8')
+    assert 'Auto-generated' in hosts.read_text(encoding='utf-8')
     gv_all = hosts.parent / 'group_vars' / 'all'
     assert gv_all.is_dir()
     assert (gv_all / '00_shared.yml').is_symlink()

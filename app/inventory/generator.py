@@ -121,10 +121,10 @@ class InventoryGenerator:
                 f'ansible_libssh_host_key_auto_add={str(d.ansible_libssh_host_key_auto_add)}',
             )
             if d.ansible_libssh_config_file:
-                config_path = (
-                    self.repo_root / d.ansible_libssh_config_file
-                ).resolve()
-                lines.append(f'ansible_libssh_config_file={config_path}')
+                # Repo-relative path (ansible-playbook cwd = repo root via make / uv run).
+                lines.append(
+                    f'ansible_libssh_config_file={d.ansible_libssh_config_file}',
+                )
         lines.append('')
         return '\n'.join(lines)
 
