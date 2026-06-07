@@ -108,14 +108,14 @@ ansible_ssh_private_key_file: "{{ _repo_root }}/env/k8s-blueprint"
 # cloud-init — utilizador rocky, fuso, locale, chaves SSH e (opcional) senha
 # -----------------------------------------------------------------------------
 cloud_init:
-  default_user: rocky
+  default_user: broetec
   timezone: America/Sao_Paulo
   locale: en_US.UTF-8
   ssh_authorized_keys:
     - "{{ lookup('file', ssh_public_key_path) }}"
-  # Password: broetec@lab
+  # Password: broetec
   # Generate hash: openssl passwd -6   or   mkpasswd --method=SHA-512
-  password_hash: '$6$jNrlQDFy.2XhFEy4$lxI3Dr4ceWoc6mIKJ4z9QJKqMNCQ5u7OU9i92p5aPNBHGw23teJqlkonrdkxvJLNrRKXWOo3lgLk/hngjAKCG0'
+  password_hash: '$6$EzA6FoPmrHWE/XXL$toMAlFTNt9t1U/ys2orLE2tj66mE/W/5N7x./PA0AunILctST8AX5M9Cpzsnb1t4yWgMb2H9USjaE2qaTfQ9B/'
   ssh_password_login: false
   # true = lab conveniente (Ansible become sem senha na VM). false = sudo pede senha;
   # nesse caso define password_hash (consola) e ansible_become_password em group_vars/vms.yml.
