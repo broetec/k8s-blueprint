@@ -46,7 +46,7 @@ Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` pa
 | Pasta | Função |
 |-------|--------|
 | [`app/`](app/) | App Python (gerador de inventário; futuro: configs custom) |
-| [`make/`](make/) | Defaults e macros Ansible (includes do Makefile) |
+| [`make/`](make/) | Makefile orchestration — targets, defaults, Ansible wrapper ([`make/README.md`](make/README.md)) |
 | [`provisioning/`](provisioning/) | Ansible: playbook, inventário, roles, `ansible.cfg` |
 | [`lab/`](lab/) | Discos e cache qcow2 gerados pelo `make up` (gitignored) |
 | [`env/`](env/) | Chave SSH, `.env` do Make e credenciais locais |

@@ -3,13 +3,9 @@
 # =============================================================================
 # Defaults: make/config.mk  |  Ansible: make/ansible.mk  |  SSH: make/ssh.mk
 #
-# Uso rápido:
-#   make setup-host   1ª vez (controlador + host KVM)
-#   make up           broetec-core: VM + SO + k8s (01–04; role 00 só em setup-host)
-#   make up-all       todas as VMs do manifest.yml
-#   make deploy       só k8s (03 + 04) no overlay activo
-#
-# cp env/.env.example env/.env  — defaults locais opcionais
+# Quick start: make setup-host (once) → make up → make ssh
+# Full reference: make/README.md
+# cp env/.env.example env/.env  — optional local defaults
 # =============================================================================
 
 include make/config.mk
@@ -25,7 +21,7 @@ N := \033[0m
 .DEFAULT_GOAL := help
 .PHONY: help sync venv deps keys inventory inventory-overlay \
 	setup setup-host create-vm prepare-vm install-rke2 deploy-k8s \
-	deploy up up-all up-lab
+	deploy up up-all
 
 help: ## Lista targets e config actual
 	@printf "$(B)Setup (1ª vez):$(N)\n"
@@ -124,5 +120,3 @@ up-all: inventory deps keys ensure-ssh-global-known-hosts ## Sobe todos os overl
 	  $(SUBMAKE) -f $(CURDIR)/Makefile up OVERLAY=$$o || exit $$?; \
 	done
 	@printf "\n$(G)==> Lab completo ($(words $(LAB_OVERLAYS)) VMs).$(N)\n"
-
-up-lab: up-all ## Alias deprecated → up-all

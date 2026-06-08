@@ -13,7 +13,11 @@ KVM/libvirt e Kubernetes.
 k8s-blueprint/
 ├── README.md                 # Entrada: quick start
 ├── Makefile                  # Orquestrador (includes em make/)
-├── make/                     # config.mk, ansible.mk, ssh.mk
+├── make/                     # Makefile includes — see make/README.md
+│   ├── README.md
+│   ├── config.mk
+│   ├── ansible.mk
+│   └── ssh.mk
 ├── pyproject.toml            # Dependências Python (Ansible via uv)
 │
 ├── app/                      # App Python
@@ -53,6 +57,20 @@ App Python do projeto. Hoje contém o **gerador de inventário Ansible**
 
 **Futuro:** configs personalizadas do lab (topologia, overlays, parâmetros de VM)
 geradas por CLI ou UI Python.
+
+---
+
+## make
+
+Orquestração **Make** na raiz do repo: targets (`up`, `setup-host`, …),
+defaults (`env/.env`), invocação Ansible e utilitários SSH/libvirt.
+
+| Path | Purpose |
+|------|---------|
+| [make/README.md](../make/README.md) | Hub — targets, pipeline, configuration, troubleshooting |
+| `config.mk` | Defaults, overlay paths, become flags, `ANSIBLE_FRONT` |
+| `ansible.mk` | `run-playbook` macro, `setup-host` tag logic |
+| `ssh.mk` | SSH known_hosts, `make ssh`, `destroy`, `clean` |
 
 ---
 

@@ -69,12 +69,9 @@ COLLECTIONS_REQ ?= provisioning/collections/requirements.yml
 
 # --- SSH controlador (user-space) ----------------------------------------------
 LAB_SSH_CONFIG ?= env/ssh_config_lab
-LAB_SSH_CONFIG_ABS := $(CURDIR)/$(LAB_SSH_CONFIG)
 LAB_SSH_CONFIG_EXAMPLE ?= env/ssh_config_lab.example
 LAB_SSH_GLOBAL_STUB ?= env/global-known_hosts_stub
 
-# libssh (default) | ssh (OpenSSH — pode causar worker dead no Cursor)
-ANSIBLE_VM_CONNECTION ?= libssh
 ANSIBLE_PRUNE_SSH_KNOWN_HOSTS ?= false
 
 # --- SSH global known_hosts (opt-in root) --------------------------------------

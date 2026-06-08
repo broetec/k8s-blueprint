@@ -37,6 +37,7 @@ Generator for `make inventory`: [`app/inventory/README.md`](../app/inventory/REA
 
 | Topic | Where to read |
 |-------|---------------|
+| Make orchestration (targets, env) | [`make/README.md`](../make/README.md) |
 | Master playbook, tags, Make targets | [`site.yml`](site.yml) banner, [roles READMEs](roles/) |
 | Ansible.cfg (forks, libssh) | [`ansible.cfg`](ansible.cfg), [`collections/README.md`](collections/README.md) |
 | Overlays, manifest, group_vars | [`inventory/README.md`](inventory/README.md) |
