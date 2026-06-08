@@ -18,7 +18,7 @@ def repo_tree(tmp_path: Path) -> Path:
         'defaults': {
             'kvm_host': 'localhost',
             'ansible_connection': 'local',
-            'ansible_user': 'rocky',
+            'ansible_user': 'broetec',
         },
         'overlays': {
             'broetec-core': {

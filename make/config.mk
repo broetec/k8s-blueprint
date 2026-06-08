@@ -15,8 +15,10 @@ LAB_OVERLAYS := broetec-core broetec-storage broetec-monitor
 _inventory_vms_list := $(shell awk 'BEGIN{v=0} /^\[vms\]$$/{v=1;next} /^\[/{if(v)v=0;next} v&&$$0!~/^[[:space:]]*([#;]|$$)/{print $$1}' "$(INVENTORY)" 2>/dev/null)
 _inventory_first_vm := $(firstword $(_inventory_vms_list))
 _inventory_first_vm_ip := $(shell awk 'BEGIN{v=0} /^\[vms\]$$/{v=1;next} /^\[/{if(v)v=0;next} v&&$$0!~/^[[:space:]]*([#;]|$$)/{for(i=2;i<=NF;i++){if($$i~/^vm_ip=/){sub(/^vm_ip=/,"",$$i);print $$i;exit} if($$i~/^ansible_host=/){sub(/^ansible_host=/,"",$$i);print $$i;exit}};exit}' "$(INVENTORY)" 2>/dev/null)
+_inventory_ansible_user := $(shell awk 'BEGIN{v=0} /^\[vms:vars\]$$/{v=1;next} /^\[/{if(v)v=0;next} v&&$$0~/^ansible_user=/{sub(/^ansible_user=/,"");print;exit}' "$(INVENTORY)" 2>/dev/null)
 VM_NAME ?= $(if $(_inventory_first_vm),$(_inventory_first_vm),broetec-core)
 VM_IP ?= $(if $(_inventory_first_vm_ip),$(_inventory_first_vm_ip),10.20.30.40)
+VM_USER ?= $(if $(_inventory_ansible_user),$(_inventory_ansible_user),broetec)
 KVM_NETWORK ?= broetec-lab
 
 # --- Lab (discos, cache, chave SSH) --------------------------------------------
@@ -46,7 +48,7 @@ SUDO_FLAGS_VM := --become-password-file=$(VM_BECOME_PASS_FILE)
 endif
 endif
 ifneq ($(filter --ask-become-pass -K,$(SUDO_FLAGS_VM)),)
-$(error Plays em vms: não use --ask-become-pass/-K. Use env/vm-become.pass ou rocky NOPASSWD.)
+$(error Plays em vms: não use --ask-become-pass/-K. Use env/vm-become.pass ou cloud_init.sudo_nopasswd.)
 endif
 
 # --- Host KVM (role 00) --------------------------------------------------------

@@ -116,7 +116,7 @@ def _parse_defaults(data: dict[str, Any]) -> InventoryDefaults:
     return InventoryDefaults(
         kvm_host=str(data.get('kvm_host', 'localhost')),
         ansible_connection=str(data.get('ansible_connection', 'local')),
-        ansible_user=str(data.get('ansible_user', 'rocky')),
+        ansible_user=str(data.get('ansible_user', 'broetec')),
         ansible_connection_vm=str(
             data.get('ansible_connection_vm', 'ansible.netcommon.libssh'),
         ),

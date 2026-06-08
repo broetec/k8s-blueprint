@@ -30,12 +30,12 @@ else
 	@:
 endif
 
-ssh: ## Conecta na VM (rocky) com a chave do lab
+ssh: ## Conecta na VM (ansible_user do inventário) com a chave do lab
 	@mkdir -p $(HOME)/.ssh && chmod 700 $(HOME)/.ssh 2>/dev/null || true
 	@ssh -i $(LAB_KEY_ABS) \
 	     -o StrictHostKeyChecking=accept-new \
 	     -o UserKnownHostsFile=$(HOME)/.ssh/known_hosts \
-	     rocky@$(VM_IP)
+	     $(VM_USER)@$(VM_IP)
 
 ssh-add-lab: ## Adiciona a chave do lab ao ssh-agent (opcional)
 	@ssh-add $(LAB_KEY_ABS)
@@ -49,8 +49,10 @@ ssh-host-key-refresh: ssh-host-key-forget ## Regista a chave da VM em ~/.ssh/kno
 	@mkdir -p $(HOME)/.ssh
 	@chmod 700 $(HOME)/.ssh 2>/dev/null || true
 	@touch $(HOME)/.ssh/known_hosts
-	@until ssh-keyscan -H $(VM_IP) 2>/dev/null | grep -q .; do sleep 2; done
-	@ssh-keyscan -H $(VM_IP) >> $(HOME)/.ssh/known_hosts 2>/dev/null
+	@keys=$$(mktemp); \
+	trap 'rm -f $$keys' EXIT; \
+	until ssh-keyscan -H $(VM_IP) 2>/dev/null | grep -E '^(ssh-|ecdsa-|\|[0-9]+\|)' > $$keys && test -s $$keys; do sleep 2; done; \
+	cat $$keys >> $(HOME)/.ssh/known_hosts
 
 status: ## Estado das VMs e redes libvirt
 	@printf "$(B)Domínios libvirt:$(N)\n"

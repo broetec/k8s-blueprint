@@ -114,7 +114,6 @@ deploy: install-rke2 deploy-k8s ## 03 + 04 — actualizar só k8s
 up: inventory-overlay deps keys ensure-ssh-global-known-hosts ## VM + SO + k8s (01–04)
 	@printf "$(B)==> up OVERLAY='$(OVERLAY)'$(N)\n"
 	@$(SUBMAKE) -f $(CURDIR)/Makefile create-vm OVERLAY=$(OVERLAY)
-	@$(SUBMAKE) -f $(CURDIR)/Makefile ssh-host-key-refresh VM_IP=$(VM_IP) VM_NAME=$(VM_NAME)
 	@$(SUBMAKE) -f $(CURDIR)/Makefile prepare-vm OVERLAY=$(OVERLAY)
 	@$(SUBMAKE) -f $(CURDIR)/Makefile deploy OVERLAY=$(OVERLAY)
 	@printf "\n$(G)==> Pronto.$(N) $(B)make ssh$(N) para entrar na VM.\n"

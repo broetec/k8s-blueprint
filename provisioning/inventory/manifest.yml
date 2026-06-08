@@ -28,7 +28,7 @@
 defaults:
   kvm_host: localhost
   ansible_connection: local
-  ansible_user: rocky
+  ansible_user: broetec
   ansible_connection_vm: ansible.netcommon.libssh
   ansible_host_key_checking: false
   ansible_libssh_host_key_auto_add: true
