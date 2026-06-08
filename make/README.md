@@ -7,9 +7,13 @@ generates inventory for the active overlay, invokes `uv run ansible-playbook`,
 and exposes SSH/libvirt utilities for daily lab use.
 
 ```text
-Makefile              # targets, help, orchestration (sub-makes for up / up-all)
+Makefile              # entry point — help + includes
 ├── make/config.mk    # defaults, env/.env, inventory-derived VM_* vars
+├── make/colors.mk    # terminal colours (help, status messages)
 ├── make/ansible.mk   # run-playbook macro, setup-host tag/sudo logic
+├── make/setup.mk     # sync, deps, keys, setup
+├── make/inventory.mk # inventory, inventory-overlay
+├── make/targets.mk   # setup-host, create-vm … up, up-all
 └── make/ssh.mk       # SSH known_hosts, ssh, status, destroy, clean
 ```
 
@@ -196,6 +200,26 @@ or `cloud_init.sudo_nopasswd: true` in inventory.
 Loads `env/.env`, defines overlay/inventory paths, parses `VM_*` from the active
 `hosts.ini`, lab disk paths, become flags, KVM host toggles, and the
 `ANSIBLE_FRONT` wrapper used by all Ansible invocations.
+
+### [`colors.mk`](colors.mk)
+
+Shared ANSI colour variables (`B`, `G`, `Y`, `R`, `N`) for `help` and status
+output across setup, targets, and ssh modules.
+
+### [`setup.mk`](setup.mk)
+
+Controller bootstrap: `sync`, `venv`, `deps`, `keys`, `setup`, and the
+`$(LAB_KEY).pub` pattern rule.
+
+### [`inventory.mk`](inventory.mk)
+
+Wraps `app.inventory.cli`: `inventory` (all overlays) and `inventory-overlay`
+(active overlay).
+
+### [`targets.mk`](targets.mk)
+
+Playbook pipeline and lab flows: `setup-host`, stages **01–04**, `deploy`,
+`up`, `up-all`. Uses `SUBMAKE` for recursive stage invocations.
 
 ### [`ansible.mk`](ansible.mk)
 

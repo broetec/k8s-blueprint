@@ -12,11 +12,15 @@ KVM/libvirt e Kubernetes.
 ```text
 k8s-blueprint/
 ├── README.md                 # Entrada: quick start
-├── Makefile                  # Orquestrador (includes em make/)
-├── make/                     # Makefile includes — see make/README.md
+├── Makefile                  # Entry point — help + includes (make/*.mk)
+├── make/                     # Makefile modules — see make/README.md
 │   ├── README.md
 │   ├── config.mk
+│   ├── colors.mk
 │   ├── ansible.mk
+│   ├── setup.mk
+│   ├── inventory.mk
+│   ├── targets.mk
 │   └── ssh.mk
 ├── pyproject.toml            # Dependências Python (Ansible via uv)
 │
@@ -69,6 +73,10 @@ defaults (`env/.env`), invocação Ansible e utilitários SSH/libvirt.
 |------|---------|
 | [make/README.md](../make/README.md) | Hub — targets, pipeline, configuration, troubleshooting |
 | `config.mk` | Defaults, overlay paths, become flags, `ANSIBLE_FRONT` |
+| `colors.mk` | ANSI colours for help and status messages |
+| `setup.mk` | `sync`, `deps`, `keys`, `setup` |
+| `inventory.mk` | `inventory`, `inventory-overlay` |
+| `targets.mk` | Playbook pipeline (`setup-host`, `up`, …) |
 | `ansible.mk` | `run-playbook` macro, `setup-host` tag logic |
 | `ssh.mk` | SSH known_hosts, `make ssh`, `destroy`, `clean` |
 
