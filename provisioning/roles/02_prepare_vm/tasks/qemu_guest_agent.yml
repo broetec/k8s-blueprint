@@ -1,0 +1,35 @@
+---
+# =============================================================================
+# tasks/qemu_guest_agent.yml — QEMU Guest Agent installation
+# =============================================================================
+#
+# Purpose
+#   Install and enable the QEMU Guest Agent, which allows the KVM/libvirt
+#   hypervisor to communicate with the VM guest. Enables graceful shutdown,
+#   filesystem quiescing for live snapshots, and guest IP/info reporting
+#   via virsh guestinfo / virsh domifaddr.
+#
+# Scope
+#   Controlled by prepare_vm_qemu_guest_agent (defaults/main.yml). Set false
+#   on bare-metal hosts or when the hypervisor does not expose the
+#   virtio-serial channel (e.g. some nested-virt setups).
+#   On Proxmox, also enable the QEMU Guest Agent option in the VM settings
+#   and reboot the VM once from the Proxmox web UI to activate the channel.
+#
+# Variables
+#   prepare_vm_qemu_guest_agent — bool; when false this entire file is skipped.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: "qemu-guest-agent | Install package"
+  ansible.builtin.package:
+    name: qemu-guest-agent
+    state: present
+
+- name: "qemu-guest-agent | Enable and start service"
+  ansible.builtin.systemd:
+    name: qemu-guest-agent
+    state: started
+    enabled: true

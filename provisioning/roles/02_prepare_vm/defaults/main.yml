@@ -7,8 +7,9 @@
 #   Tunables for OS baseline inside each VM (overridden via inventory or -e).
 #
 # Variables
-#   prepare_vm_selinux_mode — SELINUX= value in /etc/selinux/config; setenforce at runtime when enforcing/permissive.
-#   prepare_vm_firewalld_zone — default zone and ssh/icmp rules target.
+#   prepare_vm_selinux_mode       — SELINUX= value in /etc/selinux/config; setenforce at runtime when enforcing/permissive.
+#   prepare_vm_firewalld_zone     — default zone and ssh/icmp rules target.
+#   prepare_vm_qemu_guest_agent   — install and enable qemu-guest-agent (true/false).
 #
 # Inventory (not duplicated here)
 #   cloud_init (sudo_nopasswd, default_user), ansible_user — see
@@ -20,6 +21,12 @@
 
 prepare_vm_selinux_mode: enforcing
 prepare_vm_firewalld_zone: public
+
+# Install and enable qemu-guest-agent for hypervisor integration
+# (virsh guestinfo, snapshot quiescing, graceful shutdown).
+# Set false on bare-metal or when the hypervisor does not expose the
+# virtio-serial channel (e.g. some nested-virt setups).
+prepare_vm_qemu_guest_agent: true
 
 # Kernel settings written to /etc/sysctl.d/90-k8s.conf.
 # Required by both k3s and RKE2; applied in tasks/sysctl.yml.
