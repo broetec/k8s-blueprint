@@ -1,12 +1,33 @@
 ---
 # =============================================================================
-# 03_install_rke2 — main task orchestrator
+# tasks/main.yml — Role 03_install_rke2 entrypoint
 # =============================================================================
-# Pipeline:
-#   1. preflight  — firewalld, NetworkManager, sysctl
-#   2. config     — /etc/rancher/rke2/config.yaml + Cilium HelmChartConfig
-#   3. install    — download + enable rke2-server + wait Ready
-#   4. user_access — kubeconfig, PATH, aliases in shell profile
+#
+# Purpose
+#   Install and configure RKE2 (single-node server) on Rocky Linux VMs.
+#   Assumes 02_prepare_vm has already run (swap off, SELinux, firewalld,
+#   sysctl). Does not touch the host KVM or other VMs.
+#
+# Pipeline
+#   1. preflight.yml   — NetworkManager: ignore Cilium/CNI virtual interfaces.
+#   2. config.yml      — /etc/rancher/rke2/config.yaml + Cilium HelmChartConfig
+#                        under /var/lib/rancher/rke2/server/manifests/.
+#   3. install.yml     — download get.rke2.io, enable rke2-server.service,
+#                        wait until node status = Ready (up to 10 min).
+#   4. user_access.yml — copy kubeconfig to ~/.kube/config; add rke2/bin to
+#                        PATH and kubectl/helm completions to shell profile.
+#
+# Variables
+#   rke2_version, rke2_channel, rke2_node_ip, rke2_tls_san, rke2_cni,
+#   rke2_disable, rke2_cilium_version, rke2_kubeconfig_user, rke2_configure_shell
+#   (all in defaults/main.yml).
+#
+# Tags
+#   rke2_preflight, rke2_config, rke2_install, rke2_user
+#   Parent tag install_k8s / install_rke2 set in site.yml.
+#
+# Related commands
+#   make install-rke2, make deploy, make up
 # =============================================================================
 
 - name: "RKE2 | Connectivity check"

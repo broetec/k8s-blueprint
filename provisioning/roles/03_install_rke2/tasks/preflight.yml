@@ -1,7 +1,24 @@
 ---
 # =============================================================================
-# preflight.yml — RKE2-specific system preparation
+# tasks/preflight.yml — RKE2-specific system preparation
 # =============================================================================
+#
+# Purpose
+#   Configure NetworkManager to ignore the virtual interfaces created by
+#   Cilium and other CNI plugins. Without this, NetworkManager may attempt
+#   to manage cilium*/lxc*/flannel* interfaces, causing network disruptions
+#   inside pods after a daemon restart or reboot.
+#
+# Scope
+#   Firewalld (kept active) and sysctl tuning (ip_forward, inotify) are
+#   handled upstream by role 02_prepare_vm. This file is intentionally
+#   narrow: only the NetworkManager drop-in for RKE2/Cilium interfaces.
+#
+# Variables
+#   None specific to this file; the drop-in content is static.
+#
+# Related commands
+#   make install-rke2, make deploy, make up
 # =============================================================================
 
 - name: "RKE2 preflight | Configure NetworkManager to ignore Cilium/CNI interfaces"

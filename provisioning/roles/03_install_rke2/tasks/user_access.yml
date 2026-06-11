@@ -1,9 +1,28 @@
 ---
 # =============================================================================
-# user_access.yml — kubeconfig, PATH additions, and shell aliases
+# tasks/user_access.yml — kubeconfig, PATH additions, and shell aliases
 # =============================================================================
-# Mirrors docs/bootstrap/README.md §2.6.
-# Idempotent: lineinfile/blockinfile use markers; copy is mode-checked.
+#
+# Purpose
+#   Make the cluster immediately usable for rke2_kubeconfig_user without
+#   requiring root. Mirrors the manual steps in docs/bootstrap/README.md §2.6.
+#   Copies /etc/rancher/rke2/rke2.yaml to ~/.kube/config and appends a
+#   managed block to the user's shell profile (.zshrc or .bashrc).
+#
+# Scope
+#   Shell detection reads the user's entry in /etc/passwd (field 5 = shell).
+#   The block is guarded by blockinfile markers so re-runs are idempotent.
+#   Helm and kubectl completions are sourced at shell startup; the source
+#   commands are wrapped in || true so missing binaries do not break login.
+#   kubectx/kubens (kctx/kns aliases) are expected to be installed separately
+#   (not managed here).
+#
+# Variables
+#   rke2_kubeconfig_user — OS user that receives the kubeconfig (defaults/main.yml).
+#   rke2_configure_shell — set false to skip the shell profile block (defaults/main.yml).
+#
+# Related commands
+#   make install-rke2, make deploy, make up
 # =============================================================================
 
 - name: "RKE2 user_access | Resolve home directory of {{ rke2_kubeconfig_user }}"

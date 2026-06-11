@@ -1,9 +1,40 @@
 ---
 # =============================================================================
-# 03_install_rke2 — defaults
+# defaults/main.yml — Role 03_install_rke2 defaults
 # =============================================================================
-# All variables are prefixed with rke2_ to avoid collisions.
-# Override per overlay in 90_local.yml or via make -e rke2_version=v1.31.4+rke2r1.
+#
+# Purpose
+#   Tunables for the RKE2 installation (overridden via inventory or -e).
+#   All variables are prefixed with rke2_ to avoid collisions with other roles.
+#
+# Variables
+#   rke2_version          — pin installer version; empty = latest from channel.
+#   rke2_channel          — install channel: stable | latest | testing.
+#   rke2_install_url      — official install script URL.
+#   rke2_node_name        — node name registered in the cluster (default: inventory hostname).
+#   rke2_node_ip          — IP for intra-cluster traffic; defaults to vm_ip from inventory.
+#   rke2_advertise_address — IP advertised to other nodes; usually equals rke2_node_ip.
+#   rke2_tls_san          — extra SANs for the API server TLS cert (list).
+#   rke2_cni              — CNI plugin (cilium).
+#   rke2_disable_kube_proxy — let Cilium replace kube-proxy.
+#   rke2_disable          — list of built-in RKE2 components to skip.
+#   rke2_secrets_encryption — encrypt secrets at rest in etcd.
+#   rke2_write_kubeconfig_mode — file permissions for rke2.yaml.
+#   rke2_etcd_snapshot_*  — etcd snapshot schedule and retention settings.
+#   rke2_cilium_version   — pin Cilium image tag; empty = use RKE2-bundled chart version.
+#   rke2_cilium_operator_replicas — 1 avoids port conflicts on single-node clusters.
+#   rke2_cilium_kube_proxy_replacement — must be true when rke2_disable_kube_proxy is true.
+#   rke2_cilium_gateway_api_enabled — expose Gateway API via Cilium.
+#   rke2_kubeconfig_user  — OS user that receives the kubeconfig.
+#   rke2_shell_profile    — fallback shell profile when user shell cannot be detected.
+#   rke2_configure_shell  — add PATH/aliases/completions to the user's shell profile.
+#
+# Inventory (not duplicated here)
+#   vm_ip, ansible_host, ansible_user — see
+#   provisioning/inventory/_shared/group_vars/all.yml and hosts.ini.
+#
+# Related commands
+#   make install-rke2 [RKE2_VERSION=vX.Y.Z+rke2rN], make deploy, make up
 # =============================================================================
 
 # -----------------------------------------------------------------------------

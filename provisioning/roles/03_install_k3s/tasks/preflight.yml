@@ -1,8 +1,24 @@
 ---
 # =============================================================================
-# preflight.yml — k3s-specific system preparation
+# tasks/preflight.yml — k3s-specific system preparation
 # =============================================================================
-
+#
+# Purpose
+#   Configure NetworkManager to ignore the virtual interfaces created by
+#   flannel and other CNI plugins. Without this, NetworkManager may attempt
+#   to manage flannel*/cni*/vxlan* interfaces, causing network disruptions
+#   inside pods after a daemon restart or reboot.
+#
+# Scope
+#   Firewalld (kept active) and sysctl tuning (ip_forward, inotify) are
+#   handled upstream by role 02_prepare_vm. This file is intentionally
+#   narrow: only the NetworkManager drop-in for k3s/flannel interfaces.
+#
+# Variables
+#   None specific to this file; the drop-in content is static.
+#
+# Related commands
+#   make install-k3s, make deploy, make up
 # =============================================================================
 
 - name: "k3s preflight | Configure NetworkManager to ignore flannel/CNI interfaces"

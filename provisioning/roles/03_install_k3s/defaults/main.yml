@@ -1,9 +1,35 @@
 ---
 # =============================================================================
-# 03_install_k3s — defaults
+# defaults/main.yml — Role 03_install_k3s defaults
 # =============================================================================
-# All variables are prefixed with k3s_ to avoid collisions.
-# Override per overlay in 90_local.yml or via make -e k3s_version=v1.31.4+k3s1.
+#
+# Purpose
+#   Tunables for the k3s installation (overridden via inventory or -e).
+#   All variables are prefixed with k3s_ to avoid collisions with other roles.
+#
+# Variables
+#   k3s_version          — pin installer version; empty = latest from channel.
+#   k3s_channel          — install channel: stable | latest | testing.
+#   k3s_install_url      — official install script URL.
+#   k3s_node_name        — node name registered in the cluster (default: inventory hostname).
+#   k3s_node_ip          — IP for intra-cluster traffic; defaults to vm_ip from inventory.
+#   k3s_advertise_address — IP advertised to other nodes; usually equals k3s_node_ip.
+#   k3s_tls_san          — extra SANs for the API server TLS cert (list).
+#   k3s_flannel_backend  — vxlan (default) | wireguard-native | host-gw | none (no CNI).
+#   k3s_cluster_cidr     — pod CIDR (default: 10.42.0.0/16).
+#   k3s_service_cidr     — service CIDR (default: 10.43.0.0/16).
+#   k3s_disable          — list of built-in k3s components to skip (traefik, servicelb).
+#   k3s_write_kubeconfig_mode — file permissions for k3s.yaml.
+#   k3s_bind_address     — IP the API server listens on; defaults to k3s_node_ip.
+#   k3s_kubeconfig_user  — OS user that receives the kubeconfig.
+#   k3s_configure_shell  — add KUBECONFIG/aliases/completions to the user's shell profile.
+#
+# Inventory (not duplicated here)
+#   vm_ip, ansible_host, ansible_user — see
+#   provisioning/inventory/_shared/group_vars/all.yml and hosts.ini.
+#
+# Related commands
+#   make install-k3s [K3S_VERSION=vX.Y.Z+k3sN], make deploy, make up
 # =============================================================================
 
 # -----------------------------------------------------------------------------

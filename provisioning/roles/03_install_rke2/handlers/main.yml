@@ -1,4 +1,21 @@
 ---
+# =============================================================================
+# handlers/main.yml — Role 03_install_rke2 handlers
+# =============================================================================
+#
+# Purpose
+#   Triggered by notify directives in tasks/preflight.yml and tasks/config.yml.
+#   Handlers run once at the end of the play, regardless of how many tasks
+#   notify them, and only when at least one notifying task reported changed.
+#
+# Handlers
+#   reload NetworkManager — reload NM config after drop-in file changes.
+#   restart rke2-server   — restart the server service after config changes.
+#
+# Related commands
+#   make install-rke2, make deploy, make up
+# =============================================================================
+
 - name: reload NetworkManager
   ansible.builtin.systemd:
     name: NetworkManager

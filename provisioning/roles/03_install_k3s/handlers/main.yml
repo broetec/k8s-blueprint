@@ -1,4 +1,21 @@
 ---
+# =============================================================================
+# handlers/main.yml — Role 03_install_k3s handlers
+# =============================================================================
+#
+# Purpose
+#   Triggered by notify directives in tasks/preflight.yml and tasks/config.yml.
+#   Handlers run once at the end of the play, regardless of how many tasks
+#   notify them, and only when at least one notifying task reported changed.
+#
+# Handlers
+#   reload NetworkManager — reload NM config after the drop-in file changes.
+#   restart k3s           — restart k3s.service after config.yaml changes.
+#
+# Related commands
+#   make install-k3s, make deploy, make up
+# =============================================================================
+
 - name: reload NetworkManager
   ansible.builtin.systemd:
     name: NetworkManager

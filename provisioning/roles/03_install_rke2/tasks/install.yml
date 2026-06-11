@@ -1,6 +1,28 @@
 ---
 # =============================================================================
-# install.yml — download installer, enable rke2-server, wait for node Ready
+# tasks/install.yml — download installer, enable rke2-server, wait for Ready
+# =============================================================================
+#
+# Purpose
+#   Run the official get.rke2.io install script (skipped if the binary already
+#   exists), enable rke2-server.service, then poll until the node reports
+#   Ready status — confirming that the control plane and CNI are healthy.
+#
+# Scope
+#   The install script is idempotent by design (guards on binary presence).
+#   The wait loop retries for up to 10 minutes (60 × 10s); first boot with
+#   image pulls can take 4–6 min on a cold lab VM.
+#   RKE2 binary lands at /usr/local/bin/rke2; kubectl/helm are under
+#   /var/lib/rancher/rke2/bin/ (added to PATH by user_access.yml).
+#
+# Variables
+#   rke2_install_url — install script URL (defaults/main.yml).
+#   rke2_version     — passed as INSTALL_RKE2_VERSION env var when non-empty.
+#   rke2_channel     — passed as INSTALL_RKE2_CHANNEL env var.
+#   rke2_node_name   — node name used in the kubectl get node poll.
+#
+# Related commands
+#   make install-rke2 [RKE2_VERSION=vX.Y.Z+rke2rN], make deploy, make up
 # =============================================================================
 
 - name: "RKE2 install | Check if rke2 binary already exists"

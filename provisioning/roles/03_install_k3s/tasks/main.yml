@@ -1,12 +1,33 @@
 ---
 # =============================================================================
-# 03_install_k3s — main task orchestrator
+# tasks/main.yml — Role 03_install_k3s entrypoint
 # =============================================================================
-# Pipeline:
-#   1. preflight  — firewalld, NetworkManager, sysctl
-#   2. config     — /etc/rancher/k3s/config.yaml
-#   3. install    — download + enable k3s + wait Ready
-#   4. user_access — kubeconfig, PATH, aliases in shell profile
+#
+# Purpose
+#   Install and configure k3s (single-node server) on Rocky Linux VMs.
+#   Assumes 02_prepare_vm has already run (swap off, SELinux, firewalld,
+#   sysctl). Does not touch the host KVM or other VMs.
+#
+# Pipeline
+#   1. preflight.yml   — NetworkManager: ignore flannel/CNI virtual interfaces.
+#   2. config.yml      — /etc/rancher/k3s/config.yaml with node identity,
+#                        networking, and disabled built-in components.
+#   3. install.yml     — download get.k3s.io, enable k3s.service,
+#                        wait until node status = Ready (up to 10 min).
+#   4. user_access.yml — copy kubeconfig to ~/.kube/config; add kubectl
+#                        completions and aliases to the user's shell profile.
+#
+# Variables
+#   k3s_version, k3s_channel, k3s_node_ip, k3s_tls_san, k3s_flannel_backend,
+#   k3s_disable, k3s_kubeconfig_user, k3s_configure_shell
+#   (all in defaults/main.yml).
+#
+# Tags
+#   k3s_preflight, k3s_config, k3s_install, k3s_user
+#   Parent tag install_k8s / install_rke2 set in site.yml.
+#
+# Related commands
+#   make install-k3s, make deploy, make up
 # =============================================================================
 
 - name: "k3s | Connectivity check"

@@ -1,6 +1,29 @@
 ---
 # =============================================================================
-# install.yml — download installer, enable k3s, wait for node Ready
+# tasks/install.yml — download installer, enable k3s, wait for Ready
+# =============================================================================
+#
+# Purpose
+#   Run the official get.k3s.io install script (skipped if the binary already
+#   exists), enable k3s.service, then poll until the node reports Ready status
+#   — confirming that the control plane and CNI are healthy.
+#
+# Scope
+#   The install script is idempotent by design (guards on binary presence).
+#   The wait loop retries for up to 10 minutes (60 × 10s); first boot with
+#   image pulls can take 3–5 min on a cold lab VM.
+#   k3s installs a single binary at /usr/local/bin/k3s and symlinks kubectl,
+#   crictl, and ctr from the same path — no extra PATH change is needed for
+#   kubectl itself, but KUBECONFIG must be set (handled by user_access.yml).
+#
+# Variables
+#   k3s_install_url — install script URL (defaults/main.yml).
+#   k3s_version     — passed as INSTALL_K3S_VERSION env var when non-empty.
+#   k3s_channel     — passed as INSTALL_K3S_CHANNEL env var.
+#   k3s_node_name   — node name used in the kubectl get node poll.
+#
+# Related commands
+#   make install-k3s [K3S_VERSION=vX.Y.Z+k3sN], make deploy, make up
 # =============================================================================
 
 - name: "k3s install | Check if k3s binary already exists"

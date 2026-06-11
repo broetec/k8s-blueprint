@@ -1,6 +1,27 @@
 ---
 # =============================================================================
-# user_access.yml — kubeconfig, PATH additions, and shell aliases
+# tasks/user_access.yml — kubeconfig and shell aliases
+# =============================================================================
+#
+# Purpose
+#   Make the cluster immediately usable for k3s_kubeconfig_user without
+#   requiring root. Copies /etc/rancher/k3s/k3s.yaml to ~/.kube/config and
+#   appends a managed block to the user's shell profile (.zshrc or .bashrc).
+#
+# Scope
+#   Shell detection reads the user's entry in /etc/passwd (field 5 = shell).
+#   The block is guarded by blockinfile markers so re-runs are idempotent.
+#   kubectl is already in PATH via the k3s symlink (/usr/local/bin/kubectl);
+#   only KUBECONFIG and aliases are added to the shell profile.
+#   kubectx/kubens (kctx/kns aliases) are expected to be installed separately
+#   (not managed here).
+#
+# Variables
+#   k3s_kubeconfig_user — OS user that receives the kubeconfig (defaults/main.yml).
+#   k3s_configure_shell — set false to skip the shell profile block (defaults/main.yml).
+#
+# Related commands
+#   make install-k3s, make deploy, make up
 # =============================================================================
 
 - name: "k3s user_access | Resolve home directory of {{ k3s_kubeconfig_user }}"

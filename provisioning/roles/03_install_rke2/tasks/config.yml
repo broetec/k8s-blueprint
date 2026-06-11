@@ -1,10 +1,31 @@
 ---
 # =============================================================================
-# config.yml — write RKE2 config.yaml and Cilium HelmChartConfig
+# tasks/config.yml — write RKE2 config.yaml and Cilium HelmChartConfig
 # =============================================================================
-# Must run BEFORE rke2-server starts for the first time.
-# If the cluster is already running, changes here require a service restart
-# (handled by handlers in install.yml via notify, or manually by the user).
+#
+# Purpose
+#   Render and deploy two configuration files that RKE2 reads at startup:
+#   /etc/rancher/rke2/config.yaml (server settings) and the Cilium
+#   HelmChartConfig under /var/lib/rancher/rke2/server/manifests/.
+#
+# Scope
+#   Both files must exist BEFORE rke2-server.service starts for the first
+#   time. If the cluster is already running and a file changes, the handler
+#   "restart rke2-server" is notified. A restart causes a brief API server
+#   outage (~30s); plan accordingly in production.
+#   The Cilium HelmChartConfig is only written when rke2_cni == 'cilium'.
+#
+# Variables
+#   rke2_cni, rke2_node_name, rke2_node_ip, rke2_advertise_address,
+#   rke2_tls_san, rke2_disable_kube_proxy, rke2_disable,
+#   rke2_secrets_encryption, rke2_write_kubeconfig_mode,
+#   rke2_etcd_snapshot_schedule_cron, rke2_etcd_snapshot_retention,
+#   rke2_etcd_snapshot_compress, rke2_cilium_version,
+#   rke2_cilium_operator_replicas, rke2_cilium_kube_proxy_replacement,
+#   rke2_cilium_gateway_api_enabled (all from defaults/main.yml).
+#
+# Related commands
+#   make install-rke2, make deploy, make up
 # =============================================================================
 
 - name: "RKE2 config | Ensure /etc/rancher/rke2/ exists"
