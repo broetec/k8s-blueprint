@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# tasks/sysctl.yml — Kernel tuning required by Kubernetes
+# =============================================================================
+#
+# Purpose
+#   Apply sysctl settings that both k3s and RKE2 require: IP forwarding and
+#   inotify limits. Written to /etc/sysctl.d/90-k8s.conf (idempotent).
+#
+# Variables
+#   prepare_vm_sysctl_settings (defaults/main.yml).
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: "sysctl | Apply k8s kernel settings (/etc/sysctl.d/90-k8s.conf)"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value | string }}"
+    sysctl_file: /etc/sysctl.d/90-k8s.conf
+    reload: true
+    state: present
+  loop: "{{ prepare_vm_sysctl_settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"

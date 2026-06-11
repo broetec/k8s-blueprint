@@ -5,14 +5,15 @@
 #
 # Purpose
 #   Prepare Rocky Linux inside each VM (groups['vms']) for later k8s roles:
-#   swap off, SELinux, firewalld baseline. Does not install platform software.
+#   swap off, SELinux, firewalld baseline, k8s sysctl. Does not install platform software.
 #
 # Pipeline
-#   1. preflight.yml — SSH ping without become; primary NIC fact.
+#   1. preflight.yml  — SSH ping without become; primary NIC fact.
 #   2. cloud_init.yml — wait for cloud-init.
-#   3. swap.yml — swapoff + /etc/fstab.
-#   4. selinux.yml — SELINUX mode.
-#   5. firewalld.yml — package, zone, ssh, icmp.
+#   3. swap.yml       — swapoff + /etc/fstab.
+#   4. selinux.yml    — SELINUX mode.
+#   5. firewalld.yml  — package, zone, ssh, icmp.
+#   6. sysctl.yml     — ip_forward, inotify limits (required by k3s + RKE2).
 #
 # Variables
 #   prepare_vm_selinux_mode, prepare_vm_firewalld_zone (defaults/main.yml).
@@ -39,4 +40,8 @@
 
 - name: Firewalld — baseline zone and services
   ansible.builtin.import_tasks: firewalld.yml
+  tags: [prepare_vm]
+
+- name: Sysctl — kernel tuning for Kubernetes
+  ansible.builtin.import_tasks: sysctl.yml
   tags: [prepare_vm]

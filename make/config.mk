@@ -51,6 +51,13 @@ ifneq ($(filter --ask-become-pass -K,$(SUDO_FLAGS_VM)),)
 $(error Plays em vms: não use --ask-become-pass/-K. Use env/vm-become.pass ou cloud_init.sudo_nopasswd.)
 endif
 
+# --- Kubernetes distribution (role 03) ----------------------------------------
+# Which distribution play 4 installs: rke2 (default) or k3s.
+# Override in env/.env (K8S_DISTRIBUTION=k3s) or on the command line.
+# make install-rke2 and make install-k3s set this automatically.
+K8S_DISTRIBUTION ?= rke2
+K8S_DISTRIBUTION_EXTRA := -e k8s_distribution=$(K8S_DISTRIBUTION)
+
 # --- Host KVM (role 00) --------------------------------------------------------
 # Bootstrap: instala pacotes libvirt no host. Default activo; desactivar em env/.env.
 KVM_HOST_BOOTSTRAP ?= true

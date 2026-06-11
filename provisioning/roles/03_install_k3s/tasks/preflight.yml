@@ -1,0 +1,18 @@
+---
+# =============================================================================
+# preflight.yml — k3s-specific system preparation
+# =============================================================================
+
+# =============================================================================
+
+- name: "k3s preflight | Configure NetworkManager to ignore flannel/CNI interfaces"
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/k3s-cni.conf
+    content: |
+      # Managed by Ansible — role 03_install_k3s.
+      [keyfile]
+      unmanaged-devices=interface-name:flannel*;interface-name:cni*;interface-name:vxlan*;interface-name:cilium*;interface-name:lxc*
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload NetworkManager

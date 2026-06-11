@@ -1,0 +1,17 @@
+---
+# =============================================================================
+# preflight.yml — RKE2-specific system preparation
+# =============================================================================
+# =============================================================================
+
+- name: "RKE2 preflight | Configure NetworkManager to ignore Cilium/CNI interfaces"
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/rke2-cni.conf
+    content: |
+      # Managed by Ansible — role 03_install_rke2.
+      [keyfile]
+      unmanaged-devices=interface-name:cilium*;interface-name:lxc*;interface-name:cali*;interface-name:flannel*
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload NetworkManager

@@ -1,0 +1,37 @@
+# /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+# Managed by Ansible — role 03_install_rke2. Do not edit manually.
+# Applied by rke2-helm-controller BEFORE the cluster starts.
+# Reference: https://docs.rke2.io/helm#customizing-packaged-components-with-helmchartconfig
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-cilium
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    k8sServiceHost: "{{ rke2_advertise_address }}"
+    k8sServicePort: 6443
+
+    operator:
+      replicas: {{ rke2_cilium_operator_replicas }}
+{% if rke2_cilium_version | length > 0 %}
+      image:
+        override: quay.io/cilium/operator-generic:{{ rke2_cilium_version }}
+{% endif %}
+
+{% if rke2_cilium_version | length > 0 %}
+    image:
+      repository: quay.io/cilium/cilium
+      tag: {{ rke2_cilium_version }}
+
+{% endif %}
+    kubeProxyReplacement: {{ rke2_cilium_kube_proxy_replacement | lower }}
+
+    gatewayAPI:
+      enabled: {{ rke2_cilium_gateway_api_enabled | lower }}
+      gatewayClass:
+        create: "false"
+
+    extraConfig:
+      unmanaged-pod-watcher-interval: "15"

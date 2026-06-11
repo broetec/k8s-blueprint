@@ -1,0 +1,47 @@
+---
+# =============================================================================
+# install.yml — download installer, enable rke2-server, wait for node Ready
+# =============================================================================
+
+- name: "RKE2 install | Check if rke2 binary already exists"
+  ansible.builtin.stat:
+    path: /usr/local/bin/rke2
+  register: _rke2_binary
+
+- name: "RKE2 install | Download and run install script"
+  when: not _rke2_binary.stat.exists
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      curl -sfL {{ rke2_install_url }} | \
+        {% if rke2_version | length > 0 %}INSTALL_RKE2_VERSION="{{ rke2_version }}" {% endif %}\
+        INSTALL_RKE2_CHANNEL="{{ rke2_channel }}" \
+        sh -
+    executable: /bin/bash
+  changed_when: true
+
+- name: "RKE2 install | Enable and start rke2-server"
+  ansible.builtin.systemd:
+    name: rke2-server.service
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: "RKE2 install | Wait for node to become Ready (up to 10 min)"
+  ansible.builtin.command:
+    argv:
+      - /var/lib/rancher/rke2/bin/kubectl
+      - --kubeconfig
+      - /etc/rancher/rke2/rke2.yaml
+      - get
+      - node
+      - "{{ rke2_node_name }}"
+      - --no-headers
+      - -o
+      - "custom-columns=STATUS:.status.conditions[-1].type"
+  register: _rke2_node_status
+  retries: 60
+  delay: 10
+  until: _rke2_node_status.stdout.strip() == "Ready"
+  changed_when: false
+  failed_when: _rke2_node_status.rc != 0 and _rke2_node_status.retries | default(0) >= 60

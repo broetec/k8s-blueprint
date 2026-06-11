@@ -1,32 +1,32 @@
 ---
 # =============================================================================
-# 03_install_rke2 — main task orchestrator
+# 03_install_k3s — main task orchestrator
 # =============================================================================
 # Pipeline:
 #   1. preflight  — firewalld, NetworkManager, sysctl
-#   2. config     — /etc/rancher/rke2/config.yaml + Cilium HelmChartConfig
-#   3. install    — download + enable rke2-server + wait Ready
+#   2. config     — /etc/rancher/k3s/config.yaml
+#   3. install    — download + enable k3s + wait Ready
 #   4. user_access — kubeconfig, PATH, aliases in shell profile
 # =============================================================================
 
-- name: "RKE2 | Connectivity check"
+- name: "k3s | Connectivity check"
   become: false
   ansible.builtin.ping:
-  tags: [rke2_preflight]
+  tags: [k3s_preflight]
 
-- name: "RKE2 | System preflight (firewalld, NetworkManager, sysctl)"
+- name: "k3s | System preflight (firewalld, NetworkManager, sysctl)"
   ansible.builtin.import_tasks: preflight.yml
-  tags: [rke2_preflight]
+  tags: [k3s_preflight]
 
-- name: "RKE2 | Write config files"
+- name: "k3s | Write config files"
   ansible.builtin.import_tasks: config.yml
-  tags: [rke2_config]
+  tags: [k3s_config]
 
-- name: "RKE2 | Install and start rke2-server"
+- name: "k3s | Install and start k3s"
   ansible.builtin.import_tasks: install.yml
-  tags: [rke2_install]
+  tags: [k3s_install]
 
-- name: "RKE2 | Configure user access (kubeconfig + shell)"
+- name: "k3s | Configure user access (kubeconfig + shell)"
   become: false
   ansible.builtin.import_tasks: user_access.yml
-  tags: [rke2_user]
+  tags: [k3s_user]

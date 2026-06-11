@@ -1,0 +1,41 @@
+# /etc/rancher/k3s/config.yaml
+# Managed by Ansible — role 03_install_k3s. Do not edit manually.
+# Reference: https://docs.k3s.io/installation/configuration
+---
+write-kubeconfig-mode: "{{ k3s_write_kubeconfig_mode }}"
+node-name: "{{ k3s_node_name }}"
+node-ip: "{{ k3s_node_ip }}"
+advertise-address: "{{ k3s_advertise_address }}"
+bind-address: "{{ k3s_bind_address }}"
+cluster-cidr: "{{ k3s_cluster_cidr }}"
+service-cidr: "{{ k3s_service_cidr }}"
+
+tls-san:
+  - "{{ k3s_node_name }}"
+  - "{{ k3s_node_ip }}"
+{% for san in k3s_tls_san %}
+  - "{{ san }}"
+{% endfor %}
+
+{% if k3s_flannel_backend == 'none' %}
+flannel-backend: none
+disable-network-policy: true
+{% else %}
+flannel-backend: {{ k3s_flannel_backend }}
+{% endif %}
+
+{% if k3s_disable | length > 0 %}
+disable:
+{% for item in k3s_disable %}
+  - {{ item }}
+{% endfor %}
+{% endif %}
+
+# Uncomment to join a cluster (agent or additional server nodes):
+# server: "https://{{ k3s_node_ip }}:6443"
+# token: "PLACEHOLDER"
+
+# Uncomment to limit resource usage on lab VMs:
+# kubelet-arg:
+#   - "max-pods=50"
+#   - "eviction-hard=memory.available<100Mi,nodefs.available<5%"

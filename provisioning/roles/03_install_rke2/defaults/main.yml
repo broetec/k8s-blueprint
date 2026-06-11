@@ -1,0 +1,88 @@
+---
+# =============================================================================
+# 03_install_rke2 — defaults
+# =============================================================================
+# All variables are prefixed with rke2_ to avoid collisions.
+# Override per overlay in 90_local.yml or via make -e rke2_version=v1.31.4+rke2r1.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Version & install
+# -----------------------------------------------------------------------------
+# Empty string = latest stable. Pin with e.g. "v1.31.4+rke2r1".
+rke2_version: ""
+
+# Channel: stable | latest | testing
+rke2_channel: stable
+
+# Install script URL (official).
+rke2_install_url: https://get.rke2.io
+
+# -----------------------------------------------------------------------------
+# Node identity
+# -----------------------------------------------------------------------------
+rke2_node_name: "{{ inventory_hostname }}"
+
+# IP used for intra-cluster traffic (and advertised to peers).
+# Defaults to the VM inventory IP when available.
+rke2_node_ip: "{{ vm_ip | default(ansible_host) }}"
+rke2_advertise_address: "{{ rke2_node_ip }}"
+
+# Extra Subject Alternative Names for the API server TLS cert.
+# The node IP and node name are always included by RKE2; list only extras here.
+# Example: ["k8s.local.broetec.com.br", "10.20.30.40"]
+rke2_tls_san: []
+
+# -----------------------------------------------------------------------------
+# Networking
+# -----------------------------------------------------------------------------
+rke2_cni: cilium
+rke2_disable_kube_proxy: true
+
+# -----------------------------------------------------------------------------
+# Components to disable (RKE2 built-ins)
+# -----------------------------------------------------------------------------
+rke2_disable:
+  - rke2-ingress-nginx
+
+# -----------------------------------------------------------------------------
+# Security
+# -----------------------------------------------------------------------------
+rke2_secrets_encryption: true
+rke2_write_kubeconfig_mode: "0644"
+
+# -----------------------------------------------------------------------------
+# etcd snapshots
+# -----------------------------------------------------------------------------
+rke2_etcd_snapshot_schedule_cron: "0 2,8,14,20 * * *"
+rke2_etcd_snapshot_retention: 5
+rke2_etcd_snapshot_compress: false
+
+# -----------------------------------------------------------------------------
+# Cilium (HelmChartConfig)
+# -----------------------------------------------------------------------------
+# Pin to a specific Cilium version.  Empty = use whatever RKE2 bundles.
+# Known-good version for RKE2 v1.31.x: v1.18.7.
+rke2_cilium_version: "v1.18.7"
+
+# 1 replica avoids port conflicts (9234, 9963) on single-node clusters.
+rke2_cilium_operator_replicas: 1
+
+# kubeProxyReplacement: enable when rke2_disable_kube_proxy is true.
+rke2_cilium_kube_proxy_replacement: true
+
+# Gateway API integration (GatewayClass creation delegated to manifests).
+rke2_cilium_gateway_api_enabled: true
+
+# -----------------------------------------------------------------------------
+# User access (kubeconfig + shell)
+# -----------------------------------------------------------------------------
+# Linux user that will receive the kubeconfig and PATH additions.
+rke2_kubeconfig_user: "{{ ansible_user }}"
+
+# Shell profile to extend ($PATH, aliases, completions).
+# Detected automatically from the user's SHELL; this is the fallback.
+rke2_shell_profile: "~/.bashrc"
+
+# Add kubectl/helm shell completions and common aliases (k, kns, kctx).
+rke2_configure_shell: true

@@ -1,0 +1,11 @@
+---
+- name: reload NetworkManager
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: reloaded
+
+- name: restart rke2-server
+  ansible.builtin.systemd:
+    name: rke2-server.service
+    state: restarted
+  listen: restart rke2-server

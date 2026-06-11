@@ -1,0 +1,15 @@
+---
+# Ansible role metadata (not executed as tasks).
+#
+galaxy_info:
+  author: Broetec
+  description: Install and configure k3s on Rocky Linux VMs (single-node or multi-node).
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  galaxy_tags:
+    - kubernetes
+    - k3s
+    - rancher
+    - rocky
+
+dependencies: []

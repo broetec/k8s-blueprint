@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# 03_install_k3s — defaults
+# =============================================================================
+# All variables are prefixed with k3s_ to avoid collisions.
+# Override per overlay in 90_local.yml or via make -e k3s_version=v1.31.4+k3s1.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Version & install
+# -----------------------------------------------------------------------------
+# Empty string = latest stable. Pin with e.g. "v1.31.4+k3s1".
+k3s_version: ""
+
+# Channel: stable | latest | testing
+k3s_channel: stable
+
+# Install script URL (official).
+k3s_install_url: https://get.k3s.io
+
+# -----------------------------------------------------------------------------
+# Node identity
+# -----------------------------------------------------------------------------
+k3s_node_name: "{{ inventory_hostname }}"
+
+# IP used for intra-cluster traffic.
+k3s_node_ip: "{{ vm_ip | default(ansible_host) }}"
+k3s_advertise_address: "{{ k3s_node_ip }}"
+
+# Extra Subject Alternative Names for the API server TLS cert.
+# The node IP and hostname are always included; list only extras here.
+# Example: ["k8s.local.broetec.com.br", "10.20.30.40"]
+k3s_tls_san: []
+
+# -----------------------------------------------------------------------------
+# Networking
+# -----------------------------------------------------------------------------
+# Flannel backend: vxlan (default), wireguard-native, host-gw, none (no CNI).
+# Set to "none" when deploying an external CNI such as Cilium.
+k3s_flannel_backend: vxlan
+
+# Pod CIDR (default k3s: 10.42.0.0/16)
+k3s_cluster_cidr: "10.42.0.0/16"
+
+# Service CIDR (default k3s: 10.43.0.0/16)
+k3s_service_cidr: "10.43.0.0/16"
+
+# -----------------------------------------------------------------------------
+# Components to disable
+# -----------------------------------------------------------------------------
+# traefik    — default ingress controller
+# servicelb  — built-in LB (Klipper)
+# Disable both for a bare cluster; add alternatives via manifests or Helm.
+k3s_disable:
+  - traefik
+  - servicelb
+
+# -----------------------------------------------------------------------------
+# Security
+# -----------------------------------------------------------------------------
+k3s_write_kubeconfig_mode: "0644"
+
+# Protect the API server: bind to the node IP only.
+# Set to 0.0.0.0 to listen on all interfaces.
+k3s_bind_address: "{{ k3s_node_ip }}"
+
+# -----------------------------------------------------------------------------
+# User access (kubeconfig + shell)
+# -----------------------------------------------------------------------------
+k3s_kubeconfig_user: "{{ ansible_user }}"
+
+# Add kubectl shell completions and common aliases (k, kns, kctx).
+k3s_configure_shell: true
+

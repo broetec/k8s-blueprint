@@ -1,0 +1,11 @@
+---
+- name: reload NetworkManager
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: reloaded
+
+- name: restart k3s
+  ansible.builtin.systemd:
+    name: k3s.service
+    state: restarted
+  listen: restart k3s

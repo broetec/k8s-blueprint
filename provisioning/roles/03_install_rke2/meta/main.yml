@@ -1,0 +1,20 @@
+---
+# Ansible role metadata (not executed as tasks).
+#
+# galaxy_info  — catalog fields for Ansible Galaxy / tooling.
+# dependencies — other roles Ansible runs before this one (empty here).
+#                Galaxy collections belong in provisioning/collections/requirements.yml.
+#
+galaxy_info:
+  author: Broetec
+  description: Install and configure RKE2 on Rocky Linux VMs (single-node or multi-node).
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  galaxy_tags:
+    - kubernetes
+    - rke2
+    - rancher
+    - cilium
+    - rocky
+
+dependencies: []

@@ -1,0 +1,62 @@
+---
+# =============================================================================
+# user_access.yml — kubeconfig, PATH additions, and shell aliases
+# =============================================================================
+# Mirrors docs/bootstrap/README.md §2.6.
+# Idempotent: lineinfile/blockinfile use markers; copy is mode-checked.
+# =============================================================================
+
+- name: "RKE2 user_access | Resolve home directory of {{ rke2_kubeconfig_user }}"
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ rke2_kubeconfig_user }}"
+  register: _rke2_user_info
+
+- name: "RKE2 user_access | Set _rke2_home fact"
+  ansible.builtin.set_fact:
+    _rke2_home: "{{ _rke2_user_info.ansible_facts.getent_passwd[rke2_kubeconfig_user][4] }}"
+
+- name: "RKE2 user_access | Ensure ~/.kube exists"
+  ansible.builtin.file:
+    path: "{{ _rke2_home }}/.kube"
+    state: directory
+    owner: "{{ rke2_kubeconfig_user }}"
+    mode: "0700"
+
+- name: "RKE2 user_access | Copy kubeconfig to ~/.kube/config"
+  ansible.builtin.copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: "{{ _rke2_home }}/.kube/config"
+    owner: "{{ rke2_kubeconfig_user }}"
+    mode: "0600"
+    remote_src: true
+
+- name: "RKE2 user_access | Detect login shell of {{ rke2_kubeconfig_user }}"
+  ansible.builtin.set_fact:
+    _rke2_shell: "{{ _rke2_user_info.ansible_facts.getent_passwd[rke2_kubeconfig_user][5] }}"
+
+- name: "RKE2 user_access | Resolve shell profile path"
+  ansible.builtin.set_fact:
+    _rke2_profile: >-
+      {{
+        _rke2_home ~ '/.zshrc'   if '/zsh' in _rke2_shell else
+        _rke2_home ~ '/.bashrc'
+      }}
+
+- name: "RKE2 user_access | Add RKE2 environment block to shell profile"
+  when: rke2_configure_shell | bool
+  ansible.builtin.blockinfile:
+    path: "{{ _rke2_profile }}"
+    create: true
+    owner: "{{ rke2_kubeconfig_user }}"
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED — rke2 env"
+    block: |
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      export KUBECONFIG=$HOME/.kube/config
+      alias k='kubectl'
+      complete -F __start_kubectl k 2>/dev/null || true
+      alias kns='kubens'
+      alias kctx='kubectx'
+      source <(kubectl completion {{ 'zsh' if '/zsh' in _rke2_shell else 'bash' }}) 2>/dev/null || true
+      source <(helm completion {{ 'zsh' if '/zsh' in _rke2_shell else 'bash' }}) 2>/dev/null || true

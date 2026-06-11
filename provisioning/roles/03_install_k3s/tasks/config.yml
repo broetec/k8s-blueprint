@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# config.yml — write k3s config.yaml
+# =============================================================================
+# Must run BEFORE k3s starts for the first time.
+# Changes here after the cluster is running require a service restart
+# (notified via handlers).
+# =============================================================================
+
+- name: "k3s config | Ensure /etc/rancher/k3s/ exists"
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "k3s config | Write /etc/rancher/k3s/config.yaml"
+  ansible.builtin.template:
+    src: k3s-config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart k3s

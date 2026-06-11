@@ -8,6 +8,16 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# Kubernetes distribution
+# -----------------------------------------------------------------------------
+# Selects which role is executed in play 4 (03_install_rke2 or 03_install_k3s).
+# Override per overlay in 90_local.yml or at runtime:
+#   make install-k3s OVERLAY=broetec-core
+#   make install-rke2 OVERLAY=broetec-core
+# Valid values: rke2 | k3s
+k8s_distribution: rke2
+
+# -----------------------------------------------------------------------------
 # Base domain
 # -----------------------------------------------------------------------------
 # Broetec uses local.broetec.com.br for lab FQDNs, e.g.

@@ -1,0 +1,62 @@
+# /etc/rancher/rke2/config.yaml
+# Managed by Ansible — role 03_install_rke2. Do not edit manually.
+# Reference: https://docs.rke2.io/reference/server_config
+---
+write-kubeconfig-mode: "{{ rke2_write_kubeconfig_mode }}"
+cni: {{ rke2_cni }}
+disable-kube-proxy: {{ rke2_disable_kube_proxy | lower }}
+node-name: "{{ rke2_node_name }}"
+node-ip: "{{ rke2_node_ip }}"
+advertise-address: "{{ rke2_advertise_address }}"
+secrets-encryption: {{ rke2_secrets_encryption | lower }}
+
+tls-san:
+  - "{{ rke2_node_name }}"
+  - "{{ rke2_node_ip }}"
+{% for san in rke2_tls_san %}
+  - "{{ san }}"
+{% endfor %}
+
+{% if rke2_disable | length > 0 %}
+disable:
+{% for item in rke2_disable %}
+  - {{ item }}
+{% endfor %}
+{% endif %}
+
+etcd-snapshot-schedule-cron: "{{ rke2_etcd_snapshot_schedule_cron }}"
+etcd-snapshot-retention: {{ rke2_etcd_snapshot_retention }}
+etcd-snapshot-compress: {{ rke2_etcd_snapshot_compress | lower }}
+
+# Tune the following for VPS/shared hosts with I/O variability.
+# Uncomment and adjust as needed:
+#
+# etcd-arg:
+#   - "heartbeat-interval=1000"
+#   - "election-timeout=10000"
+#   - "quota-backend-bytes=8589934592"
+#   - "auto-compaction-mode=periodic"
+#   - "auto-compaction-retention=1h"
+#   - "snapshot-count=10000"
+#   - "max-request-bytes=1572864"
+#
+# kube-apiserver-arg:
+#   - "default-not-ready-toleration-seconds=300"
+#   - "default-unreachable-toleration-seconds=300"
+#   - "request-timeout=2m"
+#
+# kube-controller-manager-arg:
+#   - "node-monitor-period=10s"
+#   - "node-monitor-grace-period=120s"
+#
+# kubelet-arg:
+#   - "node-status-update-frequency=20s"
+#
+# Remote etcd snapshots (S3-compatible):
+# etcd-s3: true
+# etcd-s3-endpoint: "s3.us-east-005.backblazeb2.com"
+# etcd-s3-bucket: "PLACEHOLDER"
+# etcd-s3-region: "us-east-005"
+# etcd-s3-access-key: "PLACEHOLDER"
+# etcd-s3-secret-key: "PLACEHOLDER"
+# etcd-s3-folder: "{{ rke2_node_name }}"

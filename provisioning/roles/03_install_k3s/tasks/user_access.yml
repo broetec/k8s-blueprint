@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# user_access.yml — kubeconfig, PATH additions, and shell aliases
+# =============================================================================
+
+- name: "k3s user_access | Resolve home directory of {{ k3s_kubeconfig_user }}"
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ k3s_kubeconfig_user }}"
+  register: _k3s_user_info
+
+- name: "k3s user_access | Set _k3s_home fact"
+  ansible.builtin.set_fact:
+    _k3s_home: "{{ _k3s_user_info.ansible_facts.getent_passwd[k3s_kubeconfig_user][4] }}"
+
+- name: "k3s user_access | Ensure ~/.kube exists"
+  ansible.builtin.file:
+    path: "{{ _k3s_home }}/.kube"
+    state: directory
+    owner: "{{ k3s_kubeconfig_user }}"
+    mode: "0700"
+
+- name: "k3s user_access | Copy kubeconfig to ~/.kube/config"
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ _k3s_home }}/.kube/config"
+    owner: "{{ k3s_kubeconfig_user }}"
+    mode: "0600"
+    remote_src: true
+
+- name: "k3s user_access | Detect login shell of {{ k3s_kubeconfig_user }}"
+  ansible.builtin.set_fact:
+    _k3s_shell: "{{ _k3s_user_info.ansible_facts.getent_passwd[k3s_kubeconfig_user][5] }}"
+
+- name: "k3s user_access | Resolve shell profile path"
+  ansible.builtin.set_fact:
+    _k3s_profile: >-
+      {{
+        _k3s_home ~ '/.zshrc'   if '/zsh' in _k3s_shell else
+        _k3s_home ~ '/.bashrc'
+      }}
+
+- name: "k3s user_access | Add k3s environment block to shell profile"
+  when: k3s_configure_shell | bool
+  ansible.builtin.blockinfile:
+    path: "{{ _k3s_profile }}"
+    create: true
+    owner: "{{ k3s_kubeconfig_user }}"
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED — k3s env"
+    block: |
+      export KUBECONFIG=$HOME/.kube/config
+      alias k='kubectl'
+      complete -F __start_kubectl k 2>/dev/null || true
+      alias kns='kubens'
+      alias kctx='kubectx'
+      source <(kubectl completion {{ 'zsh' if '/zsh' in _k3s_shell else 'bash' }}) 2>/dev/null || true
