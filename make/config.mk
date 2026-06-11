@@ -53,10 +53,26 @@ endif
 
 # --- Kubernetes distribution (role 03) ----------------------------------------
 # Which distribution play 4 installs: rke2 (default) or k3s.
-# Override in env/.env (K8S_DISTRIBUTION=k3s) or on the command line.
-# make install-rke2 and make install-k3s set this automatically.
+# Override in env/.env or on the command line.
+# make install-rke2 and make install-k3s set K8S_DISTRIBUTION automatically.
+#
+# Version pins (empty = latest stable from the selected channel):
+#   RKE2_VERSION=v1.31.4+rke2r1   make install-rke2
+#   K3S_VERSION=v1.31.4+k3s1      make install-k3s
+#
 K8S_DISTRIBUTION ?= rke2
+RKE2_VERSION     ?=
+K3S_VERSION      ?=
+
+# Build the -e flags passed to ansible-playbook for role 03.
+# Version extras are only appended when the variable is non-empty.
 K8S_DISTRIBUTION_EXTRA := -e k8s_distribution=$(K8S_DISTRIBUTION)
+ifneq ($(strip $(RKE2_VERSION)),)
+K8S_DISTRIBUTION_EXTRA += -e rke2_version=$(RKE2_VERSION)
+endif
+ifneq ($(strip $(K3S_VERSION)),)
+K8S_DISTRIBUTION_EXTRA += -e k3s_version=$(K3S_VERSION)
+endif
 
 # --- Host KVM (role 00) --------------------------------------------------------
 # Bootstrap: instala pacotes libvirt no host. Default activo; desactivar em env/.env.

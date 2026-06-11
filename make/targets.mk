@@ -16,16 +16,16 @@ prepare-vm: inventory-overlay deps keys ssh-host-key-refresh ## 02 — SO dentro
 	@printf "$(Y)==> [02] prepare-vm (OVERLAY=$(OVERLAY))$(N)\n"
 	$(call run-playbook,prepare_vm,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))
 
-install-rke2: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar RKE2 nas VMs
-	@printf "$(Y)==> [03] install-rke2 (OVERLAY=$(OVERLAY))$(N)\n"
-	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e k8s_distribution=rke2 $(EXTRA))
+install-rke2: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar RKE2 (RKE2_VERSION=vX.Y.Z+rke2rN)
+	@printf "$(Y)==> [03] install-rke2 (OVERLAY=$(OVERLAY)$(if $(RKE2_VERSION), RKE2_VERSION=$(RKE2_VERSION))$(N)\n"
+	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e k8s_distribution=rke2$(if $(strip $(RKE2_VERSION)), -e rke2_version=$(RKE2_VERSION)) $(EXTRA))
 
-install-k3s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar k3s nas VMs
-	@printf "$(Y)==> [03] install-k3s (OVERLAY=$(OVERLAY))$(N)\n"
-	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e k8s_distribution=k3s $(EXTRA))
+install-k3s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar k3s (K3S_VERSION=vX.Y.Z+k3sN)
+	@printf "$(Y)==> [03] install-k3s (OVERLAY=$(OVERLAY)$(if $(K3S_VERSION), K3S_VERSION=$(K3S_VERSION))$(N)\n"
+	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e k8s_distribution=k3s$(if $(strip $(K3S_VERSION)), -e k3s_version=$(K3S_VERSION)) $(EXTRA))
 
-install-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar Kubernetes (usa K8S_DISTRIBUTION)
-	@printf "$(Y)==> [03] install-k8s (OVERLAY=$(OVERLAY), K8S_DISTRIBUTION=$(K8S_DISTRIBUTION))$(N)\n"
+install-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar Kubernetes (K8S_DISTRIBUTION + *_VERSION)
+	@printf "$(Y)==> [03] install-k8s (OVERLAY=$(OVERLAY), K8S_DISTRIBUTION=$(K8S_DISTRIBUTION)$(if $(RKE2_VERSION), RKE2_VERSION=$(RKE2_VERSION))$(if $(K3S_VERSION), K3S_VERSION=$(K3S_VERSION)))$(N)\n"
 	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(K8S_DISTRIBUTION_EXTRA) $(EXTRA))
 
 deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — manifests k8s (stub)
