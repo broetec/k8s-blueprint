@@ -1,0 +1,126 @@
+---
+# =============================================================================
+# tasks/zsh.yml — zsh shell, Oh My Zsh and kubectx/kubens setup
+# =============================================================================
+#
+# Purpose
+#   Install zsh and set it as the default shell for ansible_user. Then install
+#   Oh My Zsh, zsh-autosuggestions and kubectx/kubens so the shell environment
+#   is fully ready before the k8s roles run.
+#
+# Scope
+#   Tasks 1–2 run as root (play-level become: true).
+#   Tasks 3–9 run as ansible_user (become_user) to write files to the correct
+#   home directory and avoid root-owned dotfiles.
+#   Oh My Zsh install script requires internet access from the VM and must run
+#   with RUNZSH=no CHSH=no to avoid spawning an interactive shell.
+#   Idempotent: stat checks skip Oh My Zsh/kubectx if already installed;
+#   lineinfile/blockinfile markers prevent duplicate .zshrc blocks.
+#   kubectx aliases (kns/kctx) and KUBECONFIG are added later by the k8s
+#   user_access task using their own blockinfile markers.
+#
+# Variables
+#   prepare_vm_zsh — bool; when false this entire file is skipped (defaults/main.yml).
+#   ansible_user   — the OS user that receives the shell configuration.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1–2. System-level (root)
+# ---------------------------------------------------------------------------
+
+- name: "zsh | Install zsh and git packages"
+  ansible.builtin.package:
+    name:
+      - zsh
+      - git
+    state: present
+
+- name: "zsh | Set zsh as default shell for {{ ansible_user }}"
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    shell: /usr/bin/zsh
+
+# ---------------------------------------------------------------------------
+# 3–9. User-level (ansible_user)
+# ---------------------------------------------------------------------------
+
+- name: "zsh | Resolve home directory of {{ ansible_user }}"
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
+  register: _zsh_user_info
+
+- name: "zsh | Set _zsh_home fact"
+  ansible.builtin.set_fact:
+    _zsh_home: "{{ _zsh_user_info.ansible_facts.getent_passwd[ansible_user][4] }}"
+
+- name: "zsh | Check if Oh My Zsh is already installed"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.stat:
+    path: "{{ _zsh_home }}/.oh-my-zsh"
+  register: _omz_dir
+
+- name: "zsh | Install Oh My Zsh (non-interactive)"
+  when: not _omz_dir.stat.exists
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.shell:
+    cmd: >
+      RUNZSH=no CHSH=no
+      sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    executable: /bin/bash
+  changed_when: true
+
+- name: "zsh | Clone zsh-autosuggestions plugin"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.git:
+    repo: https://github.com/zsh-users/zsh-autosuggestions.git
+    dest: "{{ _zsh_home }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+    version: master
+    update: false
+
+- name: "zsh | Configure HIST_STAMPS in .zshrc"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.lineinfile:
+    path: "{{ _zsh_home }}/.zshrc"
+    regexp: '^#?\s*HIST_STAMPS='
+    line: 'HIST_STAMPS="yyyy-mm-dd"'
+
+- name: "zsh | Enable git and zsh-autosuggestions plugins in .zshrc"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.lineinfile:
+    path: "{{ _zsh_home }}/.zshrc"
+    regexp: '^plugins=\(.*\)'
+    line: 'plugins=(git zsh-autosuggestions)'
+
+- name: "zsh | Check if kubectx is already installed"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.stat:
+    path: "{{ _zsh_home }}/.kubectx"
+  register: _kubectx_dir
+
+- name: "zsh | Clone kubectx/kubens"
+  when: not _kubectx_dir.stat.exists
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.git:
+    repo: https://github.com/ahmetb/kubectx.git
+    dest: "{{ _zsh_home }}/.kubectx"
+    version: master
+    update: false
+
+- name: "zsh | Add kubectx PATH and Oh My Zsh completions to .zshrc"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ _zsh_home }}/.zshrc"
+    marker: "# {mark} ANSIBLE MANAGED — kubectx"
+    block: |
+      export PATH=~/.kubectx:$PATH
+      if [ -d "$HOME/.oh-my-zsh" ]; then
+        mkdir -p "$HOME/.oh-my-zsh/custom/completions"
+        ln -sf "$HOME/.kubectx/completion/_kubens.zsh" \
+          "$HOME/.oh-my-zsh/custom/completions/_kubens.zsh" 2>/dev/null || true
+        ln -sf "$HOME/.kubectx/completion/_kubectx.zsh" \
+          "$HOME/.oh-my-zsh/custom/completions/_kubectx.zsh" 2>/dev/null || true
+      fi

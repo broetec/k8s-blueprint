@@ -5,8 +5,8 @@
 #
 # Purpose
 #   Prepare Rocky Linux inside each VM (groups['vms']) for later k8s roles:
-#   swap off, SELinux, firewalld baseline, k8s sysctl, qemu-guest-agent.
-#   Does not install platform software.
+#   swap off, SELinux, firewalld baseline, k8s sysctl, qemu-guest-agent,
+#   zsh + Oh My Zsh + kubectx. Does not install platform software.
 #
 # Pipeline
 #   1. preflight.yml         — SSH ping without become; primary NIC fact.
@@ -16,10 +16,11 @@
 #   5. firewalld.yml         — package, zone, ssh, icmp.
 #   6. sysctl.yml            — ip_forward, inotify limits (required by k3s + RKE2).
 #   7. qemu_guest_agent.yml  — install + enable qemu-guest-agent (opt-out via default).
+#   8. zsh.yml               — zsh, Oh My Zsh, zsh-autosuggestions, kubectx/kubens (opt-out).
 #
 # Variables
 #   prepare_vm_selinux_mode, prepare_vm_firewalld_zone,
-#   prepare_vm_qemu_guest_agent (defaults/main.yml).
+#   prepare_vm_qemu_guest_agent, prepare_vm_zsh (defaults/main.yml).
 #
 # Related commands
 #   make prepare-vm, make up
@@ -52,4 +53,9 @@
 - name: QEMU Guest Agent — hypervisor integration
   when: prepare_vm_qemu_guest_agent | bool
   ansible.builtin.import_tasks: qemu_guest_agent.yml
+  tags: [prepare_vm]
+
+- name: Zsh — shell, Oh My Zsh and kubectx/kubens
+  when: prepare_vm_zsh | bool
+  ansible.builtin.import_tasks: zsh.yml
   tags: [prepare_vm]
