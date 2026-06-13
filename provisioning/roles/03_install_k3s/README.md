@@ -27,13 +27,12 @@ make install-rke2 OVERLAY=broetec-core  # with K8S_DISTRIBUTION=k3s in env/.env
 | `k3s_disable` | `[traefik, servicelb]` | Built-in components to skip |
 | `k3s_write_kubeconfig_mode` | `0644` | Kubeconfig file permissions |
 | `k3s_configure_shell` | `true` | Add `kubectl` completions and aliases |
-| `k3s_disable_firewalld` | `true` | Stop/disable firewalld before install |
 
 ## Tags
 
 | Tag | What it runs |
 |---|---|
-| `k3s_preflight` | firewalld, NetworkManager, sysctl |
+| `k3s_preflight` | NetworkManager (firewalld off and sysctl in role 02) |
 | `k3s_config` | `/etc/rancher/k3s/config.yaml` |
 | `k3s_install` | download script, enable service, wait Ready |
 | `k3s_user` | kubeconfig, shell profile |

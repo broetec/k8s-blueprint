@@ -112,7 +112,7 @@ Most playbook targets depend on `inventory-overlay` implicitly.
 | Target | Role | Notes |
 |--------|------|-------|
 | `create-vm` | **01** | qcow2, cloud-init seed ISO, `virt-install` |
-| `prepare-vm` | **02** | Guest OS prep (swap, SELinux, firewalld) |
+| `prepare-vm` | **02** | Guest OS prep (swap, SELinux, iptables baseline) |
 | `install-rke2` | **03** | RKE2 install (stub) |
 | `deploy-k8s` | **04** | k8s manifests (stub) |
 | `deploy` | **03** + **04** | Update k8s only on an existing VM |

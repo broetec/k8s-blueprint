@@ -5,8 +5,8 @@
 #
 # Purpose
 #   Install and configure RKE2 (single-node server) on Rocky Linux VMs.
-#   Assumes 02_prepare_vm has already run (swap off, SELinux, firewalld,
-#   sysctl). Does not touch the host KVM or other VMs.
+#   Assumes 02_prepare_vm has already run (swap off, SELinux, firewalld off,
+#   iptables tooling, sysctl). Does not touch the host KVM or other VMs.
 #
 # Pipeline
 #   1. preflight.yml   — NetworkManager: ignore Cilium/CNI virtual interfaces.
@@ -35,7 +35,7 @@
   ansible.builtin.ping:
   tags: [rke2_preflight]
 
-- name: "RKE2 | System preflight (firewalld, NetworkManager, sysctl)"
+- name: "RKE2 | System preflight (NetworkManager)"
   ansible.builtin.import_tasks: preflight.yml
   tags: [rke2_preflight]
 

@@ -34,7 +34,7 @@
   register: os_prep_iface
   changed_when: false
 
-- name: Store primary interface fact for firewalld
+- name: Store primary interface fact for troubleshooting
   ansible.builtin.set_fact:
     os_prepare_primary_iface: "{{ os_prep_iface.stdout | trim }}"
   when: os_prep_iface.stdout | trim | length > 0

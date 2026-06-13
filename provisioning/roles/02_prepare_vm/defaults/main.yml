@@ -8,7 +8,6 @@
 #
 # Variables
 #   prepare_vm_selinux_mode       — SELINUX= value in /etc/selinux/config; setenforce at runtime when enforcing/permissive.
-#   prepare_vm_firewalld_zone     — default zone and ssh/icmp rules target.
 #   prepare_vm_qemu_guest_agent   — install and enable qemu-guest-agent (true/false).
 #   prepare_vm_zsh                — install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens (true/false).
 #
@@ -21,7 +20,6 @@
 # =============================================================================
 
 prepare_vm_selinux_mode: enforcing
-prepare_vm_firewalld_zone: public
 
 # Install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens.
 # Requires internet access from the VM. Set false to skip.

@@ -95,7 +95,7 @@ All **Ansible** configuration for the lab.
 | [app/inventory/README.md](../app/inventory/README.md) | `make inventory` generator (Python) |
 | [roles/00_install_kvm/](../provisioning/roles/00_install_kvm/README.md) | Host bootstrap, libvirt network, firewall (opt-in) |
 | [roles/01_create_vm/](../provisioning/roles/01_create_vm/README.md) | qcow2, cloud-init, virt-install |
-| [roles/02_prepare_vm/](../provisioning/roles/02_prepare_vm/README.md) | swap, SELinux, firewalld in VM |
+| [roles/02_prepare_vm/](../provisioning/roles/02_prepare_vm/README.md) | swap, SELinux, iptables baseline in VM |
 | [roles/03_install_rke2/](../provisioning/roles/03_install_rke2/README.md) | RKE2 (stub) |
 | [roles/04_deploy_k8s/](../provisioning/roles/04_deploy_k8s/README.md) | k8s manifests (stub) |
 | [templates/README.md](../provisioning/templates/README.md) | NoCloud seed ISO templates |
@@ -207,7 +207,7 @@ sequenceDiagram
 
 1. **00_install_kvm** — host (`kvm_hosts`): pacotes KVM, rede, firewall (opt-in)
 2. **01_create_vm** — host: qcow2, virt-install, wait SSH
-3. **02_prepare_vm** — VM: swap, SELinux, firewalld
+3. **02_prepare_vm** — VM: swap, SELinux, iptables baseline (firewalld off)
 4. **03_install_rke2** — VM: RKE2 (stub)
 5. **04_deploy_k8s** — VM: manifests (stub)
 

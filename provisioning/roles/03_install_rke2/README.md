@@ -29,13 +29,12 @@ make install-rke2 OVERLAY=broetec-core
 | `rke2_secrets_encryption` | `true` | Encrypt secrets at rest |
 | `rke2_write_kubeconfig_mode` | `0644` | Kubeconfig file permissions |
 | `rke2_configure_shell` | `true` | Add `kubectl`/`helm` completions and aliases |
-| `rke2_disable_firewalld` | `true` | Stop/disable firewalld before install |
 
 ## Tags
 
 | Tag | What it runs |
 |---|---|
-| `rke2_preflight` | firewalld, NetworkManager, sysctl |
+| `rke2_preflight` | NetworkManager (firewalld off and sysctl in role 02) |
 | `rke2_config` | `/etc/rancher/rke2/config.yaml` + Cilium HelmChartConfig |
 | `rke2_install` | download script, enable `rke2-server`, wait Ready |
 | `rke2_user` | kubeconfig, shell profile |

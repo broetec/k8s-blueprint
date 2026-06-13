@@ -10,7 +10,7 @@
 #   inside pods after a daemon restart or reboot.
 #
 # Scope
-#   Firewalld (kept active) and sysctl tuning (ip_forward, inotify) are
+#   Firewalld (disabled/masked) and sysctl tuning (ip_forward, inotify) are
 #   handled upstream by role 02_prepare_vm. This file is intentionally
 #   narrow: only the NetworkManager drop-in for RKE2/Cilium interfaces.
 #

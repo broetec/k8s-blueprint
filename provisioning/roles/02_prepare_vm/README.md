@@ -2,7 +2,7 @@
 
 Ansible role **02** in the k8s-blueprint lab pipeline. Runs **inside each VM**
 (`hosts: vms`) via SSH and leaves Rocky Linux in a baseline state for k8s:
-swap off, SELinux enforcing, firewalld with ssh and ICMP.
+swap off, SELinux enforcing, firewalld disabled, iptables tooling installed.
 
 Requires role **01** (VM exists and SSH responds). Does **not** install RKE2 or
 cluster software — that is roles **03–04**.
@@ -39,8 +39,8 @@ make up OVERLAY=broetec-core
 
 ## What runs
 
-Task YAML files include short header comments; see [`tasks/firewalld.yml`](tasks/firewalld.yml)
-for zone binding details.
+Task YAML files include short header comments; see [`tasks/iptables.yml`](tasks/iptables.yml)
+for firewalld disable and package details.
 
 | Step | Tasks | What it does | Tag |
 |------|-------|--------------|-----|
@@ -48,7 +48,10 @@ for zone binding details.
 | **Cloud-init** | [`cloud_init.yml`](tasks/cloud_init.yml) | `cloud-init status --wait` | `prepare_vm` |
 | **Swap** | [`swap.yml`](tasks/swap.yml) | `swapoff -a`; comment swap in `/etc/fstab` | `prepare_vm` |
 | **SELinux** | [`selinux.yml`](tasks/selinux.yml) | `setenforce` at runtime; persist mode in config | `prepare_vm` |
-| **Firewalld** | [`firewalld.yml`](tasks/firewalld.yml) | Install/start; default zone; bind NIC; ssh + icmp | `prepare_vm` |
+| **Iptables** | [`iptables.yml`](tasks/iptables.yml) | Mask firewalld; install `iptables` + `iptables-nft` | `prepare_vm` |
+| **Sysctl** | [`sysctl.yml`](tasks/sysctl.yml) | IP forwarding and inotify limits for k8s | `prepare_vm` |
+| **QEMU GA** | [`qemu_guest_agent.yml`](tasks/qemu_guest_agent.yml) | Install qemu-guest-agent (opt-out) | `prepare_vm` |
+| **Zsh** | [`zsh.yml`](tasks/zsh.yml) | zsh, Oh My Zsh, kubectx/kubens (opt-out) | `prepare_vm` |
 
 Play [`site.yml`](../../site.yml) also runs a **pre_task** on localhost
 (`ssh-keygen -R`) before this role — not part of the role itself.
@@ -70,7 +73,9 @@ Play [`site.yml`](../../site.yml) runs this role with **`become: true`** on `hos
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `prepare_vm_selinux_mode` | `enforcing` | Value written to `/etc/selinux/config`; runtime `setenforce 1` when enforcing |
-| `prepare_vm_firewalld_zone` | `public` | Default zone; ssh and icmp rules target this zone |
+| `prepare_vm_qemu_guest_agent` | `true` | Install and enable qemu-guest-agent |
+| `prepare_vm_zsh` | `true` | Install zsh, Oh My Zsh and kubectx/kubens |
+| `prepare_vm_sysctl_settings` | see defaults | Kernel tuning written to `/etc/sysctl.d/90-k8s.conf` |
 
 ### From inventory
 
@@ -84,13 +89,12 @@ Shared variables in [`provisioning/inventory/_shared/group_vars/all.yml`](../../
 
 ## Idempotency
 
-- **Package/service:** `firewalld` install and enable report `ok` when already present.
+- **Firewalld:** `service` with `masked: true` reports `ok` when already masked.
+- **Iptables packages:** `package` reports `ok` when already installed.
 - **Swap runtime:** `swapoff -a` runs every time; real effect only on first run with active swap.
 - **Swap fstab:** `replace` only comments uncommented swap lines.
 - **SELinux:** `lineinfile` idempotent for the same mode.
-- **Firewalld:** `ansible.posix.firewalld` with `immediate: true` — no global reload
-  that would drop SSH on the second run.
-- **Default zone:** `firewall-cmd --set-default-zone` treats `ZONE_ALREADY_SET` as ok.
+- **Sysctl:** `ansible.posix.sysctl` idempotent per key in `/etc/sysctl.d/90-k8s.conf`.
 
 ## Verification and troubleshooting
 
@@ -99,21 +103,22 @@ make prepare-vm OVERLAY=broetec-core
 
 ssh rocky@10.20.30.40 free -h
 ssh rocky@10.20.30.40 getenforce
-ssh rocky@10.20.30.40 sudo firewall-cmd --list-all --zone=public
+ssh rocky@10.20.30.40 systemctl is-enabled firewalld   # expected: masked
+ssh rocky@10.20.30.40 rpm -q iptables iptables-nft
 ```
 
 | Symptom | What to try |
 |---------|-------------|
 | Worker dies on first sudo / second play | Run `make up` outside the IDE terminal; see provisioning README |
-| Correct IP but ping/SSH dead after prepare | NIC not in `public` zone — re-run role; check `firewalld.yml` interface bind |
 | `cloud-init status --wait` hangs | VM still booting; wait or check role **01** wait_ssh timeouts |
 | Become password prompt | Set `cloud_init.sudo_nopasswd: true` or provide `env/vm-become.pass` |
+| firewalld still active after prepare | Re-run role; check `iptables.yml` service task |
 
 ## Requirements
 
 - Role **01** completed (VM reachable on SSH port 22)
 - Inventory group **`vms`** with `ansible_host` / `vm_ip`
-- Collection **`ansible.posix`** (firewalld module)
+- Collection **`ansible.posix`** (sysctl module)
 - Connection **`ansible.netcommon.libssh`** (default in generated inventory)
 - Play tag **`prepare_vm`** in [`site.yml`](../../site.yml)
 
@@ -129,7 +134,7 @@ ssh rocky@10.20.30.40 sudo firewall-cmd --list-all --zone=public
 
 | Fact | Set by | Used by |
 |------|--------|---------|
-| `os_prepare_primary_iface` | `preflight.yml` | `firewalld.yml` — bind NIC to zone |
+| `os_prepare_primary_iface` | `preflight.yml` | Reserved for troubleshooting |
 
 ### Manual playbook run
 

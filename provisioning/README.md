@@ -26,7 +26,7 @@ provisioning/
 └── roles/
     ├── 00_install_kvm/README.md   # host bootstrap, libvirt network, firewall
     ├── 01_create_vm/README.md     # qcow2, seed ISO, virt-install
-    ├── 02_prepare_vm/README.md    # swap, SELinux, firewalld inside VM
+    ├── 02_prepare_vm/README.md    # swap, SELinux, iptables baseline inside VM
     ├── 03_install_rke2/README.md  # RKE2 (stub)
     └── 04_deploy_k8s/README.md    # k8s manifests (stub)
 ```
@@ -149,7 +149,7 @@ VM inventory at the repo `.venv`.
 
 See [`collections/README.md`](collections/README.md) for full detail. Summary:
 
-- **`ansible.posix`**: firewalld/sysctl on role 00 (host) and role 02 (VM).
+- **`ansible.posix`**: firewalld/sysctl on role 00 (host); sysctl on role 02 (VM).
 - **`ansible.netcommon`**: `libssh` plugin for VM SSH without forking system `ssh`.
 
 ```bash

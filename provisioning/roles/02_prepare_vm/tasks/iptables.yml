@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# tasks/iptables.yml — Disable firewalld; install iptables for CNI/kube-proxy
+# =============================================================================
+#
+# Purpose
+#   Stop, disable and mask firewalld so RKE2/k3s CNI plugins can manage
+#   netfilter (iptables/nftables) without conflicts. Install iptables tooling
+#   required by Canal, Flannel, Cilium and kube-proxy.
+#
+# Variables
+#   None — static baseline aligned with docs/bootstrap/README.md §1.0–1.1.
+#
+# Scope
+#   No persistent iptables rules or INPUT DROP policies: the CNI owns runtime
+#   chains. Do not install iptables-services.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Stop, disable and mask firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+    masked: true
+
+- name: Install iptables tooling for CNI/kube-proxy
+  ansible.builtin.package:
+    name:
+      - iptables
+      - iptables-nft
+    state: present

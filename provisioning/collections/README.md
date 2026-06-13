@@ -24,7 +24,7 @@ flowchart LR
 |-------------|----------------------------|
 | `make deps` | Installs collections (run before first playbook) |
 | `make setup-host` | `ansible.posix` — host firewalld/sysctl (role 00) |
-| `make prepare-vm` | `ansible.posix` — VM firewalld (role 02) |
+| `make prepare-vm` | `ansible.posix` — VM sysctl (role 02) |
 | `make up` | `ansible.netcommon` — libssh connection to VMs |
 
 ## Quick start
@@ -40,7 +40,7 @@ Re-run `make deps` after editing [`requirements.yml`](requirements.yml).
 
 | Collection | Consumer | Why |
 |------------|----------|-----|
-| `ansible.posix` | Roles **00**, **02** | `firewalld`, `sysctl` modules on host and inside VMs |
+| `ansible.posix` | Roles **00**, **02** | `firewalld` on host (00); `sysctl` on host and VMs (00, 02) |
 | `ansible.netcommon` | Generated inventory (`hosts.ini`) | `ansible.netcommon.libssh` connection plugin for VM plays |
 
 Declared in [`requirements.yml`](requirements.yml). Role-level `dependencies` in `meta/main.yml`
