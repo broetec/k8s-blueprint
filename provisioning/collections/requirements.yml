@@ -12,4 +12,5 @@
 # See provisioning/collections/README.md.
 collections:
   - name: ansible.posix
+    version: ">=2.2.0"
   - name: ansible.netcommon
