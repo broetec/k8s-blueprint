@@ -50,6 +50,7 @@ for firewalld disable and package details.
 | **SELinux** | [`selinux.yml`](tasks/selinux.yml) | `setenforce` at runtime; persist mode in config | `prepare_vm` |
 | **Iptables** | [`iptables.yml`](tasks/iptables.yml) | Mask firewalld; install `iptables` + `iptables-nft` | `prepare_vm` |
 | **Sysctl** | [`sysctl.yml`](tasks/sysctl.yml) | IP forwarding and inotify limits for k8s | `prepare_vm` |
+| **Packages** | [`packages.yml`](tasks/packages.yml) | Auxiliary RPMs (`htop`, etc.) | `prepare_vm` |
 | **QEMU GA** | [`qemu_guest_agent.yml`](tasks/qemu_guest_agent.yml) | Install qemu-guest-agent (opt-out) | `prepare_vm` |
 | **Zsh** | [`zsh.yml`](tasks/zsh.yml) | zsh, Oh My Zsh, kubectx/kubens (opt-out) | `prepare_vm` |
 
@@ -73,6 +74,7 @@ Play [`site.yml`](../../site.yml) runs this role with **`become: true`** on `hos
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `prepare_vm_selinux_mode` | `enforcing` | Value written to `/etc/selinux/config`; runtime `setenforce 1` when enforcing |
+| `prepare_vm_packages` | `[htop]` | Auxiliary RPMs for VM day-to-day use; empty list skips install |
 | `prepare_vm_qemu_guest_agent` | `true` | Install and enable qemu-guest-agent |
 | `prepare_vm_zsh` | `true` | Install zsh, Oh My Zsh and kubectx/kubens |
 | `prepare_vm_sysctl_settings` | see defaults | Kernel tuning written to `/etc/sysctl.d/90-k8s.conf` |
@@ -91,6 +93,7 @@ Shared variables in [`provisioning/inventory/_shared/group_vars/all.yml`](../../
 
 - **Firewalld:** `service` with `masked: true` reports `ok` when already masked.
 - **Iptables packages:** `package` reports `ok` when already installed.
+- **Auxiliary packages:** `package` reports `ok` when all RPMs in `prepare_vm_packages` are present.
 - **Swap runtime:** `swapoff -a` runs every time; real effect only on first run with active swap.
 - **Swap fstab:** `replace` only comments uncommented swap lines.
 - **SELinux:** `lineinfile` idempotent for the same mode.
@@ -105,6 +108,7 @@ ssh rocky@10.20.30.40 free -h
 ssh rocky@10.20.30.40 getenforce
 ssh rocky@10.20.30.40 systemctl is-enabled firewalld   # masked when installed; absent on minimal images
 ssh rocky@10.20.30.40 rpm -q iptables iptables-nft
+ssh rocky@10.20.30.40 rpm -q htop
 ```
 
 | Symptom | What to try |

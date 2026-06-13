@@ -8,6 +8,7 @@
 #
 # Variables
 #   prepare_vm_selinux_mode       — SELINUX= value in /etc/selinux/config; setenforce at runtime when enforcing/permissive.
+#   prepare_vm_packages           — auxiliary RPMs for VM day-to-day use (htop, etc.).
 #   prepare_vm_qemu_guest_agent   — install and enable qemu-guest-agent (true/false).
 #   prepare_vm_zsh                — install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens (true/false).
 #
@@ -20,6 +21,11 @@
 # =============================================================================
 
 prepare_vm_selinux_mode: enforcing
+
+# Auxiliary packages for VM day-to-day use (not required for k8s).
+# Append RPM names here as the lab needs more tooling.
+prepare_vm_packages:
+  - htop
 
 # Install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens.
 # Requires internet access from the VM. Set false to skip.

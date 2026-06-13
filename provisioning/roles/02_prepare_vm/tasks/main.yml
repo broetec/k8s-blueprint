@@ -6,7 +6,7 @@
 # Purpose
 #   Prepare Rocky Linux inside each VM (groups['vms']) for later k8s roles:
 #   swap off, SELinux, iptables baseline (firewalld off), k8s sysctl,
-#   qemu-guest-agent,
+#   auxiliary packages, qemu-guest-agent,
 #   zsh + Oh My Zsh + kubectx. Does not install platform software.
 #
 # Pipeline
@@ -16,11 +16,12 @@
 #   4. selinux.yml           — SELINUX mode.
 #   5. iptables.yml          — mask firewalld; install iptables/iptables-nft.
 #   6. sysctl.yml            — ip_forward, inotify limits (required by k3s + RKE2).
-#   7. qemu_guest_agent.yml  — install + enable qemu-guest-agent (opt-out via default).
-#   8. zsh.yml               — zsh, Oh My Zsh, zsh-autosuggestions, kubectx/kubens (opt-out).
+#   7. packages.yml          — auxiliary RPMs (htop, etc.; prepare_vm_packages).
+#   8. qemu_guest_agent.yml  — install + enable qemu-guest-agent (opt-out via default).
+#   9. zsh.yml               — zsh, Oh My Zsh, zsh-autosuggestions, kubectx/kubens (opt-out).
 #
 # Variables
-#   prepare_vm_selinux_mode,
+#   prepare_vm_selinux_mode, prepare_vm_packages,
 #   prepare_vm_qemu_guest_agent, prepare_vm_zsh (defaults/main.yml).
 #
 # Related commands
@@ -49,6 +50,10 @@
 
 - name: Sysctl — kernel tuning for Kubernetes
   ansible.builtin.import_tasks: sysctl.yml
+  tags: [prepare_vm]
+
+- name: Packages — auxiliary CLI tools for VM use
+  ansible.builtin.import_tasks: packages.yml
   tags: [prepare_vm]
 
 - name: QEMU Guest Agent — hypervisor integration

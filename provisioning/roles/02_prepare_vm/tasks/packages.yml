@@ -1,0 +1,22 @@
+---
+# =============================================================================
+# tasks/packages.yml — Auxiliary packages for day-to-day VM use
+# =============================================================================
+#
+# Purpose
+#   Install optional CLI tools that make lab VMs easier to operate (monitoring,
+#   debugging, editing). Not required for Kubernetes — add new entries to
+#   prepare_vm_packages in defaults/main.yml or inventory when needed.
+#
+# Variables
+#   prepare_vm_packages — list of RPM names; skipped when empty.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Install auxiliary VM packages
+  ansible.builtin.package:
+    name: "{{ prepare_vm_packages }}"
+    state: present
+  when: prepare_vm_packages | length > 0
