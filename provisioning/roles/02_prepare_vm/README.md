@@ -103,7 +103,7 @@ make prepare-vm OVERLAY=broetec-core
 
 ssh rocky@10.20.30.40 free -h
 ssh rocky@10.20.30.40 getenforce
-ssh rocky@10.20.30.40 systemctl is-enabled firewalld   # expected: masked
+ssh rocky@10.20.30.40 systemctl is-enabled firewalld   # masked when installed; absent on minimal images
 ssh rocky@10.20.30.40 rpm -q iptables iptables-nft
 ```
 
