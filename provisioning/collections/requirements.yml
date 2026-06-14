@@ -14,3 +14,4 @@ collections:
   - name: ansible.posix
     version: ">=2.2.0"
   - name: ansible.netcommon
+    version: "==8.5.2"

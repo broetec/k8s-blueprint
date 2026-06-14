@@ -72,6 +72,9 @@ class Connection(_up.Connection):
     transport = 'libssh'
 
     def _connect_uncached(self) -> object:
-        stub = os.path.join(os.getcwd(), 'env', 'global-known_hosts_stub')
-        _PatchedSession._stub = stub if os.path.isfile(stub) else None
+        env_dir = os.path.join(os.getcwd(), 'env')
+        stub = os.path.join(env_dir, 'global-known_hosts_stub')
+        os.makedirs(env_dir, exist_ok=True)
+        open(stub, 'a').close()  # touch — cria se não existir, não trunca se existir
+        _PatchedSession._stub = stub
         return super()._connect_uncached()
