@@ -72,7 +72,7 @@ def test_generate_hosts_ini(repo_tree: Path) -> None:
     ) in text
     assert '[kvm_hosts]' in text
     assert 'vm_role=core' in text
-    assert 'ansible.netcommon.libssh' in text
+    assert 'ansible_connection=libssh' in text
 
 
 def test_generate_hosts_ini_libssh_config(repo_tree: Path) -> None:

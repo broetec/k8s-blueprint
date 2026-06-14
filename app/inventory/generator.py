@@ -74,7 +74,7 @@ class InventoryGenerator:
         if override == 'ssh':
             return 'ssh'
         if override == 'libssh':
-            return 'ansible.netcommon.libssh'
+            return 'libssh'
         return manifest.defaults.ansible_connection_vm
 
     def render_hosts_ini(
@@ -105,18 +105,20 @@ class InventoryGenerator:
             lines.append(
                 f'{vm.name} ansible_host={vm.ip} vm_ip={vm.ip} vm_mac={mac}',
             )
+        _is_libssh = vm_connection in ('libssh', 'ansible.netcommon.libssh')
         lines.extend(
             [
                 '',
                 '[vms:vars]',
                 f'ansible_user={d.ansible_user}',
                 f'vm_role={overlay.role}',
-                '; libssh: avoids worker dead in Cursor/AppImage. Requires make deps.',
-                f'ansible_connection={vm_connection}',
-                f'ansible_host_key_checking={str(d.ansible_host_key_checking)}',
             ],
         )
-        if vm_connection == 'ansible.netcommon.libssh':
+        if _is_libssh:
+            lines.append('; libssh: avoids worker dead in Cursor/AppImage. Requires make deps.')
+        lines.append(f'ansible_connection={vm_connection}')
+        lines.append(f'ansible_host_key_checking={str(d.ansible_host_key_checking)}')
+        if _is_libssh:
             lines.append(
                 f'ansible_libssh_host_key_auto_add={str(d.ansible_libssh_host_key_auto_add)}',
             )

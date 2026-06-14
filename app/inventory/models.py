@@ -118,7 +118,7 @@ def _parse_defaults(data: dict[str, Any]) -> InventoryDefaults:
         ansible_connection=str(data.get('ansible_connection', 'local')),
         ansible_user=str(data.get('ansible_user', 'broetec')),
         ansible_connection_vm=str(
-            data.get('ansible_connection_vm', 'ansible.netcommon.libssh'),
+            data.get('ansible_connection_vm', 'libssh'),
         ),
         ansible_host_key_checking=bool(data.get('ansible_host_key_checking', False)),
         ansible_libssh_host_key_auto_add=bool(
