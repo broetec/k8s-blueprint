@@ -4,13 +4,13 @@
 # =============================================================================
 #
 # Purpose
-#   Install zsh and set it as the default shell for ansible_user. Then install
-#   Oh My Zsh, zsh-autosuggestions and kubectx/kubens so the shell environment
-#   is fully ready before the k8s roles run.
+#   Install zsh and set it as the default shell for ansible_user. Install Helm
+#   via the official get-helm-3 script. Then install Oh My Zsh, zsh-autosuggestions
+#   and kubectx/kubens so the shell environment is fully ready before the k8s roles run.
 #
 # Scope
-#   Tasks 1–2 run as root (play-level become: true).
-#   Tasks 3–9 run as ansible_user (become_user) to write files to the correct
+#   Tasks 1–4 run as root (play-level become: true).
+#   Tasks 5–11 run as ansible_user (become_user) to write files to the correct
 #   home directory and avoid root-owned dotfiles.
 #   Oh My Zsh install script requires internet access from the VM and must run
 #   with RUNZSH=no CHSH=no to avoid spawning an interactive shell.
@@ -28,7 +28,7 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# 1–2. System-level (root)
+# 1–4. System-level (root)
 # ---------------------------------------------------------------------------
 
 - name: "zsh | Install zsh and git packages"
@@ -38,13 +38,25 @@
       - git
     state: present
 
+- name: "zsh | Check if Helm is already installed"
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: _helm_binary
+
+- name: "zsh | Install Helm via get-helm-3 script"
+  when: not _helm_binary.stat.exists
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    executable: /bin/bash
+  changed_when: true
+
 - name: "zsh | Set zsh as default shell for {{ ansible_user }}"
   ansible.builtin.user:
     name: "{{ ansible_user }}"
     shell: /usr/bin/zsh
 
 # ---------------------------------------------------------------------------
-# 3–9. User-level (ansible_user)
+# 5–11. User-level (ansible_user)
 # ---------------------------------------------------------------------------
 
 - name: "zsh | Resolve home directory of {{ ansible_user }}"

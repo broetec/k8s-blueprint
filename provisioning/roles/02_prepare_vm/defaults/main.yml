@@ -33,6 +33,8 @@ prepare_vm_epel: true
 # Append RPM names here as the lab needs more tooling.
 prepare_vm_packages:
   - htop
+  - nano
+  - net-tools
 
 # Install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens.
 # Requires internet access from the VM. Set false to skip.
