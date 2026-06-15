@@ -1,0 +1,67 @@
+---
+# =============================================================================
+# tasks/dnf.yml — DNF bootstrap (update, reboot, EPEL)
+# =============================================================================
+#
+# Purpose
+#   Run before any other package installs in this role:
+#   1. Tune dnf.conf (fastestmirror + parallel downloads; Rocky Mirror Manager).
+#   2. dnf update all packages.
+#   3. Reboot when kernel/libs require it (needs-restarting).
+#   4. Install epel-release so auxiliary packages (htop, etc.) resolve.
+#
+# Variables (defaults/main.yml)
+#   prepare_vm_dnf_max_parallel_downloads, prepare_vm_dnf_update,
+#   prepare_vm_reboot_after_update, prepare_vm_epel.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: Enable fastestmirror in dnf.conf
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/dnf.conf
+    regexp: '^fastestmirror='
+    line: fastestmirror=True
+    insertafter: '^\[main\]'
+
+- name: Set max_parallel_downloads in dnf.conf
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/dnf.conf
+    regexp: '^max_parallel_downloads='
+    line: "max_parallel_downloads={{ prepare_vm_dnf_max_parallel_downloads }}"
+    insertafter: '^\[main\]'
+
+- name: Update all system packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+  when: prepare_vm_dnf_update | bool
+
+- name: Install yum-utils for needs-restarting
+  ansible.builtin.dnf:
+    name: yum-utils
+    state: present
+  when: prepare_vm_dnf_update | bool
+
+- name: Check if reboot is required after system update
+  ansible.builtin.command: needs-restarting -r
+  register: _prepare_vm_needs_reboot
+  changed_when: _prepare_vm_needs_reboot.rc == 1
+  failed_when: _prepare_vm_needs_reboot.rc not in [0, 1]
+  when: prepare_vm_dnf_update | bool
+
+- name: Reboot VM to apply kernel and library updates
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+  when:
+    - prepare_vm_dnf_update | bool
+    - prepare_vm_reboot_after_update | bool
+    - _prepare_vm_needs_reboot.rc == 1
+
+- name: Install EPEL release repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  when: prepare_vm_epel | bool

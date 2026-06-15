@@ -8,6 +8,9 @@
 #   debugging, editing). Not required for Kubernetes — add new entries to
 #   prepare_vm_packages in defaults/main.yml or inventory when needed.
 #
+# Prerequisites
+#   tasks/dnf.yml must run first (EPEL enabled; system packages updated).
+#
 # Variables
 #   prepare_vm_packages — list of RPM names; skipped when empty.
 #
@@ -16,7 +19,7 @@
 # =============================================================================
 
 - name: Install auxiliary VM packages
-  ansible.builtin.package:
+  ansible.builtin.dnf:
     name: "{{ prepare_vm_packages }}"
     state: present
   when: prepare_vm_packages | length > 0

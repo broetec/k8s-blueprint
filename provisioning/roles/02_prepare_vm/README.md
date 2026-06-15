@@ -46,11 +46,12 @@ for firewalld disable and package details.
 |------|-------|--------------|-----|
 | **Preflight** | [`preflight.yml`](tasks/preflight.yml) | `ping` without become; discover primary NIC | `prepare_vm` |
 | **Cloud-init** | [`cloud_init.yml`](tasks/cloud_init.yml) | `cloud-init status --wait` | `prepare_vm` |
+| **DNF bootstrap** | [`dnf.yml`](tasks/dnf.yml) | Tune `dnf.conf`, `dnf update`, reboot if needed, `epel-release` | `prepare_vm` |
+| **Packages** | [`packages.yml`](tasks/packages.yml) | Auxiliary RPMs (`htop`, etc.; requires EPEL) | `prepare_vm` |
 | **Swap** | [`swap.yml`](tasks/swap.yml) | `swapoff -a`; comment swap in `/etc/fstab` | `prepare_vm` |
 | **SELinux** | [`selinux.yml`](tasks/selinux.yml) | `setenforce` at runtime; persist mode in config | `prepare_vm` |
 | **Iptables** | [`iptables.yml`](tasks/iptables.yml) | Mask firewalld; install `iptables` + `iptables-nft` | `prepare_vm` |
 | **Sysctl** | [`sysctl.yml`](tasks/sysctl.yml) | IP forwarding and inotify limits for k8s | `prepare_vm` |
-| **Packages** | [`packages.yml`](tasks/packages.yml) | Auxiliary RPMs (`htop`, etc.) | `prepare_vm` |
 | **QEMU GA** | [`qemu_guest_agent.yml`](tasks/qemu_guest_agent.yml) | Install qemu-guest-agent (opt-out) | `prepare_vm` |
 | **Zsh** | [`zsh.yml`](tasks/zsh.yml) | zsh, Oh My Zsh, kubectx/kubens (opt-out) | `prepare_vm` |
 
@@ -74,6 +75,10 @@ Play [`site.yml`](../../site.yml) runs this role with **`become: true`** on `hos
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `prepare_vm_selinux_mode` | `enforcing` | Value written to `/etc/selinux/config`; runtime `setenforce 1` when enforcing |
+| `prepare_vm_dnf_max_parallel_downloads` | `10` | Written to `/etc/dnf/dnf.conf` |
+| `prepare_vm_dnf_update` | `true` | Run `dnf update` before other package installs |
+| `prepare_vm_reboot_after_update` | `true` | Reboot when `needs-restarting -r` reports kernel/lib updates |
+| `prepare_vm_epel` | `true` | Install `epel-release` (required for `htop` on Rocky 10) |
 | `prepare_vm_packages` | `[htop]` | Auxiliary RPMs for VM day-to-day use; empty list skips install |
 | `prepare_vm_qemu_guest_agent` | `true` | Install and enable qemu-guest-agent |
 | `prepare_vm_zsh` | `true` | Install zsh, Oh My Zsh and kubectx/kubens |
@@ -91,9 +96,11 @@ Shared variables in [`provisioning/inventory/_shared/group_vars/all.yml`](../../
 
 ## Idempotency
 
+- **DNF conf:** `lineinfile` idempotent for `fastestmirror` and `max_parallel_downloads`.
+- **DNF update:** `dnf` reports `ok` when packages are already latest.
+- **Reboot:** skipped when `needs-restarting -r` returns 0.
+- **EPEL / auxiliary packages:** `dnf` reports `ok` when already installed.
 - **Firewalld:** `service` with `masked: true` reports `ok` when already masked.
-- **Iptables packages:** `package` reports `ok` when already installed.
-- **Auxiliary packages:** `package` reports `ok` when all RPMs in `prepare_vm_packages` are present.
 - **Swap runtime:** `swapoff -a` runs every time; real effect only on first run with active swap.
 - **Swap fstab:** `replace` only comments uncommented swap lines.
 - **SELinux:** `lineinfile` idempotent for the same mode.
@@ -104,15 +111,16 @@ Shared variables in [`provisioning/inventory/_shared/group_vars/all.yml`](../../
 ```bash
 make prepare-vm OVERLAY=broetec-core
 
+ssh rocky@10.20.30.40 grep -E 'fastestmirror|max_parallel' /etc/dnf/dnf.conf
+ssh rocky@10.20.30.40 rpm -q epel-release htop
+ssh rocky@10.20.30.40 uname -r
 ssh rocky@10.20.30.40 free -h
-ssh rocky@10.20.30.40 getenforce
-ssh rocky@10.20.30.40 systemctl is-enabled firewalld   # masked when installed; absent on minimal images
-ssh rocky@10.20.30.40 rpm -q iptables iptables-nft
-ssh rocky@10.20.30.40 rpm -q htop
 ```
 
 | Symptom | What to try |
 |---------|-------------|
+| `htop` / package not found | Ensure `prepare_vm_epel: true`; EPEL must be enabled before auxiliary packages |
+| Slow or hanging `dnf` metadata | Ensure `fastestmirror=True` in `/etc/dnf/dnf.conf`; Rocky Mirror Manager picks localized mirrors |
 | Worker dies on first sudo / second play | Run `make up` outside the IDE terminal; see provisioning README |
 | `cloud-init status --wait` hangs | VM still booting; wait or check role **01** wait_ssh timeouts |
 | Become password prompt | Set `cloud_init.sudo_nopasswd: true` or provide `env/vm-become.pass` |

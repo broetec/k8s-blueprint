@@ -8,7 +8,8 @@
 #
 # Variables
 #   prepare_vm_selinux_mode       — SELINUX= value in /etc/selinux/config; setenforce at runtime when enforcing/permissive.
-#   prepare_vm_packages           — auxiliary RPMs for VM day-to-day use (htop, etc.).
+#   prepare_vm_dnf_*              — dnf.conf tuning, update, reboot, EPEL (see tasks/dnf.yml).
+#   prepare_vm_packages           — auxiliary RPMs for VM day-to-day use (htop, etc.; requires EPEL).
 #   prepare_vm_qemu_guest_agent   — install and enable qemu-guest-agent (true/false).
 #   prepare_vm_zsh                — install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens (true/false).
 #
@@ -21,6 +22,12 @@
 # =============================================================================
 
 prepare_vm_selinux_mode: enforcing
+
+# DNF bootstrap (tasks/dnf.yml) — runs before swap/iptables and other package installs.
+prepare_vm_dnf_max_parallel_downloads: 10
+prepare_vm_dnf_update: true
+prepare_vm_reboot_after_update: true
+prepare_vm_epel: true
 
 # Auxiliary packages for VM day-to-day use (not required for k8s).
 # Append RPM names here as the lab needs more tooling.
