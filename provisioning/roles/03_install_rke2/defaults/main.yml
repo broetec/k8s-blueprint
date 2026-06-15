@@ -26,8 +26,6 @@
 #   rke2_cilium_kube_proxy_replacement — must be true when rke2_disable_kube_proxy is true.
 #   rke2_cilium_gateway_api_enabled — expose Gateway API via Cilium.
 #   rke2_kubeconfig_user  — OS user that receives the kubeconfig.
-#   rke2_shell_profile    — fallback shell profile when user shell cannot be detected.
-#   rke2_configure_shell  — add PATH/aliases/completions to the user's shell profile.
 #
 # Inventory (not duplicated here)
 #   vm_ip, ansible_host, ansible_user — see
@@ -106,14 +104,7 @@ rke2_cilium_kube_proxy_replacement: true
 rke2_cilium_gateway_api_enabled: true
 
 # -----------------------------------------------------------------------------
-# User access (kubeconfig + shell)
+# User access (kubeconfig)
 # -----------------------------------------------------------------------------
-# Linux user that will receive the kubeconfig and PATH additions.
+# Linux user that will receive the kubeconfig (shell profile: role 02_prepare_vm).
 rke2_kubeconfig_user: "{{ ansible_user }}"
-
-# Shell profile to extend ($PATH, aliases, completions).
-# Detected automatically from the user's SHELL; this is the fallback.
-rke2_shell_profile: "~/.bashrc"
-
-# Add kubectl/helm shell completions and common aliases (k, kns, kctx).
-rke2_configure_shell: true

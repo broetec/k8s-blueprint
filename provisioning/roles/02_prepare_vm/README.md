@@ -81,7 +81,7 @@ Play [`site.yml`](../../site.yml) runs this role with **`become: true`** on `hos
 | `prepare_vm_epel` | `true` | Install `epel-release` (required for `htop` on Rocky 10) |
 | `prepare_vm_packages` | `[htop]` | Auxiliary RPMs for VM day-to-day use; empty list skips install |
 | `prepare_vm_qemu_guest_agent` | `true` | Install and enable qemu-guest-agent |
-| `prepare_vm_zsh` | `true` | Install zsh, Oh My Zsh and kubectx/kubens |
+| `prepare_vm_zsh` | `true` | zsh, Oh My Zsh, kubectx/kubens, Helm and k8s shell profile |
 | `prepare_vm_sysctl_settings` | see defaults | Kernel tuning written to `/etc/sysctl.d/90-k8s.conf` |
 
 ### From inventory

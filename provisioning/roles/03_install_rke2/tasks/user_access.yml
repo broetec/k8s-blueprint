@@ -1,25 +1,19 @@
 ---
 # =============================================================================
-# tasks/user_access.yml — kubeconfig, PATH additions, and shell aliases
+# tasks/user_access.yml — kubeconfig for cluster user
 # =============================================================================
 #
 # Purpose
 #   Make the cluster immediately usable for rke2_kubeconfig_user without
 #   requiring root. Mirrors the manual steps in docs/bootstrap/README.md §2.6.
-#   Copies /etc/rancher/rke2/rke2.yaml to ~/.kube/config and appends a
-#   managed block to the user's shell profile (.zshrc or .bashrc).
+#   Copies /etc/rancher/rke2/rke2.yaml to ~/.kube/config.
 #
 # Scope
-#   Shell detection reads the user's entry in /etc/passwd (field 5 = shell).
-#   The block is guarded by blockinfile markers so re-runs are idempotent.
-#   Helm and kubectl completions are sourced at shell startup; the source
-#   commands are wrapped in || true so missing binaries do not break login.
-#   kubectx/kubens (kctx/kns aliases) are expected to be installed separately
-#   (not managed here).
+#   Shell profile (PATH, KUBECONFIG, aliases, completions) is configured by
+#   role 02_prepare_vm (tasks/zsh.yml) before k8s is installed.
 #
 # Variables
 #   rke2_kubeconfig_user — OS user that receives the kubeconfig (defaults/main.yml).
-#   rke2_configure_shell — set false to skip the shell profile block (defaults/main.yml).
 #
 # Related commands
 #   make install-rke2, make deploy, make up
@@ -49,33 +43,3 @@
     owner: "{{ rke2_kubeconfig_user }}"
     mode: "0600"
     remote_src: true
-
-- name: "RKE2 user_access | Detect login shell of {{ rke2_kubeconfig_user }}"
-  ansible.builtin.set_fact:
-    _rke2_shell: "{{ _rke2_user_info.ansible_facts.getent_passwd[rke2_kubeconfig_user][5] }}"
-
-- name: "RKE2 user_access | Resolve shell profile path"
-  ansible.builtin.set_fact:
-    _rke2_profile: >-
-      {{
-        _rke2_home ~ '/.zshrc'   if '/zsh' in _rke2_shell else
-        _rke2_home ~ '/.bashrc'
-      }}
-
-- name: "RKE2 user_access | Add RKE2 environment block to shell profile"
-  when: rke2_configure_shell | bool
-  ansible.builtin.blockinfile:
-    path: "{{ _rke2_profile }}"
-    create: true
-    owner: "{{ rke2_kubeconfig_user }}"
-    mode: "0644"
-    marker: "# {mark} ANSIBLE MANAGED — rke2 env"
-    block: |
-      export PATH=$PATH:/var/lib/rancher/rke2/bin
-      export KUBECONFIG=$HOME/.kube/config
-      alias k='kubectl'
-      complete -F __start_kubectl k 2>/dev/null || true
-      alias kns='kubens'
-      alias kctx='kubectx'
-      source <(kubectl completion {{ 'zsh' if '/zsh' in _rke2_shell else 'bash' }}) 2>/dev/null || true
-      source <(helm completion {{ 'zsh' if '/zsh' in _rke2_shell else 'bash' }}) 2>/dev/null || true

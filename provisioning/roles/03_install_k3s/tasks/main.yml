@@ -14,12 +14,11 @@
 #                        networking, and disabled built-in components.
 #   3. install.yml     — download get.k3s.io, enable k3s.service,
 #                        wait until node status = Ready (up to 10 min).
-#   4. user_access.yml — copy kubeconfig to ~/.kube/config; add kubectl
-#                        completions and aliases to the user's shell profile.
+#   4. user_access.yml — copy kubeconfig to ~/.kube/config.
 #
 # Variables
 #   k3s_version, k3s_channel, k3s_node_ip, k3s_tls_san, k3s_flannel_backend,
-#   k3s_disable, k3s_kubeconfig_user, k3s_configure_shell
+#   k3s_disable, k3s_kubeconfig_user
 #   (all in defaults/main.yml).
 #
 # Tags
@@ -47,7 +46,7 @@
   ansible.builtin.import_tasks: install.yml
   tags: [k3s_install]
 
-- name: "k3s | Configure user access (kubeconfig + shell)"
+- name: "k3s | Configure user access (kubeconfig)"
   become: false
   ansible.builtin.import_tasks: user_access.yml
   tags: [k3s_user]

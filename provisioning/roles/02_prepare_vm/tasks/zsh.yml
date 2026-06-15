@@ -16,12 +16,15 @@
 #   with RUNZSH=no CHSH=no to avoid spawning an interactive shell.
 #   Idempotent: stat checks skip Oh My Zsh/kubectx if already installed;
 #   lineinfile/blockinfile markers prevent duplicate .zshrc blocks.
-#   kubectx aliases (kns/kctx) and KUBECONFIG are added later by the k8s
-#   user_access task using their own blockinfile markers.
+#   Shell profile block (KUBECONFIG, kubectl/helm, kubectx) is written here
+#   before k8s is installed; completions use || true so login still works
+#   when binaries are not present yet. RKE2 bin PATH is added only when
+#   k8s_distribution is rke2 (k3s puts kubectl in /usr/local/bin).
 #
 # Variables
 #   prepare_vm_zsh — bool; when false this entire file is skipped (defaults/main.yml).
 #   ansible_user   — the OS user that receives the shell configuration.
+#   k8s_distribution — rke2 | k3s (inventory group_vars); controls RKE2 PATH line.
 #
 # Related commands
 #   make prepare-vm, make up
@@ -122,13 +125,22 @@
     version: master
     update: false
 
-- name: "zsh | Add kubectx PATH and Oh My Zsh completions to .zshrc"
+- name: "zsh | Add k8s shell environment to .zshrc"
   become_user: "{{ ansible_user }}"
   ansible.builtin.blockinfile:
     path: "{{ _zsh_home }}/.zshrc"
-    marker: "# {mark} ANSIBLE MANAGED — kubectx"
+    marker: "# {mark} ANSIBLE MANAGED — k8s shell"
     block: |
+      {% if (k8s_distribution | default('rke2')) == 'rke2' %}
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      {% endif %}
+      export KUBECONFIG=$HOME/.kube/config
+      alias k='kubectl'
+      source <(kubectl completion zsh) 2>/dev/null || true
       export PATH=~/.kubectx:$PATH
+      alias kns='kubens'
+      alias kctx='kubectx'
+      source <(helm completion zsh) 2>/dev/null || true
       if [ -d "$HOME/.oh-my-zsh" ]; then
         mkdir -p "$HOME/.oh-my-zsh/custom/completions"
         ln -sf "$HOME/.kubectx/completion/_kubens.zsh" \

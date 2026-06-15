@@ -36,7 +36,8 @@ prepare_vm_packages:
   - nano
   - net-tools
 
-# Install zsh, Oh My Zsh, zsh-autosuggestions and kubectx/kubens.
+# Install zsh, Oh My Zsh, zsh-autosuggestions, kubectx/kubens, Helm and
+# k8s shell profile (KUBECONFIG, kubectl/helm completions, aliases).
 # Requires internet access from the VM. Set false to skip.
 prepare_vm_zsh: true
 
