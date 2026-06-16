@@ -1,0 +1,33 @@
+---
+# =============================================================================
+# tasks/ensure_vm_running.yml — Guarantee every VM is running before SSH wait
+# =============================================================================
+#
+# Purpose
+#   For VMs that already existed (not in vms_to_create), check their power
+#   state via `virsh domstate` and issue `virsh start` for any that are
+#   shut off.  Newly created VMs are started by virt-install and are skipped.
+#
+# Variables
+#   groups['vms'], vms_to_create (set by provision.yml).
+#
+# Related commands
+#   make create-vm, make up
+# =============================================================================
+
+- name: Query power state of pre-existing VMs
+  ansible.builtin.command: "virsh -c qemu:///system domstate {{ item }}"
+  register: vm_domstate
+  loop: "{{ groups['vms'] | difference(vms_to_create) }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+
+- name: Start VMs that are shut off
+  ansible.builtin.command: "virsh -c qemu:///system start {{ item.item }}"
+  loop: "{{ vm_domstate.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: "'shut off' in item.stdout"
+  changed_when: true

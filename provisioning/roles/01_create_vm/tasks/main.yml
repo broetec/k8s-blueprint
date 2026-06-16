@@ -8,10 +8,11 @@
 #   for each host in groups['vms'] after role 00 (or equivalent host prep).
 #
 # Pipeline
-#   1. preflight.yml — SSH key, vm_mac in inventory, virt-install on PATH.
-#   2. image_cache.yml — lab dirs + download base qcow2.
-#   3. provision.yml — clone, cloud-init, virt-install, MAC assert.
-#   4. wait_ssh.yml — wait for port 22 on each VM.
+#   1. preflight.yml       — SSH key, vm_mac in inventory, virt-install on PATH.
+#   2. image_cache.yml     — lab dirs + download base qcow2.
+#   3. provision.yml       — clone, cloud-init, virt-install, MAC assert.
+#   4. ensure_vm_running.yml — start pre-existing VMs that are shut off.
+#   5. wait_ssh.yml        — wait for port 22 on each VM.
 #
 # Variables
 #   Inventory: vm_ip, vm_mac, vm_defaults, os_image, libvirt_pool, kvm_network.
@@ -31,6 +32,10 @@
 
 - name: Provision — clone disks, cloud-init, virt-install
   ansible.builtin.import_tasks: provision.yml
+  tags: [create_vm]
+
+- name: Ensure all VMs are running before SSH wait
+  ansible.builtin.import_tasks: ensure_vm_running.yml
   tags: [create_vm]
 
 - name: Wait for SSH on each VM
