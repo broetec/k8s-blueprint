@@ -1,0 +1,25 @@
+# Chart Helm public: https://github.com/rancher/local-path-provisioner (path deploy/chart/local-path-provisioner)
+# Reference values: https://github.com/rancher/local-path-provisioner/blob/v0.0.35/deploy/chart/local-path-provisioner/values.yaml
+
+replicaCount: 1
+
+storageClass:
+  create: true
+  defaultClass: true
+  defaultVolumeType: hostPath
+  name: local-path
+  reclaimPolicy: Delete
+  volumeBindingMode: WaitForFirstConsumer
+
+nodePathMap:
+  - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+    paths:
+      - /opt/local-path-provisioner
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+
+priorityClassName: "pc-0-infra-core"

@@ -1,0 +1,12 @@
+---
+# =============================================================================
+# defaults/main.yml — Role 04 defaults
+# =============================================================================
+#
+# Purpose
+#   Tunables for Kubernetes-level resources applied after the cluster is Ready.
+#   Future manifests under k8s/ will be applied here via kubectl/Helm.
+#
+# Related commands
+#   make install-rke2, make up
+# =============================================================================

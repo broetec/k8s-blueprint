@@ -1,0 +1,19 @@
+# Overlay broetec-core: local-path-provisioner Helm chart
+# Repo: https://github.com/rancher/local-path-provisioner
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+helperPod:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

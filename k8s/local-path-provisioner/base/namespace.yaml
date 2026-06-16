@@ -1,0 +1,10 @@
+# PSA privileged: the helper pod creates dirs in hostPath; with namespace restricted → Permission denied.
+# Only the provisioner and ephemeral helpers use this namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged

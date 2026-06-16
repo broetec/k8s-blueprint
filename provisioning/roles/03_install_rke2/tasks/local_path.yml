@@ -1,0 +1,40 @@
+---
+# =============================================================================
+# tasks/local_path.yml — Node-level storage directory for local-path-provisioner
+# =============================================================================
+#
+# Purpose
+#   Creates the host directory used by local-path-provisioner and sets the
+#   permissions and SELinux context required on Rocky Linux (enforcing).
+#   The helper pod runs inside the cluster and calls mkdir on sub-paths of
+#   this directory; without the correct context the pod fails with
+#   "mkdir: Permission denied".
+#
+#   Runs before rke2-server.service starts so the directory exists when the
+#   provisioner's first PVC is processed.
+#
+# Variables
+#   rke2_local_path_dir  (defaults/main.yml) — absolute path, e.g.
+#                        /opt/local-path-provisioner.
+# =============================================================================
+
+- name: "local-path | Create storage directory"
+  ansible.builtin.file:
+    path: "{{ rke2_local_path_dir }}"
+    state: directory
+    mode: "1777"
+    owner: root
+    group: root
+
+- name: "local-path | Apply SELinux context (container_file_t)"
+  community.general.sefcontext:
+    target: "{{ rke2_local_path_dir }}(/.*)?"
+    setype: container_file_t
+    state: present
+  register: _rke2_local_path_sefcontext
+
+- name: "local-path | Restore SELinux context on directory"
+  ansible.builtin.command:
+    cmd: restorecon -Rv {{ rke2_local_path_dir }}
+  when: _rke2_local_path_sefcontext.changed
+  changed_when: true

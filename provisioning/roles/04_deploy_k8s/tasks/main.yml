@@ -1,9 +1,21 @@
 ---
-# Stub — replace with kubectl apply / Helm (manifests under k8s/).
+# =============================================================================
+# tasks/main.yml — Role 04 entrypoint (k8s manifest deploy)
+# =============================================================================
+#
+# Purpose
+#   Apply cluster-level Kubernetes resources that must exist before ArgoCD
+#   bootstraps the rest. Future manifests under k8s/ will be applied here
+#   via kubectl/Helm.
+#
+# Related commands
+#   make install-rke2, make up
+# =============================================================================
 
-- name: "Alive check before deploy_k8s (stub)"
+- name: "Alive check before deploy_k8s"
   become: false
   ansible.builtin.ping:
+  tags: [deploy_k8s]
 
 - name: "Placeholder — k8s deploy pending"
   ansible.builtin.debug:
@@ -12,3 +24,4 @@
       Host={{ inventory_hostname }}
       role={{ vm_role | default('n/a') }}.
       Future manifests: k8s/
+  tags: [deploy_k8s]

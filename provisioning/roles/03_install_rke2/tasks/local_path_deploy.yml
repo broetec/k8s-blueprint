@@ -1,0 +1,53 @@
+---
+# =============================================================================
+# tasks/local_path_deploy.yml — Bootstrap deploy of local-path-provisioner
+# =============================================================================
+#
+# Purpose
+#   After the cluster is Ready, deploys local-path-provisioner so that PVCs
+#   can be provisioned before ArgoCD is bootstrapped.
+#
+#   1. Namespace local-path-storage with PSA privileged labels — applied via
+#      kubectl apply -k, reusing the existing namespace.yaml from
+#      k8s/local-path-provisioner/overlays/<overlay>.
+#   2. Helm chart rancher/local-path-provisioner — values from
+#      k8s/local-path-provisioner/base/values.yaml and the overlay values.yaml.
+#
+# Bootstrap note on priorityClassName
+#   base/values.yaml sets priorityClassName: "pc-0-infra-core" which is
+#   created later by cluster-config (ArgoCD).  During this bootstrap step the
+#   Ansible task overrides it to "" so the Deployment schedules immediately.
+#   ArgoCD reconciles the correct value once it takes ownership of the release.
+#
+# Variables
+#   rke2_local_path_overlay       — overlay directory name (defaults to inventory_hostname).
+#   rke2_local_path_chart_version — chart version to pin; empty = latest.
+# =============================================================================
+
+- name: "local-path | Apply namespace (PSA labels) via Kustomize"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply -k
+      {{ playbook_dir }}/../k8s/local-path-provisioner/overlays/{{ rke2_local_path_overlay }}
+  changed_when: true
+
+- name: "local-path | Add Helm repo rancher-local-path-provisioner"
+  become: false
+  kubernetes.core.helm_repository:
+    name: rancher-local-path-provisioner
+    repo_url: https://charts.rancher.io/v2
+
+- name: "local-path | Deploy Helm chart"
+  become: false
+  kubernetes.core.helm:
+    name: local-path-provisioner
+    chart_ref: rancher-local-path-provisioner/local-path-provisioner
+    chart_version: "{{ rke2_local_path_chart_version | default(omit) }}"
+    release_namespace: local-path-storage
+    values_files:
+      - "{{ playbook_dir }}/../k8s/local-path-provisioner/base/values.yaml"
+      - "{{ playbook_dir }}/../k8s/local-path-provisioner/overlays/{{ rke2_local_path_overlay }}/values.yaml"
+    values:
+      priorityClassName: ""
+    wait: true

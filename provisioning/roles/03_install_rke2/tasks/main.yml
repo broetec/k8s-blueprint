@@ -9,20 +9,25 @@
 #   iptables tooling, sysctl). Does not touch the host KVM or other VMs.
 #
 # Pipeline
-#   1. preflight.yml   — NetworkManager: ignore Cilium/CNI virtual interfaces.
-#   2. config.yml      — /etc/rancher/rke2/config.yaml + Cilium HelmChartConfig
-#                        under /var/lib/rancher/rke2/server/manifests/.
-#   3. install.yml     — download get.rke2.io, enable rke2-server.service,
-#                        wait until node status = Ready (up to 10 min).
-#   4. user_access.yml — copy kubeconfig to ~/.kube/config.
+#   1. preflight.yml        — NetworkManager: ignore Cilium/CNI virtual interfaces.
+#   2. config.yml           — /etc/rancher/rke2/config.yaml + Cilium HelmChartConfig
+#                             under /var/lib/rancher/rke2/server/manifests/.
+#   3. local_path.yml       — (opt-in) node directory for local-path-provisioner:
+#                             mkdir + chmod 1777 + SELinux container_file_t.
+#   4. install.yml          — download get.rke2.io, enable rke2-server.service,
+#                             wait until node status = Ready (up to 10 min).
+#   5. user_access.yml      — copy kubeconfig to ~/.kube/config.
+#   6. local_path_deploy.yml — (opt-in) namespace PSA + Helm chart deploy of
+#                             local-path-provisioner (requires cluster Ready).
 #
 # Variables
 #   rke2_version, rke2_channel, rke2_node_ip, rke2_tls_san, rke2_cni,
-#   rke2_disable, rke2_cilium_version, rke2_kubeconfig_user
-#   (all in defaults/main.yml).
+#   rke2_disable, rke2_cilium_version, rke2_kubeconfig_user,
+#   rke2_local_path_dir, rke2_local_path_deploy, rke2_local_path_overlay,
+#   rke2_local_path_chart_version (all in defaults/main.yml).
 #
 # Tags
-#   rke2_preflight, rke2_config, rke2_install, rke2_user
+#   rke2_preflight, rke2_config, rke2_install, rke2_user, rke2_local_path
 #   Parent tag install_k8s / install_rke2 set in site.yml.
 #
 # Related commands
@@ -42,6 +47,11 @@
   ansible.builtin.import_tasks: config.yml
   tags: [rke2_config]
 
+- name: "RKE2 | Prepare local-path-provisioner node directory"
+  when: rke2_local_path_dir | length > 0
+  ansible.builtin.import_tasks: local_path.yml
+  tags: [rke2_local_path]
+
 - name: "RKE2 | Install and start rke2-server"
   ansible.builtin.import_tasks: install.yml
   tags: [rke2_install]
@@ -50,3 +60,9 @@
   become: false
   ansible.builtin.import_tasks: user_access.yml
   tags: [rke2_user]
+
+- name: "RKE2 | Deploy local-path-provisioner (namespace + Helm)"
+  become: false
+  when: rke2_local_path_deploy | bool
+  ansible.builtin.import_tasks: local_path_deploy.yml
+  tags: [rke2_local_path]

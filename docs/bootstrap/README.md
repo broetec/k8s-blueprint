@@ -1,54 +1,3 @@
-**Diagnóstico de performance do etcd**: detalhes no guia dedicado `docs/fine-tuning/README.md`.
-
-### 2.3. Configurar o Cilium (HelmChartConfig)
-
-O RKE2 aplica customizações ao chart do Cilium via **HelmChartConfig** usando o campo `valuesContent` (bloco YAML). O uso de `values` (objeto) não é aplicado corretamente. O `metadata.name` deve ser **rke2-cilium** (igual ao HelmChart empacotado).
-
-**Versão do Cilium:** a versão padrão é definida pelo **chart empacotado** do RKE2 que você está usando; cada release do RKE2 traz um chart rke2-cilium com uma tag de imagem fixa. Para ver a versão em uso:  
-`kubectl get ds -n kube-system cilium -o jsonpath='{.spec.template.spec.containers[0].image}'`  
-ou `helm get values rke2-cilium -n kube-system`.
-
-**Fixar outra versão:** neste guia estamos usando **v1.18.7** (agent e operator) por precaução: há um bug/regressão reportado ao atualizar de **1.18.7 → 1.19.1** que pode afetar acesso externo ao host (ex.: SSH) e conexões de saída do host. Referência: https://github.com/cilium/cilium/issues/44430.  
-Ainda assim, é possível sobrescrever a imagem (agent e operator) via `valuesContent` para testar outra versão; use a **mesma tag** para agent e operator e, em geral, prefira manter a mesma minor (ou versões compatíveis documentadas).
-
-O manifest deve ficar em `/var/lib/rancher/rke2/server/manifests/`. Com 1 réplica do operator evita-se conflito de portas (9234, 9963) em cluster de nó único.
-```bash
-sudo mkdir -p /var/lib/rancher/rke2/server/manifests
-
-cat <<'EOF' | sudo tee /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
-metadata:
-  name: rke2-cilium
-  namespace: kube-system
-spec:
-  valuesContent: |-
-    k8sServiceHost: "PLACEHOLDER"
-    k8sServicePort: 6443
-    operator:
-      replicas: 1
-      image:
-        override: quay.io/cilium/operator-generic:v1.18.7
-
-    image:
-      repository: quay.io/cilium/cilium
-      tag: v1.18.7
-
-    kubeProxyReplacement: true
-
-    gatewayAPI:
-      enabled: true
-      gatewayClass:
-        create: "false"
-
-    extraConfig:
-      unmanaged-pod-watcher-interval: "15"
-
-EOF
-```
-
-
-
 ## Parte 3 - Deploy com o repositório `k8s-core`
 
 > **Pré-requisito:** cluster RKE2 já instalado e acessível (`k`/`kubectl` funcionando no nó ou via workstation).
@@ -113,22 +62,37 @@ Troubleshooting: Caso o Cilium não aplique as alterações automaticamente, voc
 k rollout restart deployment -n kube-system cilium-operator 
 ```
 
-#### 3.4 local-path-provisioner: `mkdir: Permission denied` no helper pod
+#### 3.4 local-path-provisioner: deploy e resolução de `mkdir: Permission denied`
 
-O *helper pod* cria diretórios sob o path do `nodePathMap` (ex.: `/opt/local-path-provisioner/...`). Em RKE2/Rocky com **Pod Security Admission** restritivo, o pod pode correr sem privilégios suficientes e falhar com `Permission denied`, seguido de *timeout* no provisionamento.
+Aplicável apenas ao **RKE2**. O k3s inclui o local-path-provisioner como componente nativo (`storageClass: local-path`, `reclaimPolicy: Delete`) e não requer configuração adicional.
 
-1. **Namespace com PSA `privileged`** — o manifesto está em `local-path-provisioner/cluster/base/namespace.yaml` e é aplicado pela mesma Application **`local-path-provisioner`** (terceira fonte Kustomize: `local-path-provisioner/cluster/overlays/<environment>`). Não depende do `cluster-config`. Se o namespace já existir sem estas labels, faz sync dessa Application ou `kubectl label namespace local-path-storage ...` conforme esse ficheiro.
+No RKE2, o deploy é feito pela role Ansible `03_install_rke2` imediatamente após o cluster estar Ready. Activa-o no inventory:
 
-2. **Permissões no nó** — em cada nó, isto é tipicamente necessário **uma vez** (ou sempre que mudares o caminho do `nodePathMap`).
+```yaml
+# provisioning/inventory/<overlay>/group_vars/all/90_local.yml
+rke2_local_path_dir: /opt/local-path-provisioner   # directório no nó (mkdir + SELinux)
+rke2_local_path_deploy: true                        # namespace PSA + Helm chart
+rke2_local_path_overlay: broetec-core              # default = inventory_hostname
+```
 
-   ```bash
-   NODE_PATH="/opt/local-path-provisioner" # ou o path que aparece no log/config do provisioner
-   sudo mkdir -p "$NODE_PATH"
-   sudo chmod 1777 "$NODE_PATH"
-   sudo chcon -Rt container_file_t "$NODE_PATH"
-   ```
+O Ansible executa automaticamente:
 
-   (Ajusta o path se não for `/opt/local-path-provisioner`.)
+1. **Preparação do nó** (`tasks/local_path.yml`, antes do install do RKE2) — cria o directório, aplica `chmod 1777` e o contexto SELinux `container_file_t` exigido pelo Rocky Linux.
+
+2. **Namespace `local-path-storage` com PSA `privileged`** + **Helm chart** (`tasks/local_path_deploy.yml`, após cluster Ready) — aplica o manifesto de `k8s/local-path-provisioner/overlays/<overlay>` via `kubectl apply -k` e faz o deploy do chart `rancher/local-path-provisioner` com os valores de `k8s/local-path-provisioner/base/values.yaml` e do overlay.
+
+   > O `priorityClassName: "pc-0-infra-core"` do `base/values.yaml` é sobreposto para `""` no bootstrap; o ArgoCD reconcilia o valor correcto quando tomar controlo do release após o deploy do `cluster-config`.
+
+Para aplicar manualmente num nó existente:
+
+```bash
+NODE_PATH="/opt/local-path-provisioner"
+sudo mkdir -p "$NODE_PATH"
+sudo chmod 1777 "$NODE_PATH"
+sudo chcon -Rt container_file_t "$NODE_PATH"
+# namespace + PSA:
+kubectl apply -k k8s/local-path-provisioner/overlays/<overlay>
+```
 
 ### 3.5 Deploy das demais aplicações (app-of-apps)
 
