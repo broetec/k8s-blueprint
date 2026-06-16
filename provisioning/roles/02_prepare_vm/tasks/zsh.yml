@@ -51,6 +51,8 @@
   ansible.builtin.shell:
     cmd: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     executable: /bin/bash
+  environment:
+    PATH: "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
   changed_when: true
 
 - name: "zsh | Set zsh as default shell for {{ ansible_user }}"
