@@ -20,7 +20,8 @@
 #   rke2_tls_san, rke2_disable_kube_proxy, rke2_disable,
 #   rke2_secrets_encryption, rke2_write_kubeconfig_mode,
 #   rke2_etcd_snapshot_schedule_cron, rke2_etcd_snapshot_retention,
-#   rke2_etcd_snapshot_compress, rke2_cilium_version,
+#   rke2_etcd_snapshot_compress, rke2_control_plane_resource_requests,
+#   rke2_control_plane_resource_limits, rke2_cilium_version,
 #   rke2_cilium_operator_replicas, rke2_cilium_kube_proxy_replacement,
 #   rke2_cilium_gateway_api_enabled (all from defaults/main.yml).
 #

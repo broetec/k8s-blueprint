@@ -21,6 +21,7 @@
 #   rke2_secrets_encryption — encrypt secrets at rest in etcd.
 #   rke2_write_kubeconfig_mode — file permissions for rke2.yaml.
 #   rke2_etcd_snapshot_*  — etcd snapshot schedule and retention settings.
+#   rke2_control_plane_resource_* — CPU/memory requests and limits for static pods.
 #   rke2_cilium_version   — pin Cilium image tag; empty = use RKE2-bundled chart version.
 #   rke2_cilium_operator_replicas — 1 avoids port conflicts on single-node clusters.
 #   rke2_cilium_kube_proxy_replacement — must be true when rke2_disable_kube_proxy is true.
@@ -86,6 +87,26 @@ rke2_write_kubeconfig_mode: "0644"
 rke2_etcd_snapshot_schedule_cron: "0 2,8,14,20 * * *"
 rke2_etcd_snapshot_retention: 5
 rke2_etcd_snapshot_compress: false
+
+# -----------------------------------------------------------------------------
+# Control plane resources (static pods)
+# -----------------------------------------------------------------------------
+# Maps to control-plane-resource-requests / control-plane-resource-limits in
+# /etc/rancher/rke2/config.yaml. Default [] = omit from generated config.
+# Override via inventory when tuning (see docs/bootstrap/README.md).
+rke2_control_plane_resource_requests: []
+# rke2_control_plane_resource_requests:
+#   - kube-apiserver=cpu=250m,memory=512Mi
+#   - etcd=cpu=500m,memory=1Gi
+#   - kube-controller-manager=cpu=200m,memory=256Mi
+#   - kube-scheduler=cpu=100m,memory=128Mi
+
+rke2_control_plane_resource_limits: []
+# rke2_control_plane_resource_limits:
+#   - kube-apiserver=cpu=1000m,memory=1Gi
+#   - etcd=cpu=1000m,memory=2Gi
+#   - kube-controller-manager=cpu=500m,memory=512Mi
+#   - kube-scheduler=cpu=300m,memory=256Mi
 
 # -----------------------------------------------------------------------------
 # Cilium (HelmChartConfig)

@@ -28,6 +28,20 @@ etcd-snapshot-schedule-cron: "{{ rke2_etcd_snapshot_schedule_cron }}"
 etcd-snapshot-retention: {{ rke2_etcd_snapshot_retention }}
 etcd-snapshot-compress: {{ rke2_etcd_snapshot_compress | lower }}
 
+{% if rke2_control_plane_resource_requests | length > 0 %}
+control-plane-resource-requests:
+{% for item in rke2_control_plane_resource_requests %}
+  - {{ item }}
+{% endfor %}
+{% endif %}
+
+{% if rke2_control_plane_resource_limits | length > 0 %}
+control-plane-resource-limits:
+{% for item in rke2_control_plane_resource_limits %}
+  - {{ item }}
+{% endfor %}
+{% endif %}
+
 # Tune the following for VPS/shared hosts with I/O variability.
 # Uncomment and adjust as needed:
 #

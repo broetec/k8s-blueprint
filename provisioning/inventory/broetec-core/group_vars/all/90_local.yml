@@ -8,3 +8,8 @@
 # vm_memory_mb: 8192
 # vm_disk_size_gb: 60
 # kvm_host_bootstrap: false
+
+# Extra SANs for the RKE2 API server TLS cert.
+# The node IP and hostname are always included by the template; only extras here.
+rke2_tls_san:
+  - "{{ inventory_hostname }}.{{ base_domain }}"   # broetec-core.local.broetec.com.br
