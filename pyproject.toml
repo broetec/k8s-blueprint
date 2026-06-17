@@ -21,6 +21,12 @@ dev = [
     "ruff>=0.6.2",
     "python-semantic-release>=10.0.0,<11.0.0",
 ]
+docs = [
+    "sphinx>=8.0,<9.0",
+    "myst-parser>=4.0",
+    "sphinx-rtd-theme>=3.0",
+    "sphinxcontrib-mermaid>=2.0.2",
+]
 
 [tool.uv]
 managed = true

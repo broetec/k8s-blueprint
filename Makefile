@@ -15,6 +15,7 @@ include make/setup.mk
 include make/inventory.mk
 include make/ssh.mk
 include make/targets.mk
+include make/docs.mk
 
 .DEFAULT_GOAL := help
 .PHONY: help

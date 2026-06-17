@@ -2,20 +2,53 @@
 
 Laboratório Broetec para estudar Ansible, KVM/libvirt e Kubernetes.
 
-## Começar
+```{toctree}
+:caption: Introdução
+:maxdepth: 1
 
-- [Estrutura do projeto](structure.md) — mapa de pastas, fluxo `make up`, o que é versionado
+../README
+structure
+```
 
-## Provisionamento
+```{toctree}
+:caption: Provisionamento Ansible
+:maxdepth: 1
 
-- [Provisionamento Ansible](../provisioning/README.md) — playbook, roles, pré-requisitos
-- [Inventário](../provisioning/inventory/README.md) — overlays, manifest.yml, variáveis
-- [Ambiente local (env/)](../env/README.md) — chaves SSH, `.env` do Make
-- [Artefactos do lab (lab/)](../lab/README.md) — discos qcow2 e cache
+../provisioning/README
+../provisioning/inventory/README
+../provisioning/collections/README
+../provisioning/connection_plugins/README
+../provisioning/templates/README
+```
 
-## Kubernetes
+```{toctree}
+:caption: Roles Ansible
+:maxdepth: 1
 
-- [Manifests k8s](../k8s/README.md) — pasta reservada para manifests (futuro)
-- [Bootstrap RKE2](bootstrap/README.md) — guia manual de instalação do cluster
-- [Fine-tuning](fine-tuning/README.md)
-- [Upgrade](upgrade/README.md)
+../provisioning/roles/00_install_kvm/README
+../provisioning/roles/01_create_vm/README
+../provisioning/roles/02_prepare_vm/README
+../provisioning/roles/03_install_k3s/README
+../provisioning/roles/03_install_rke2/README
+../provisioning/roles/04_deploy_k8s/README
+```
+
+```{toctree}
+:caption: Kubernetes
+:maxdepth: 1
+
+../k8s/README
+bootstrap/README
+fine-tuning/README
+upgrade/README
+```
+
+```{toctree}
+:caption: Ferramentas
+:maxdepth: 1
+
+../make/README
+../app/inventory/README
+../env/README
+../lab/README
+```
