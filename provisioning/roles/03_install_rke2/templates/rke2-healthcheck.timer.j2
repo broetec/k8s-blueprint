@@ -1,0 +1,11 @@
+# Managed by Ansible — role 03_install_rke2.
+[Unit]
+Description=Run rke2-healthcheck every {{ rke2_healthcheck_timer_interval }}
+
+[Timer]
+OnBootSec={{ rke2_healthcheck_timer_on_boot_sec }}
+OnUnitActiveSec={{ rke2_healthcheck_timer_interval }}
+Unit=rke2-healthcheck.service
+
+[Install]
+WantedBy=timers.target

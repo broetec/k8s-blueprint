@@ -1,0 +1,19 @@
+# Managed by Ansible — role 03_install_rke2.
+[Service]
+# CPU priority above default (0). More negative = higher priority.
+Nice={{ rke2_systemd_nice }}
+# Best-Effort I/O class (2) with highest priority within the class (0).
+IOSchedulingClass={{ rke2_systemd_io_scheduling_class }}
+IOSchedulingPriority={{ rke2_systemd_io_scheduling_priority }}
+
+# Aggressive auto-restart — critical on VPS with unstable I/O.
+Restart=always
+RestartSec={{ rke2_systemd_restart_sec }}
+# Slow etcd may need time to recover the WAL after latency spikes.
+TimeoutStartSec={{ rke2_systemd_timeout_start_sec }}
+TimeoutStopSec={{ rke2_systemd_timeout_stop_sec }}
+
+[Unit]
+# Never give up: retry indefinitely until the disk returns to normal.
+StartLimitIntervalSec={{ rke2_systemd_start_limit_interval_sec }}
+StartLimitBurst={{ rke2_systemd_start_limit_burst }}

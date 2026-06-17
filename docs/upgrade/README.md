@@ -198,7 +198,7 @@ Espera-se ver:
 
 ### 6.2. Cilium Gateway API e Envoy embedded
 
-> Este passo é específico do *stack* deste repositório (kpr + Gateway API) e cobre o cenário "Envoy sem listeners" descrito em `docs/fine-tuning/README.md` (secção 5).
+> Este passo é específico do *stack* deste repositório (kpr + Gateway API) e cobre o cenário "Envoy sem listeners" descrito em [`provisioning/roles/03_install_rke2/README.md`](../../provisioning/roles/03_install_rke2/README.md) (secção Fine tuning — API health watchdog).
 
 ```bash
 kubectl get gateway -A

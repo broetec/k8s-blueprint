@@ -1,0 +1,138 @@
+---
+# =============================================================================
+# tasks/fine_tuning.yml — RKE2 host fine-tuning (systemd + optional watchdog)
+# =============================================================================
+#
+# Purpose
+#   Apply VPS-oriented resilience tuning after rke2-server is installed and
+#   the node is Ready:
+#     1. systemd drop-in for rke2-server.service (CPU/I/O priority, resilient
+#        auto-restart without StartLimit).
+#     2. Optional external API health watchdog with gradual escalation and
+#        Cilium data-plane reconcile.
+#
+# Scope
+#   Runs after install.yml (cluster Ready). The systemd drop-in triggers one
+#   extra rke2-server restart when first applied; subsequent runs are no-op.
+#   The healthcheck timer only acts at runtime when /readyz fails — it does
+#   not reconcile Cilium during the Ansible play.
+#
+# Variables
+#   rke2_fine_tuning_enabled, rke2_systemd_hardening, rke2_systemd_*,
+#   rke2_healthcheck_enabled, rke2_healthcheck_* (defaults/main.yml).
+#
+# Related commands
+#   make install-rke2, make deploy, make up
+#   ansible-playbook ... --tags rke2_fine_tuning
+# =============================================================================
+
+# --- systemd hardening: rke2-server.service drop-in -------------------------------------------
+
+- name: "RKE2 fine-tuning | Ensure rke2-server.service.d directory exists"
+  when: rke2_systemd_hardening | bool
+  ansible.builtin.file:
+    path: /etc/systemd/system/rke2-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "RKE2 fine-tuning | Write rke2-server.service drop-in override"
+  when: rke2_systemd_hardening | bool
+  ansible.builtin.template:
+    src: rke2-server-override.conf.j2
+    dest: /etc/systemd/system/rke2-server.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: _rke2_systemd_override
+
+- name: "RKE2 fine-tuning | Reload systemd after drop-in change"
+  when:
+    - rke2_systemd_hardening | bool
+    - _rke2_systemd_override is changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: "RKE2 fine-tuning | Restart rke2-server after drop-in change"
+  when:
+    - rke2_systemd_hardening | bool
+    - _rke2_systemd_override is changed
+  ansible.builtin.systemd:
+    name: rke2-server.service
+    state: restarted
+
+- name: "RKE2 fine-tuning | Wait for node to become Ready after drop-in restart (up to 10 min)"
+  when:
+    - rke2_systemd_hardening | bool
+    - _rke2_systemd_override is changed
+  ansible.builtin.command:
+    argv:
+      - /var/lib/rancher/rke2/bin/kubectl
+      - --kubeconfig
+      - /etc/rancher/rke2/rke2.yaml
+      - get
+      - node
+      - "{{ rke2_node_name }}"
+      - --no-headers
+      - -o
+      - "custom-columns=STATUS:.status.conditions[-1].type"
+  register: _rke2_fine_tuning_node_status
+  retries: 60
+  delay: 10
+  until: _rke2_fine_tuning_node_status.stdout.strip() == "Ready"
+  changed_when: false
+  failed_when: _rke2_fine_tuning_node_status.rc != 0 and _rke2_fine_tuning_node_status.retries | default(0) >= 60
+
+# --- optional API health watchdog -------------------------------------------------------------
+
+- name: "RKE2 fine-tuning | Install conntrack-tools for healthcheck reconcile"
+  when:
+    - rke2_healthcheck_enabled | bool
+    - rke2_healthcheck_install_conntrack | bool
+  ansible.builtin.dnf:
+    name: conntrack-tools
+    state: present
+
+- name: "RKE2 fine-tuning | Deploy rke2-healthcheck.sh"
+  when: rke2_healthcheck_enabled | bool
+  ansible.builtin.template:
+    src: rke2-healthcheck.sh.j2
+    dest: /usr/local/sbin/rke2-healthcheck.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "RKE2 fine-tuning | Deploy rke2-healthcheck.service unit"
+  when: rke2_healthcheck_enabled | bool
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/rke2-healthcheck.service
+    content: |
+      # Managed by Ansible — role 03_install_rke2.
+      [Unit]
+      Description=RKE2 API health check
+      After=rke2-server.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/rke2-healthcheck.sh
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: "RKE2 fine-tuning | Deploy rke2-healthcheck.timer unit"
+  when: rke2_healthcheck_enabled | bool
+  ansible.builtin.template:
+    src: rke2-healthcheck.timer.j2
+    dest: /etc/systemd/system/rke2-healthcheck.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: "RKE2 fine-tuning | Enable and start rke2-healthcheck.timer"
+  when: rke2_healthcheck_enabled | bool
+  ansible.builtin.systemd:
+    name: rke2-healthcheck.timer
+    enabled: true
+    state: started
+    daemon_reload: true

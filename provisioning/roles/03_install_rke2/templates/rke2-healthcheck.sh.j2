@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Managed by Ansible — role 03_install_rke2.
+set -u
+KCFG=/etc/rancher/rke2/rke2.yaml
+KUBECTL=/var/lib/rancher/rke2/bin/kubectl
+KILLALL=/usr/local/bin/rke2-killall.sh
+STATE=/run/rke2-healthcheck.strikes
+WAIT_API_SECONDS={{ rke2_healthcheck_wait_api_seconds }}
+
+api_ready() {
+  timeout 30 "$KUBECTL" --kubeconfig="$KCFG" get --raw=/readyz >/dev/null 2>&1
+}
+
+# Wait for the apiserver to respond to /readyz after a restart.
+# Without this, data-plane reconcile runs against an unavailable apiserver.
+wait_for_api() {
+  local deadline=$((SECONDS + WAIT_API_SECONDS))
+  while (( SECONDS < deadline )); do
+    api_ready && return 0
+    sleep 5
+  done
+  return 1
+}
+
+# Reconcile the Cilium data plane (kpr + Gateway API):
+# - operator rollout ensures LB-IPAM and Gateway CRD re-application.
+# - agent rollout reopens Envoy embedded listeners (scenario 3).
+# - conntrack -F drops stale entries after killall (best-effort).
+# Idempotent: if everything is healthy, this is just a pod-by-pod restart.
+reconcile_dataplane() {
+  logger -t rke2-healthcheck "reconciling Cilium data plane"
+
+  "$KUBECTL" --kubeconfig="$KCFG" -n kube-system rollout restart deploy/cilium-operator || true
+  "$KUBECTL" --kubeconfig="$KCFG" -n kube-system rollout status   deploy/cilium-operator --timeout=3m || true
+
+  "$KUBECTL" --kubeconfig="$KCFG" -n kube-system rollout restart ds/cilium || true
+  "$KUBECTL" --kubeconfig="$KCFG" -n kube-system rollout status   ds/cilium --timeout=5m || true
+
+  command -v conntrack >/dev/null && conntrack -F >/dev/null 2>&1 || true
+
+  "$KUBECTL" --kubeconfig="$KCFG" delete pod -A \
+    --field-selector=status.phase=Failed --ignore-not-found >/dev/null 2>&1 || true
+}
+
+# Scenario 0: service inactive (failed / stopped) — try start only.
+# Reconcile is deferred to the next timer cycle when the API is ready.
+if ! systemctl is-active --quiet rke2-server.service; then
+  logger -t rke2-healthcheck "rke2-server inactive — starting"
+  systemctl start rke2-server.service || true
+  exit 0
+fi
+
+# Scenario 1: healthy API — clear strike counter and exit.
+if api_ready; then
+  rm -f "$STATE"
+  exit 0
+fi
+
+# Scenarios 2–4: unhealthy API — escalate based on consecutive failure count.
+strikes=$(cat "$STATE" 2>/dev/null || echo 0)
+strikes=$((strikes + 1))
+echo "$strikes" > "$STATE"
+
+if [ "$strikes" -ge 2 ] && [ -x "$KILLALL" ]; then
+  logger -t rke2-healthcheck "API dead for $strikes cycles — killall + restart + reconcile"
+  systemctl stop rke2-server.service || true
+  "$KILLALL" || true
+  systemctl start rke2-server.service || true
+  if wait_for_api; then
+    reconcile_dataplane
+    rm -f "$STATE"
+  else
+    logger -t rke2-healthcheck "wait_for_api failed after killall — keeping strike count"
+  fi
+else
+  logger -t rke2-healthcheck "API unresponsive (strike $strikes) — simple restart + reconcile"
+  systemctl restart rke2-server.service || true
+  if wait_for_api; then
+    reconcile_dataplane
+  fi
+fi

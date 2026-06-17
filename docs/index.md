@@ -39,7 +39,6 @@ structure
 
 ../k8s/README
 bootstrap/README
-fine-tuning/README
 upgrade/README
 ```
 

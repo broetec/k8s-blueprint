@@ -156,7 +156,7 @@ Fonte da documentação do projeto, preparada para migração futura para
 |----------|-----------|
 | `index.md` | Índice / toctree |
 | `structure.md` | Este ficheiro |
-| `bootstrap/`, `fine-tuning/`, `upgrade/` | Guias Kubernetes |
+| `bootstrap/`, `upgrade/` | Guias Kubernetes |
 
 ---
 

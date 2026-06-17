@@ -131,6 +131,30 @@ rke2_cilium_gateway_api_enabled: true
 rke2_kubeconfig_user: "{{ ansible_user }}"
 
 # -----------------------------------------------------------------------------
+# Fine tuning (tasks/fine_tuning.yml — see role README)
+# -----------------------------------------------------------------------------
+# Master switch for tasks/fine_tuning.yml (systemd hardening + optional watchdog).
+rke2_fine_tuning_enabled: true
+
+# rke2-server.service drop-in (CPU/I/O priority + resilient auto-restart).
+rke2_systemd_hardening: true
+rke2_systemd_nice: -10
+rke2_systemd_io_scheduling_class: 2
+rke2_systemd_io_scheduling_priority: 0
+rke2_systemd_restart_sec: "15s"
+rke2_systemd_timeout_start_sec: "20min"
+rke2_systemd_timeout_stop_sec: "2min"
+rke2_systemd_start_limit_interval_sec: 0
+rke2_systemd_start_limit_burst: 0
+
+# External API health watchdog (opt-in; aggressive on single-node clusters).
+rke2_healthcheck_enabled: false
+rke2_healthcheck_install_conntrack: true
+rke2_healthcheck_timer_on_boot_sec: "10min"
+rke2_healthcheck_timer_interval: "5min"
+rke2_healthcheck_wait_api_seconds: 600
+
+# -----------------------------------------------------------------------------
 # local-path-provisioner (optional bootstrap deploy)
 # -----------------------------------------------------------------------------
 # Node directory created before RKE2 starts (mkdir + chmod 1777 + SELinux
