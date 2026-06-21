@@ -489,6 +489,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ansible-core" },
     { name = "ansible-pylibssh" },
+    { name = "cryptography" },
     { name = "pyyaml" },
 ]
 
@@ -510,6 +511,7 @@ docs = [
 requires-dist = [
     { name = "ansible-core", specifier = ">=2.16,<2.21" },
     { name = "ansible-pylibssh", specifier = ">=1.4.0" },
+    { name = "cryptography", specifier = ">=43.0.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
 ]
 

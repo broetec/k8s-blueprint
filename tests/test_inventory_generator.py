@@ -41,7 +41,9 @@ def repo_tree(tmp_path: Path) -> Path:
     )
     shared = inv / '_shared/group_vars'
     shared.mkdir(parents=True)
-    (shared / 'all.yml').write_text('---\nbase_domain: test.local\n', encoding='utf-8')
+    (shared / 'all.yml').write_text(
+        '---\nbase_domain: test.local\n', encoding='utf-8'
+    )
     (shared / 'kvm_hosts.yml').write_text(
         '---\nansible_python_interpreter: "{{ ansible_playbook_python }}"\n',
         encoding='utf-8',
@@ -51,7 +53,9 @@ def repo_tree(tmp_path: Path) -> Path:
 
 
 def test_manifest_load(repo_tree: Path) -> None:
-    manifest = InventoryManifest.load(repo_tree / 'provisioning/inventory/manifest.yml')
+    manifest = InventoryManifest.load(
+        repo_tree / 'provisioning/inventory/manifest.yml'
+    )
     assert manifest.overlay_ids() == ['broetec-core', 'broetec-storage']
     assert manifest.get_overlay('broetec-core').primary_vm.ip == '10.20.30.40'
 
@@ -118,7 +122,9 @@ def test_generate_writes_files(repo_tree: Path) -> None:
     kvm_hosts = hosts.parent / 'group_vars' / 'kvm_hosts.yml'
     assert kvm_hosts.is_symlink()
     assert kvm_hosts.resolve().name == 'kvm_hosts.yml'
-    assert 'ansible_playbook_python' in kvm_hosts.resolve().read_text(encoding='utf-8')
+    assert 'ansible_playbook_python' in kvm_hosts.resolve().read_text(
+        encoding='utf-8'
+    )
 
 
 def test_render_overlay_group_vars_with_manifest_vars(repo_tree: Path) -> None:
@@ -149,7 +155,9 @@ def test_env_override(repo_tree: Path) -> None:
 def test_overlay_env_overrides_scoped() -> None:
     env = {'OVERLAY': 'broetec-storage', 'VM_IP': '10.20.30.99'}
     assert overlay_env_overrides(env, 'broetec-core') == {}
-    assert overlay_env_overrides(env, 'broetec-storage')['VM_IP'] == '10.20.30.99'
+    assert (
+        overlay_env_overrides(env, 'broetec-storage')['VM_IP'] == '10.20.30.99'
+    )
 
 
 def test_load_dotenv(tmp_path: Path) -> None:
