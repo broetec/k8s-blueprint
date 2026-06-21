@@ -1,59 +1,45 @@
 ---
 # =============================================================================
-# tasks/zsh.yml — zsh shell, Oh My Zsh and kubectx/kubens setup
+# tasks/zsh.yml — zsh shell and Oh My Zsh setup
 # =============================================================================
 #
 # Purpose
-#   Install zsh and set it as the default shell for ansible_user. Install Helm
-#   via the official get-helm-3 script. Then install Oh My Zsh, zsh-autosuggestions
-#   and kubectx/kubens so the shell environment is fully ready before the k8s roles run.
+#   Install zsh and set it as the default shell for ansible_user, then install
+#   Oh My Zsh + zsh-autosuggestions and write the "k8s shell" block to .zshrc
+#   (KUBECONFIG, kubectl/helm completions, k/kns/kctx aliases, kubectx zsh
+#   completions). The Kubernetes CLI tooling itself (git, helm, kubectx/kubens)
+#   is installed unconditionally by tasks/k8s_tools.yml.
 #
 # Scope
-#   Tasks 1–4 run as root (play-level become: true).
-#   Tasks 5–11 run as ansible_user (become_user) to write files to the correct
-#   home directory and avoid root-owned dotfiles.
-#   Oh My Zsh install script requires internet access from the VM and must run
-#   with RUNZSH=no CHSH=no to avoid spawning an interactive shell.
-#   Idempotent: stat checks skip Oh My Zsh/kubectx if already installed;
-#   lineinfile/blockinfile markers prevent duplicate .zshrc blocks.
-#   Shell profile block (KUBECONFIG, kubectl/helm, kubectx) is written here
-#   before k8s is installed; completions use || true so login still works
-#   when binaries are not present yet. RKE2 bin PATH is added only when
+#   Package install and default-shell change run as root (play-level become).
+#   The remaining tasks run as ansible_user (become_user) to write dotfiles to
+#   the correct home and avoid root-owned files.
+#   Oh My Zsh install script requires internet access from the VM and runs with
+#   RUNZSH=no CHSH=no to avoid spawning an interactive shell.
+#   Idempotent: stat checks skip Oh My Zsh when already installed; lineinfile/
+#   blockinfile markers prevent duplicate .zshrc blocks.
+#   The k8s shell block uses `|| true` on completions so login still works when
+#   binaries are not present yet. RKE2 bin PATH is added only when
 #   k8s_distribution is rke2 (k3s puts kubectl in /usr/local/bin).
 #
 # Variables
-#   prepare_vm_zsh — bool; when false this entire file is skipped (defaults/main.yml).
-#   ansible_user   — the OS user that receives the shell configuration.
-#   k8s_distribution — rke2 | k3s (inventory group_vars); controls RKE2 PATH line.
+#   prepare_vm_zsh       — bool; when false this file is skipped (defaults/main.yml).
+#   prepare_vm_user_home — home of ansible_user, set by tasks/k8s_tools.yml.
+#   ansible_user         — the OS user that receives the shell configuration.
+#   k8s_distribution     — rke2 | k3s (inventory group_vars); controls RKE2 PATH line.
 #
 # Related commands
 #   make prepare-vm, make up
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# 1–4. System-level (root)
+# System-level (root)
 # ---------------------------------------------------------------------------
 
-- name: "zsh | Install zsh and git packages"
+- name: "zsh | Install zsh package"
   ansible.builtin.package:
-    name:
-      - zsh
-      - git
+    name: zsh
     state: present
-
-- name: "zsh | Check if Helm is already installed"
-  ansible.builtin.stat:
-    path: /usr/local/bin/helm
-  register: _helm_binary
-
-- name: "zsh | Install Helm via get-helm-3 script"
-  when: not _helm_binary.stat.exists
-  ansible.builtin.shell:
-    cmd: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    executable: /bin/bash
-  environment:
-    PATH: "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
-  changed_when: true
 
 - name: "zsh | Set zsh as default shell for {{ ansible_user }}"
   ansible.builtin.user:
@@ -61,23 +47,13 @@
     shell: /usr/bin/zsh
 
 # ---------------------------------------------------------------------------
-# 5–11. User-level (ansible_user)
+# User-level (ansible_user)
 # ---------------------------------------------------------------------------
-
-- name: "zsh | Resolve home directory of {{ ansible_user }}"
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ ansible_user }}"
-  register: _zsh_user_info
-
-- name: "zsh | Set _zsh_home fact"
-  ansible.builtin.set_fact:
-    _zsh_home: "{{ _zsh_user_info.ansible_facts.getent_passwd[ansible_user][4] }}"
 
 - name: "zsh | Check if Oh My Zsh is already installed"
   become_user: "{{ ansible_user }}"
   ansible.builtin.stat:
-    path: "{{ _zsh_home }}/.oh-my-zsh"
+    path: "{{ prepare_vm_user_home }}/.oh-my-zsh"
   register: _omz_dir
 
 - name: "zsh | Install Oh My Zsh (non-interactive)"
@@ -94,43 +70,28 @@
   become_user: "{{ ansible_user }}"
   ansible.builtin.git:
     repo: https://github.com/zsh-users/zsh-autosuggestions.git
-    dest: "{{ _zsh_home }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+    dest: "{{ prepare_vm_user_home }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
     version: master
     update: false
 
 - name: "zsh | Configure HIST_STAMPS in .zshrc"
   become_user: "{{ ansible_user }}"
   ansible.builtin.lineinfile:
-    path: "{{ _zsh_home }}/.zshrc"
+    path: "{{ prepare_vm_user_home }}/.zshrc"
     regexp: '^#?\s*HIST_STAMPS='
     line: 'HIST_STAMPS="yyyy-mm-dd"'
 
 - name: "zsh | Enable git and zsh-autosuggestions plugins in .zshrc"
   become_user: "{{ ansible_user }}"
   ansible.builtin.lineinfile:
-    path: "{{ _zsh_home }}/.zshrc"
+    path: "{{ prepare_vm_user_home }}/.zshrc"
     regexp: '^plugins=\(.*\)'
     line: 'plugins=(git zsh-autosuggestions)'
-
-- name: "zsh | Check if kubectx is already installed"
-  become_user: "{{ ansible_user }}"
-  ansible.builtin.stat:
-    path: "{{ _zsh_home }}/.kubectx"
-  register: _kubectx_dir
-
-- name: "zsh | Clone kubectx/kubens"
-  when: not _kubectx_dir.stat.exists
-  become_user: "{{ ansible_user }}"
-  ansible.builtin.git:
-    repo: https://github.com/ahmetb/kubectx.git
-    dest: "{{ _zsh_home }}/.kubectx"
-    version: master
-    update: false
 
 - name: "zsh | Add k8s shell environment to .zshrc"
   become_user: "{{ ansible_user }}"
   ansible.builtin.blockinfile:
-    path: "{{ _zsh_home }}/.zshrc"
+    path: "{{ prepare_vm_user_home }}/.zshrc"
     marker: "# {mark} ANSIBLE MANAGED — k8s shell"
     block: |
       {% if (k8s_distribution | default('rke2')) == 'rke2' %}
@@ -138,15 +99,14 @@
       {% endif %}
       export KUBECONFIG=$HOME/.kube/config
       alias k='kubectl'
-      source <(kubectl completion zsh) 2>/dev/null || true
-      export PATH=~/.kubectx:$PATH
       alias kns='kubens'
       alias kctx='kubectx'
+      source <(kubectl completion zsh) 2>/dev/null || true
       source <(helm completion zsh) 2>/dev/null || true
       if [ -d "$HOME/.oh-my-zsh" ]; then
         mkdir -p "$HOME/.oh-my-zsh/custom/completions"
-        ln -sf "$HOME/.kubectx/completion/_kubens.zsh" \
+        ln -sf "/opt/kubectx/completion/_kubens.zsh" \
           "$HOME/.oh-my-zsh/custom/completions/_kubens.zsh" 2>/dev/null || true
-        ln -sf "$HOME/.kubectx/completion/_kubectx.zsh" \
+        ln -sf "/opt/kubectx/completion/_kubectx.zsh" \
           "$HOME/.oh-my-zsh/custom/completions/_kubectx.zsh" 2>/dev/null || true
       fi

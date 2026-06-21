@@ -19,7 +19,9 @@
 #   7. iptables.yml          — mask firewalld; install iptables/iptables-nft.
 #   8. sysctl.yml            — ip_forward, inotify limits (required by k3s + RKE2).
 #   9. qemu_guest_agent.yml  — install + enable qemu-guest-agent (opt-out via default).
-#  10. zsh.yml               — zsh, Oh My Zsh, zsh-autosuggestions, kubectx/kubens (opt-out).
+#  10. k8s_tools.yml         — git, Helm, kubectx/kubens system-wide (always).
+#  11. zsh.yml               — zsh, Oh My Zsh + k8s shell block in .zshrc (prepare_vm_zsh).
+#  12. bash_profile.yml      — k8s shell block in .bashrc (not prepare_vm_zsh).
 #
 # Variables
 #   prepare_vm_selinux_mode, prepare_vm_dnf_*, prepare_vm_packages,
@@ -66,7 +68,16 @@
   ansible.builtin.import_tasks: qemu_guest_agent.yml
   tags: [prepare_vm]
 
-- name: Zsh — shell, Oh My Zsh and kubectx/kubens
+- name: K8s tools — git, Helm and kubectx/kubens (always)
+  ansible.builtin.import_tasks: k8s_tools.yml
+  tags: [prepare_vm]
+
+- name: Zsh — shell, Oh My Zsh and k8s shell block
   when: prepare_vm_zsh | bool
   ansible.builtin.import_tasks: zsh.yml
+  tags: [prepare_vm]
+
+- name: Bash — k8s shell block in .bashrc
+  when: not (prepare_vm_zsh | bool)
+  ansible.builtin.import_tasks: bash_profile.yml
   tags: [prepare_vm]

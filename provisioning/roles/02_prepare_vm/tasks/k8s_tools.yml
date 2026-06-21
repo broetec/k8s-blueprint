@@ -1,0 +1,76 @@
+---
+# =============================================================================
+# tasks/k8s_tools.yml — git, Helm and kubectx/kubens
+# =============================================================================
+#
+# Purpose
+#   Install the Kubernetes CLI tooling needed by the later k8s roles,
+#   independent of the chosen shell. Runs unconditionally (no prepare_vm_zsh
+#   gate) so helm/kubectx/kubens are available whether the user keeps bash or
+#   switches to zsh.
+#
+# Scope
+#   All tasks run as root (play-level become: true) to write to /usr/local/bin
+#   and /opt. kubectx/kubens are installed system-wide (clone in /opt/kubectx
+#   plus symlinks in /usr/local/bin) instead of per-user, so every shell sees
+#   them on PATH.
+#   Idempotent: stat checks skip Helm/kubectx when already present.
+#
+# Variables
+#   ansible_user — the OS user whose home is resolved into prepare_vm_user_home
+#                  (a shared fact consumed by zsh.yml / bash_profile.yml).
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: "k8s_tools | Install git"
+  ansible.builtin.package:
+    name: git
+    state: present
+
+- name: "k8s_tools | Resolve home directory of {{ ansible_user }}"
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
+  register: _prepare_vm_user_info
+
+- name: "k8s_tools | Set prepare_vm_user_home fact"
+  ansible.builtin.set_fact:
+    prepare_vm_user_home: "{{ _prepare_vm_user_info.ansible_facts.getent_passwd[ansible_user][4] }}"
+
+- name: "k8s_tools | Check if Helm is already installed"
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: _helm_binary
+
+- name: "k8s_tools | Install Helm via get-helm-3 script"
+  when: not _helm_binary.stat.exists
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    executable: /bin/bash
+  environment:
+    PATH: "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+  changed_when: true
+
+- name: "k8s_tools | Check if kubectx is already installed"
+  ansible.builtin.stat:
+    path: /opt/kubectx
+  register: _kubectx_dir
+
+- name: "k8s_tools | Clone kubectx/kubens system-wide"
+  when: not _kubectx_dir.stat.exists
+  ansible.builtin.git:
+    repo: https://github.com/ahmetb/kubectx.git
+    dest: /opt/kubectx
+    version: master
+    update: false
+
+- name: "k8s_tools | Symlink kubectx and kubens into /usr/local/bin"
+  ansible.builtin.file:
+    src: "/opt/kubectx/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop:
+    - kubectx
+    - kubens

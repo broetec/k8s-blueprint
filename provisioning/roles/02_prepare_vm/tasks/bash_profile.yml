@@ -1,0 +1,45 @@
+---
+# =============================================================================
+# tasks/bash_profile.yml — k8s shell block for bash users
+# =============================================================================
+#
+# Purpose
+#   When zsh is not selected (prepare_vm_zsh = false), write the same "k8s shell"
+#   environment block to .bashrc so bash logins also get KUBECONFIG, the
+#   k/kns/kctx aliases and kubectl/helm/kubectx completions. The CLI tooling
+#   itself is installed unconditionally by tasks/k8s_tools.yml.
+#
+# Scope
+#   Runs as ansible_user (become_user) to write .bashrc to the correct home.
+#   Idempotent: a blockinfile marker prevents duplicate blocks.
+#   Completions use `|| true` so login still works when binaries are not
+#   present yet. RKE2 bin PATH is added only when k8s_distribution is rke2
+#   (k3s puts kubectl in /usr/local/bin).
+#
+# Variables
+#   prepare_vm_zsh       — bool; this file runs only when false (defaults/main.yml).
+#   prepare_vm_user_home — home of ansible_user, set by tasks/k8s_tools.yml.
+#   ansible_user         — the OS user that receives the shell configuration.
+#   k8s_distribution     — rke2 | k3s (inventory group_vars); controls RKE2 PATH line.
+#
+# Related commands
+#   make prepare-vm, make up
+# =============================================================================
+
+- name: "bash_profile | Add k8s shell environment to .bashrc"
+  become_user: "{{ ansible_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ prepare_vm_user_home }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED — k8s shell"
+    block: |
+      {% if (k8s_distribution | default('rke2')) == 'rke2' %}
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      {% endif %}
+      export KUBECONFIG=$HOME/.kube/config
+      alias k='kubectl'
+      alias kns='kubens'
+      alias kctx='kubectx'
+      source <(kubectl completion bash) 2>/dev/null || true
+      source <(helm completion bash) 2>/dev/null || true
+      source /opt/kubectx/completion/kubectx.bash 2>/dev/null || true
+      source /opt/kubectx/completion/kubens.bash 2>/dev/null || true
