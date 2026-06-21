@@ -1,0 +1,9 @@
+- op: replace
+  path: /spec/addresses/0/value
+  value: "10.20.30.40"
+- op: replace
+  path: /spec/listeners/1/hostname
+  value: "*.core.broetec.com.br"
+- op: add
+  path: /spec/infrastructure/annotations/io.cilium~1lb-ipam-sharing-cross-namespace
+  value: "cilium"

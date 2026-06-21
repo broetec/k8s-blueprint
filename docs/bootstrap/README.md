@@ -4,7 +4,7 @@
 
 ### 3.0 Aplicar configurações base Cilium (priorityclasses + Cilium)
 ```bash
-k apply --server-side -k cluster-config/overlays/<environment_overlay>
+k apply --server-side -k k8s/cluster-config/overlays/<environment_overlay>
 ```
 
 ### 3.1 Instalar Sealed Secrets (Helm) — antes do ArgoCD
@@ -20,8 +20,8 @@ helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace sealed-secrets \
   --create-namespace \
   --version 2.18.3 \
-  -f sealed-secrets/base/values.yaml \
-  -f sealed-secrets/overlays/<environment_overlay>/values.yaml
+  -f k8s/sealed-secrets/base/values.yaml \
+  -f k8s/sealed-secrets/overlays/<environment_overlay>/values.yaml
 ```
 
 ### 3.2 Instalar Cert-Manager (Helm) — antes do ArgoCD
@@ -34,10 +34,10 @@ helm upgrade --install cert-manager cert-manager/cert-manager \
   --namespace cert-manager \
   --create-namespace \
   --version v1.19.3 \
-  -f cert-manager/base/values.yaml \
-  -f cert-manager/overlays/<environment_overlay>/values.yaml
+  -f k8s/cert-manager/base/values.yaml \
+  -f k8s/cert-manager/overlays/<environment_overlay>/values.yaml
 
-k apply -k cert-manager/overlays/<environment_overlay>
+k apply -k k8s/cert-manager/overlays/<environment_overlay>
 ```
 
 ### 3.3 Instalar ArgoCD (Helm) — bootstrap
@@ -51,10 +51,10 @@ helm upgrade --install argocd argo/argo-cd \
   --namespace argocd \
   --create-namespace \
   --version 9.4.10 \
-  -f argocd/base/values.yaml \
-  -f argocd/overlays/<environment_overlay>/values.yaml
+  -f k8s/argocd/base/values.yaml \
+  -f k8s/argocd/overlays/<environment_overlay>/values.yaml
 
-k apply -k argocd/overlays/<environment_overlay>
+k apply -k k8s/argocd/overlays/<environment_overlay>
 ```
 
 Troubleshooting: Caso o Cilium não aplique as alterações automaticamente, você pode forçar o reinício do operador com o comando abaixo:

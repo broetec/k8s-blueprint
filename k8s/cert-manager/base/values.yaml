@@ -1,0 +1,13 @@
+## Valores base para o chart jetstack/cert-manager
+## Referência oficial de values:
+##   https://artifacthub.io/packages/helm/cert-manager/cert-manager
+
+crds:
+  enabled: true
+  keep: true
+
+global:
+  priorityClassName: "pc-2-secrets-certs"
+
+config:
+  enableGatewayAPI: true

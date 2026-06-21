@@ -1,0 +1,38 @@
+## Overlay dev: valores para o chart argoproj/argo-cd
+## Repo: helm repo add argo https://argoproj.github.io/argo-helm
+
+# HA Redis com réplicas reduzidas (cluster pequeno, sem anti-affinity).
+redis-ha:
+  enabled: true
+  replicas: 2
+  hardAntiAffinity: false
+  haproxy:
+    replicas: 2
+    hardAntiAffinity: false
+
+global:
+  domain: argo.core.broetec.com.br
+  affinity:
+    podAntiAffinity: "none"
+
+controller:
+  replicas: 1
+  env:
+    - name: ARGO_CD_UPDATE_CLUSTER_INFO_TIMEOUT
+      value: "60"
+
+server:
+  replicas: 1
+  httproute:
+    hostnames:
+      - argo.core.broetec.com.br
+
+repoServer:
+  replicas: 1
+
+dex:
+  replicas: 1
+
+configs:
+  params:
+    server.insecure: "true"

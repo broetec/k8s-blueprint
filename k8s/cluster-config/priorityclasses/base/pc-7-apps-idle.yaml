@@ -1,0 +1,7 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: pc-7-apps-idle
+value: 300000
+globalDefault: true
+description: "Prioridade para apps e serviços não críticos."

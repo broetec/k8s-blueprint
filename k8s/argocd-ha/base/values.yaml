@@ -1,0 +1,25 @@
+## Valores base para o chart argoproj/argo-cd
+## Referência oficial de values:
+##   https://artifacthub.io/packages/helm/argo/argo-cd
+
+crds:
+  install: true
+  keep: true
+
+global:
+  priorityClassName: "pc-5-management-auth"
+
+configs:
+  secret:
+    annotations:
+      sealedsecrets.bitnami.com/patch: "true"
+
+server:
+  httproute:
+    enabled: true
+    parentRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: vpn
+        namespace: cilium
+        sectionName: https
