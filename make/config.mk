@@ -64,6 +64,11 @@ K8S_DISTRIBUTION ?= rke2
 RKE2_VERSION     ?=
 K3S_VERSION      ?=
 
+# Sealed Secrets (role 04) — opcional, default desligado. Quando true, o role 04
+# gera a chave BYOK localmente (env/<overlay>/), sela os Secrets offline e
+# instala o controller adotando a chave. Override em env/.env ou na linha de comando.
+SEALED_SECRETS   ?= false
+
 # Build the -e flags passed to ansible-playbook for role 03.
 # Version extras are only appended when the variable is non-empty.
 K8S_DISTRIBUTION_EXTRA := -e k8s_distribution=$(K8S_DISTRIBUTION)

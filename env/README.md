@@ -40,6 +40,22 @@ a poder sobrepor: `make up VM_IP=10.20.30.50`.
 
 A geração é idempotente: se a chave já existe, o Make pula esse passo.
 
+## Chaves do Sealed Secrets (BYOK) — `env/<overlay>/`
+
+Quando `SEALED_SECRETS=true`, a role `04_deploy_k8s` gera localmente o par de
+chaves do controller Sealed Secrets em `env/<overlay>/` (ex.: `env/broetec-core/`):
+
+| Arquivo | Uso |
+|---|---|
+| `sealed-secrets-key.pem` | chave **privada** RSA do controller (NUNCA compartilhar) |
+| `sealed-secrets-pub.pem` | certificado público usado por `k8s-blueprint-seal seal` |
+| `sealed-secrets-key-secret.yaml` | Secret `kubernetes.io/tls` (label `active`) pré-aplicado no cluster para o controller adotar a chave |
+
+A geração (`k8s-blueprint-seal genkey`) é **idempotente**: a chave existente é
+reutilizada entre deploys (mantém os SealedSecrets antigos decifráveis). Para
+rodar a chave, apague `env/<overlay>/` ou use `genkey --force` e re-sele. Toda a
+pasta `env/` é gitignored, então a chave privada nunca vai para o git.
+
 `make setup-host` (ou `make keys` / `make up` como fallback) corre `ensure-user-known-hosts`
 uma vez no controlador. O registo da chave da VM (`ssh-host-key-refresh`) corre no ciclo
 `make up` ou antes de `prepare-vm` / `deploy` isolados.

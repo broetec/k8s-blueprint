@@ -28,9 +28,9 @@ install-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar
 	@printf "$(Y)==> [03] install-k8s (OVERLAY=$(OVERLAY), K8S_DISTRIBUTION=$(K8S_DISTRIBUTION)$(if $(RKE2_VERSION), RKE2_VERSION=$(RKE2_VERSION))$(if $(K3S_VERSION), K3S_VERSION=$(K3S_VERSION)))$(N)\n"
 	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(K8S_DISTRIBUTION_EXTRA) $(EXTRA))
 
-deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — manifests k8s (stub)
-	@printf "$(Y)==> [04] deploy-k8s (OVERLAY=$(OVERLAY))$(N)\n"
-	$(call run-playbook,deploy_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))
+deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — bootstrap k8s (cluster-config, cert-manager, argocd; SEALED_SECRETS=true p/ sealed-secrets)
+	@printf "$(Y)==> [04] deploy-k8s (OVERLAY=$(OVERLAY), SEALED_SECRETS=$(SEALED_SECRETS))$(N)\n"
+	$(call run-playbook,deploy_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e sealed_secrets_enabled=$(SEALED_SECRETS) $(EXTRA))
 
 deploy: install-k8s deploy-k8s ## 03 + 04 — instalar k8s + deploy manifests (usa K8S_DISTRIBUTION)
 

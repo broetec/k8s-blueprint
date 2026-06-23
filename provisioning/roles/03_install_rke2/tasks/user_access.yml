@@ -5,7 +5,7 @@
 #
 # Purpose
 #   Make the cluster immediately usable for rke2_kubeconfig_user without
-#   requiring root. Mirrors the manual steps in docs/bootstrap/README.md §2.6.
+#   requiring root. See role README for kubeconfig setup details.
 #   Copies /etc/rancher/rke2/rke2.yaml to ~/.kube/config.
 #
 # Scope

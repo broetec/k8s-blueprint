@@ -1,0 +1,61 @@
+---
+# =============================================================================
+# tasks/cert_manager.yml — cert-manager + ClusterIssuers (README §3.2)
+# =============================================================================
+#
+# Purpose
+#   Install cert-manager (with CRDs) and apply the ClusterIssuers. A self-signed
+#   issuer is always applied so the lab has a working issuer without external
+#   credentials. The Cloudflare DNS-01 issuers (staging/prod) only become Ready
+#   when the cloudflare-api-token Secret exists — provided via a SealedSecret
+#   when sealed_secrets_enabled and api-token-secret.yaml was supplied locally.
+#
+# Scope
+#   become: false — kubectl/helm run as the connecting user.
+# =============================================================================
+
+- name: "cert_manager | Add Helm repo {{ cert_manager_repo_name }}"
+  become: false
+  kubernetes.core.helm_repository:
+    name: "{{ cert_manager_repo_name }}"
+    repo_url: "{{ cert_manager_repo_url }}"
+
+- name: "cert_manager | Install cert-manager (with CRDs)"
+  become: false
+  kubernetes.core.helm:
+    name: cert-manager
+    chart_ref: "{{ cert_manager_repo_name }}/cert-manager"
+    chart_version: "{{ cert_manager_chart_version }}"
+    release_namespace: "{{ cert_manager_namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ deploy_k8s_remote_path }}/cert-manager/base/values.yaml"
+      - "{{ deploy_k8s_remote_path }}/cert-manager/overlays/{{ deploy_k8s_overlay }}/values.yaml"
+    wait: true
+
+- name: "cert_manager | Check for a sealed Cloudflare API token"
+  become: false
+  ansible.builtin.stat:
+    path: "{{ deploy_k8s_remote_path }}/cert-manager/overlays/{{ deploy_k8s_overlay }}/api-token-sealedsecret.yaml"
+  register: _cert_manager_token
+
+- name: "cert_manager | Apply sealed Cloudflare API token (when present)"
+  become: false
+  when: sealed_secrets_enabled | bool and _cert_manager_token.stat.exists
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply -f
+      {{ deploy_k8s_remote_path }}/cert-manager/overlays/{{ deploy_k8s_overlay }}/api-token-sealedsecret.yaml
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true
+
+- name: "cert_manager | Apply ClusterIssuers overlay"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply -k
+      {{ deploy_k8s_remote_path }}/cert-manager/overlays/{{ deploy_k8s_overlay }}
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true

@@ -1,0 +1,43 @@
+---
+# =============================================================================
+# tasks/sync.yml — Copy k8s/ manifests to the VM + tooling preflight
+# =============================================================================
+#
+# Purpose
+#   Make the k8s/ tree (including any SealedSecrets generated offline by
+#   seal.yml) available on the VM so `kubectl apply -k` and Helm value files
+#   resolve locally. helm/kubectl are installed by role 02 (tasks/k8s_tools.yml);
+#   this only checks they are present and fails early with a clear message.
+#
+# Scope
+#   become: false — writes under the connecting user's home and runs kubectl as
+#   that user (kubeconfig at ~/.kube/config).
+# =============================================================================
+
+- name: "sync | Preflight — helm and kubectl available on the VM"
+  become: false
+  ansible.builtin.command:
+    cmd: "{{ item }} version --client"
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  loop:
+    - kubectl
+    - helm
+  changed_when: false
+  register: _deploy_tooling
+  failed_when: _deploy_tooling.rc != 0
+
+- name: "sync | Ensure remote manifests directory exists"
+  become: false
+  ansible.builtin.file:
+    path: "{{ deploy_k8s_remote_path }}"
+    state: directory
+    mode: "0755"
+
+- name: "sync | Copy k8s/ tree to the VM"
+  become: false
+  ansible.builtin.copy:
+    src: "{{ deploy_k8s_repo_root }}/k8s/"
+    dest: "{{ deploy_k8s_remote_path }}/"
+    mode: "0644"
+    directory_mode: "0755"

@@ -1,27 +1,67 @@
 ---
 # =============================================================================
-# tasks/main.yml — Role 04 entrypoint (k8s manifest deploy)
+# tasks/main.yml — Role 04 entrypoint (k8s bootstrap, common to RKE2 and k3s)
 # =============================================================================
 #
 # Purpose
-#   Apply cluster-level Kubernetes resources that must exist before ArgoCD
-#   bootstraps the rest. Future manifests under k8s/ will be applied here
-#   via kubectl/Helm.
+#   Bring the cluster to a usable baseline after install (role 03), mirroring
+#   provisioning/roles/04_deploy_k8s/README.md (manual reference §3):
+#     1. cluster-config (Cilium + PriorityClasses)   — kubectl apply -k
+#     2. Sealed Secrets (optional, BYOK)              — Helm + pre-applied key
+#     3. cert-manager (+ ClusterIssuers)              — Helm + kubectl
+#     4. Argo CD                                      — Helm
+#
+# Execution model
+#   Sealing runs on the controller (delegate_to: localhost) so the keypair and
+#   SealedSecrets are produced offline before the cluster is touched. helm and
+#   kubectl run on the VM as the connecting user (become: false): the kubeconfig
+#   lives at ~/.kube/config and the tooling is installed by role 02
+#   (tasks/k8s_tools.yml). k8s/ is synced to the VM under the user's home.
 #
 # Related commands
-#   make install-rke2, make up
+#   make deploy-k8s, make up (SEALED_SECRETS=true to enable Sealed Secrets)
 # =============================================================================
 
-- name: "Alive check before deploy_k8s"
+- name: "deploy_k8s | Connectivity check"
   become: false
   ansible.builtin.ping:
   tags: [deploy_k8s]
 
-- name: "Placeholder — k8s deploy pending"
-  ansible.builtin.debug:
-    msg: >-
-      04_deploy_k8s: implementation pending.
-      Host={{ inventory_hostname }}
-      role={{ vm_role | default('n/a') }}.
-      Future manifests: k8s/
+- name: "deploy_k8s | Resolve home directory of {{ ansible_user }}"
+  become: false
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
   tags: [deploy_k8s]
+
+- name: "deploy_k8s | Set deploy_k8s_user_home / remote path facts"
+  ansible.builtin.set_fact:
+    deploy_k8s_user_home: "{{ getent_passwd[ansible_user][4] }}"
+    deploy_k8s_remote_path: "{{ getent_passwd[ansible_user][4] }}/{{ deploy_k8s_remote_dir }}"
+  tags: [deploy_k8s]
+
+- name: "deploy_k8s | Seal Secrets offline (BYOK, on controller)"
+  when: sealed_secrets_enabled | bool
+  ansible.builtin.import_tasks: seal.yml
+  tags: [deploy_k8s, sealed_secrets]
+
+- name: "deploy_k8s | Sync k8s/ manifests to the VM"
+  ansible.builtin.import_tasks: sync.yml
+  tags: [deploy_k8s]
+
+- name: "deploy_k8s | Cluster config (Cilium + PriorityClasses)"
+  ansible.builtin.import_tasks: cluster_config.yml
+  tags: [deploy_k8s, cluster_config]
+
+- name: "deploy_k8s | Sealed Secrets controller (BYOK)"
+  when: sealed_secrets_enabled | bool
+  ansible.builtin.import_tasks: sealed_secrets.yml
+  tags: [deploy_k8s, sealed_secrets]
+
+- name: "deploy_k8s | cert-manager"
+  ansible.builtin.import_tasks: cert_manager.yml
+  tags: [deploy_k8s, cert_manager]
+
+- name: "deploy_k8s | Argo CD"
+  ansible.builtin.import_tasks: argocd.yml
+  tags: [deploy_k8s, argocd]

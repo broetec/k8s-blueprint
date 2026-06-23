@@ -3,4 +3,6 @@ kind: Kustomization
 
 resources:
   - ../../base
-  - api-token-sealedsecret.yaml
+# api-token-sealedsecret.yaml is applied by role 04 (provisioning/roles/
+# 04_deploy_k8s) when sealed_secrets_enabled and a token was supplied, not by
+# Kustomize, so the overlay applies cleanly without a Cloudflare token.

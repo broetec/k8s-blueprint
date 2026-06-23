@@ -1,0 +1,3 @@
+# Overlay broetec-core: valores para o chart bitnami-labs/sealed-secrets
+# Repo: helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+# Herda tudo de ../../base/values.yaml (sem overrides para o cluster de lab).

@@ -4,4 +4,6 @@ namespace: argocd
 
 resources:
   - ../../base
-  - admin-sealedsecret.yaml
+# admin-sealedsecret.yaml / admin-secret.yaml are applied by role 04
+# (provisioning/roles/04_deploy_k8s) depending on sealed_secrets_enabled,
+# not by Kustomize, so the overlay stays valid with or without sealing.

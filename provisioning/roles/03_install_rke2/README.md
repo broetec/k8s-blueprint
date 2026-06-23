@@ -146,4 +146,4 @@ kubectl -n kube-system rollout status   ds/cilium --timeout=5m
 
 - [RKE2 docs](https://docs.rke2.io)
 - [Server config reference](https://docs.rke2.io/reference/server_config)
-- [Bootstrap guide](../../../docs/bootstrap/README.md)
+- [Bootstrap guide (role 04)](../04_deploy_k8s/README.md)

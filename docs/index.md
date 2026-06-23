@@ -38,7 +38,6 @@ structure
 :maxdepth: 1
 
 ../k8s/README
-bootstrap/README
 upgrade/README
 ```
 

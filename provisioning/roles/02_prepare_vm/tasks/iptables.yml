@@ -9,7 +9,7 @@
 #   required by Canal, Flannel, Cilium and kube-proxy.
 #
 # Variables
-#   None — static baseline aligned with docs/bootstrap/README.md §1.0–1.1.
+#   None — static baseline for k8s networking (firewalld off, iptables-nft).
 #
 # Scope
 #   No persistent iptables rules or INPUT DROP policies: the CNI owns runtime

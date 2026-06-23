@@ -8,7 +8,7 @@ Por enquanto os manifests serão aplicados pela role Ansible
 instalado pela role [`03_install_rke2`](../provisioning/roles/03_install_rke2/)
 (stub).
 
-Guia manual: [`docs/bootstrap/README.md`](../docs/bootstrap/README.md).
+Bootstrap guide: [`04_deploy_k8s`](../provisioning/roles/04_deploy_k8s/README.md).
 
 ## Integração Make
 

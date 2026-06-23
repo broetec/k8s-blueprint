@@ -1,0 +1,76 @@
+---
+# =============================================================================
+# tasks/argocd.yml — Argo CD bootstrap (README §3.3)
+# =============================================================================
+#
+# Purpose
+#   Install Argo CD via Helm. The admin password is set without clobbering the
+#   chart-managed server.secretkey:
+#     - Sealed Secrets OFF (default): inject the didactic bcrypt hash from the
+#       committed admin-secret.yaml as Helm values (configs.secret.*).
+#     - Sealed Secrets ON: apply admin-sealedsecret.yaml after install; the
+#       controller patch-merges it into argocd-secret (annotation patch: true).
+#
+# Scope
+#   become: false — kubectl/helm run as the connecting user. The admin-secret
+#   file is read on the controller via lookup during templating.
+# =============================================================================
+
+- name: "argocd | Locate the committed admin Secret (controller)"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.stat:
+    path: "{{ deploy_k8s_repo_root }}/k8s/argocd-ha/overlays/{{ deploy_k8s_overlay }}/admin-secret.yaml"
+  register: _argocd_admin_stat
+
+- name: "argocd | Load admin credentials (default path, Sealed Secrets off)"
+  when: not (sealed_secrets_enabled | bool) and _argocd_admin_stat.stat.exists
+  ansible.builtin.set_fact:
+    _argocd_admin: "{{ lookup('ansible.builtin.file', _argocd_admin_stat.stat.path) | from_yaml }}"
+
+- name: "argocd | Add Helm repo {{ argocd_repo_name }}"
+  become: false
+  kubernetes.core.helm_repository:
+    name: "{{ argocd_repo_name }}"
+    repo_url: "{{ argocd_repo_url }}"
+
+- name: "argocd | Install Argo CD"
+  become: false
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: "{{ argocd_repo_name }}/argo-cd"
+    chart_version: "{{ argocd_chart_version }}"
+    release_namespace: "{{ argocd_namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ deploy_k8s_remote_path }}/argocd-ha/base/values.yaml"
+      - "{{ deploy_k8s_remote_path }}/argocd-ha/overlays/{{ deploy_k8s_overlay }}/values.yaml"
+    release_values: "{{ _argocd_release_values | default({}) }}"
+    wait: true
+  vars:
+    _argocd_release_values: >-
+      {{
+        {'configs': {'secret': {
+          'argocdServerAdminPassword': _argocd_admin.stringData['admin.password'],
+          'argocdServerAdminPasswordMtime': _argocd_admin.stringData['admin.passwordMtime']
+        }}}
+        if (_argocd_admin is defined) else {}
+      }}
+
+- name: "argocd | Check for a sealed admin Secret"
+  become: false
+  ansible.builtin.stat:
+    path: "{{ deploy_k8s_remote_path }}/argocd-ha/overlays/{{ deploy_k8s_overlay }}/admin-sealedsecret.yaml"
+  register: _argocd_sealed
+
+- name: "argocd | Apply sealed admin Secret (Sealed Secrets on)"
+  become: false
+  when: sealed_secrets_enabled | bool and _argocd_sealed.stat.exists
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply -f
+      {{ deploy_k8s_remote_path }}/argocd-ha/overlays/{{ deploy_k8s_overlay }}/admin-sealedsecret.yaml
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true

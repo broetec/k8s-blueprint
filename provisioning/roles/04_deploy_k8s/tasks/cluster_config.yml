@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# tasks/cluster_config.yml — Cilium config + PriorityClasses (README §3.0)
+# =============================================================================
+#
+# Purpose
+#   Apply the cluster-wide baseline: Gateway API CRDs, Cilium Gateway/LB pool/
+#   L2 policy and the PriorityClasses consumed by the rest of the stack.
+#   Server-side apply is required for the large Gateway API CRDs.
+#
+# Scope
+#   become: false — runs kubectl as the connecting user (kubeconfig at
+#   ~/.kube/config). The overlay is the synced copy on the VM.
+# =============================================================================
+
+- name: "cluster_config | Apply Cilium + PriorityClasses overlay (server-side)"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply --server-side -k
+      {{ deploy_k8s_remote_path }}/cluster-config/overlays/{{ deploy_k8s_overlay }}
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true

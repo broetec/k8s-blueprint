@@ -1,0 +1,64 @@
+---
+# =============================================================================
+# tasks/seal.yml — Offline BYOK key generation + sealing (runs on controller)
+# =============================================================================
+#
+# Purpose
+#   Before touching the cluster, generate the Sealed Secrets controller keypair
+#   locally (BYOK) and seal every plain Secret of the overlay into a
+#   SealedSecret. This lets `make up` ship a cluster with all secrets ready and
+#   removes the chicken-and-egg of needing the controller online to fetch a cert.
+#
+# Behaviour
+#   - genkey is idempotent: an existing key in env/<overlay>/ is reused (so
+#     previously sealed secrets stay decryptable). Use --force to rotate.
+#   - Seals k8s/<app>/overlays/<overlay>/*-secret.yaml -> *-sealedsecret.yaml.
+#     Plain *-secret.yaml are gitignored except the didactic ones; missing files
+#     are simply skipped.
+#
+# Scope
+#   delegate_to: localhost + run_once: true + become: false — uses the uv
+#   project environment on the controller (k8s-blueprint-seal entrypoint).
+# =============================================================================
+
+- name: "seal | Generate/Reuse the BYOK controller keypair (env/{{ deploy_k8s_overlay }})"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      uv run --directory {{ deploy_k8s_repo_root | quote }}
+      k8s-blueprint-seal genkey
+      --out-dir {{ sealed_secrets_keydir | quote }}
+      --namespace {{ sealed_secrets_namespace | quote }}
+    chdir: "{{ deploy_k8s_repo_root }}"
+  register: _seal_genkey
+  changed_when: "'Written:' in _seal_genkey.stdout"
+
+- name: "seal | Find plain Secrets for overlay {{ deploy_k8s_overlay }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.find:
+    paths: "{{ deploy_k8s_repo_root }}/k8s"
+    patterns: "*-secret.yaml"
+    recurse: true
+  register: _seal_plain_secrets
+
+- name: "seal | Seal each overlay Secret into a SealedSecret"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      uv run --directory {{ deploy_k8s_repo_root | quote }}
+      k8s-blueprint-seal seal
+      --cert {{ deploy_k8s_repo_root }}/{{ sealed_secrets_keydir }}/sealed-secrets-pub.pem
+      --in {{ item.path | quote }}
+      --out {{ item.path | regex_replace('-secret\\.yaml$', '-sealedsecret.yaml') | quote }}
+  loop: "{{ _seal_plain_secrets.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: "'/overlays/' + deploy_k8s_overlay + '/' in item.path"
+  register: _seal_run
+  changed_when: "'Written:' in _seal_run.stdout"

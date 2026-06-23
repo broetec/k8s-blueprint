@@ -3,7 +3,34 @@
 O controller é instalado via **Helm** antes do deploy do ArgoCD. Ver o [README principal](../README.md) para o comando de instalação.
 
 - **base/values.yaml**: template com os default values do chart (referência).
-- **overlays/storage/values.yaml**: values usados no deploy (bootstrap e ArgoCD).
+- **overlays/\<overlay\>/values.yaml**: values usados no deploy (bootstrap e ArgoCD).
+
+## Fluxo automatizado (BYOK, sem `kubeseal`)
+
+Neste repositório a selagem é feita em **Python puro** (sem o binário `kubeseal`),
+pelo entrypoint `k8s-blueprint-seal` (ver `app/secrets/`). A role
+`04_deploy_k8s` (acionada por `make deploy-k8s SEALED_SECRETS=true` ou
+`make up`) executa, no controlador e **offline**, antes de tocar no cluster:
+
+```bash
+# 1. Gera/reutiliza o par de chaves do controller (BYOK) em env/<overlay>/
+uv run k8s-blueprint-seal genkey --out-dir env/broetec-core/
+
+# 2. Sela cada k8s/<app>/overlays/<overlay>/*-secret.yaml -> *-sealedsecret.yaml
+uv run k8s-blueprint-seal seal \
+  --cert env/broetec-core/sealed-secrets-pub.pem \
+  --in  k8s/argocd-ha/overlays/broetec-core/admin-secret.yaml \
+  --out k8s/argocd-ha/overlays/broetec-core/admin-sealedsecret.yaml
+```
+
+Em seguida a role **pré-aplica** `env/<overlay>/sealed-secrets-key-secret.yaml`
+(label `sealedsecrets.bitnami.com/sealed-secrets-key=active`) **antes** do
+`helm install`, de modo que o controller adote a chave gerada localmente — não é
+preciso buscar o certificado do cluster (sem o problema ovo-e-galinha). A chave
+privada fica só em `env/<overlay>/` (gitignored) e os SealedSecrets são
+regenerados a cada deploy.
+
+> O fluxo manual com `kubeseal` abaixo continua válido como alternativa.
 
 ## Key Management
 

@@ -142,8 +142,8 @@ Documentação: [env/README.md](../env/README.md).
 Reservado para **manifests Kubernetes** (RKE2, CNI, workloads). Ainda não
 integrado no fluxo automatizado do `make up`.
 
-Documentação: [k8s/README.md](../k8s/README.md) · guia manual:
-[bootstrap/README.md](bootstrap/README.md).
+Documentação: [k8s/README.md](../k8s/README.md) · bootstrap:
+[04_deploy_k8s/README.md](../provisioning/roles/04_deploy_k8s/README.md).
 
 ---
 
@@ -156,7 +156,7 @@ Fonte da documentação do projeto, preparada para migração futura para
 |----------|-----------|
 | `index.md` | Índice / toctree |
 | `structure.md` | Este ficheiro |
-| `bootstrap/`, `upgrade/` | Guias Kubernetes |
+| `upgrade/` | Guia de upgrade Kubernetes |
 
 ---
 

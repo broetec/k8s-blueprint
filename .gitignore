@@ -12,6 +12,12 @@ tests/.env
 *.key
 *.crt
 *-secret.yaml
+# Secret didático (senha de aprendizado) commitado para que `make up` funcione
+# sem Sealed Secrets. Credenciais reais (ex.: cloudflare api-token) continuam ignoradas.
+!k8s/argocd-ha/overlays/broetec-core/admin-secret.yaml
+# SealedSecrets são gerados localmente a partir da chave BYOK (específica da
+# máquina) pelo role 04 — artefatos regenerados a cada deploy, não versionados.
+k8s/**/broetec-core/*-sealedsecret.yaml
 .vault_pass
 .vault_password
 vault_pass.txt

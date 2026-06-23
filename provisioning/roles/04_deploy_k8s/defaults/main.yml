@@ -1,12 +1,64 @@
 ---
 # =============================================================================
-# defaults/main.yml — Role 04 defaults
+# defaults/main.yml — Role 04 defaults (k8s bootstrap)
 # =============================================================================
 #
 # Purpose
-#   Tunables for Kubernetes-level resources applied after the cluster is Ready.
-#   Future manifests under k8s/ will be applied here via kubectl/Helm.
+#   Tunables for the cluster-level bootstrap applied once the cluster is Ready,
+#   common to both RKE2 and k3s: cluster-config (Cilium + PriorityClasses),
+#   optional Sealed Secrets (BYOK), cert-manager and Argo CD.
+#
+# Variables
+#   deploy_k8s_enabled            — master switch for the whole role.
+#   deploy_k8s_overlay            — k8s/ overlay name (defaults to inventory_hostname,
+#                                   e.g. broetec-core).
+#   deploy_k8s_remote_dir         — directory on the VM where k8s/ is synced.
+#   deploy_k8s_repo_root          — repo root on the controller (for offline sealing).
+#   sealed_secrets_enabled        — when true, generate a BYOK keypair locally,
+#                                   seal the plain Secrets offline, pre-apply the
+#                                   controller key and install the controller.
+#   *_chart_version / *_repo_*    — Helm pins for the bootstrap charts.
 #
 # Related commands
-#   make install-rke2, make up
+#   make deploy-k8s, make up (SEALED_SECRETS=true to enable Sealed Secrets)
 # =============================================================================
+
+deploy_k8s_enabled: true
+
+deploy_k8s_overlay: "{{ inventory_hostname }}"
+
+# k8s/ manifests are copied here on the VM (under the connecting user's home so
+# every kubectl/helm step runs without become).
+deploy_k8s_remote_dir: "manifests/k8s-blueprint"
+
+# Repo root on the controller, used by the offline sealing step (delegate_to localhost).
+deploy_k8s_repo_root: "{{ playbook_dir | dirname }}"
+
+# -----------------------------------------------------------------------------
+# Sealed Secrets (optional, BYOK) — default OFF.
+# -----------------------------------------------------------------------------
+sealed_secrets_enabled: false
+
+# Directory (relative to repo root) where the BYOK keypair is generated/kept.
+sealed_secrets_keydir: "env/{{ deploy_k8s_overlay }}"
+
+sealed_secrets_namespace: sealed-secrets
+sealed_secrets_chart_version: "2.18.3"
+sealed_secrets_repo_name: sealed-secrets
+sealed_secrets_repo_url: "https://bitnami-labs.github.io/sealed-secrets"
+
+# -----------------------------------------------------------------------------
+# cert-manager
+# -----------------------------------------------------------------------------
+cert_manager_namespace: cert-manager
+cert_manager_chart_version: "v1.19.3"
+cert_manager_repo_name: cert-manager
+cert_manager_repo_url: "https://charts.jetstack.io"
+
+# -----------------------------------------------------------------------------
+# Argo CD
+# -----------------------------------------------------------------------------
+argocd_namespace: argocd
+argocd_chart_version: "9.4.10"
+argocd_repo_name: argo
+argocd_repo_url: "https://argoproj.github.io/argo-helm"
