@@ -35,6 +35,16 @@ deploy_k8s_remote_dir: "manifests/k8s-blueprint"
 deploy_k8s_repo_root: "{{ playbook_dir | dirname }}"
 
 # -----------------------------------------------------------------------------
+# local-path-provisioner (rke2 only; k3s ships its own under kube-system).
+# Deployed after cluster-config and before Argo CD so PVCs (e.g. argocd-ha) have
+# a default StorageClass. The node storage directory is prepared by role 03.
+# -----------------------------------------------------------------------------
+deploy_k8s_local_path_overlay: "{{ deploy_k8s_overlay }}"
+
+# Pin chart version (e.g. "0.0.35"). Empty = latest available.
+deploy_k8s_local_path_chart_version: ""
+
+# -----------------------------------------------------------------------------
 # Sealed Secrets (optional, BYOK) — default OFF.
 # -----------------------------------------------------------------------------
 sealed_secrets_enabled: false

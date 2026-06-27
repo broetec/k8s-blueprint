@@ -7,9 +7,13 @@
 #   Bring the cluster to a usable baseline after install (role 03), mirroring
 #   provisioning/roles/04_deploy_k8s/README.md (manual reference §3):
 #     1. cluster-config (Cilium + PriorityClasses)   — kubectl apply -k
-#     2. Sealed Secrets (optional, BYOK)              — Helm + pre-applied key
-#     3. cert-manager (+ ClusterIssuers)              — Helm + kubectl
-#     4. Argo CD                                      — Helm
+#     2. local-path-provisioner (rke2 only)           — kubectl + Helm
+#     3. Sealed Secrets (optional, BYOK)              — Helm + pre-applied key
+#     4. cert-manager (+ ClusterIssuers)              — Helm + kubectl
+#     5. Argo CD                                      — Helm
+#
+#   local-path-provisioner runs only on rke2 (detected at runtime); k3s ships
+#   its own under kube-system. The node storage directory is prepared by role 03.
 #
 # Execution model
 #   Sealing runs on the controller (delegate_to: localhost) so the keypair and
@@ -40,6 +44,20 @@
     deploy_k8s_remote_path: "{{ getent_passwd[ansible_user][4] }}/{{ deploy_k8s_remote_dir }}"
   tags: [deploy_k8s]
 
+- name: "deploy_k8s | Detect active distribution (rke2-server.service)"
+  become: false
+  ansible.builtin.command:
+    cmd: systemctl is-active rke2-server.service
+  register: _deploy_k8s_rke2_active
+  changed_when: false
+  failed_when: false
+  tags: [deploy_k8s, local_path]
+
+- name: "deploy_k8s | Set distribution fact (is_rke2)"
+  ansible.builtin.set_fact:
+    deploy_k8s_is_rke2: "{{ _deploy_k8s_rke2_active.stdout | trim == 'active' }}"
+  tags: [deploy_k8s, local_path]
+
 - name: "deploy_k8s | Seal Secrets offline (BYOK, on controller)"
   when: sealed_secrets_enabled | bool
   ansible.builtin.import_tasks: seal.yml
@@ -52,6 +70,11 @@
 - name: "deploy_k8s | Cluster config (Cilium + PriorityClasses)"
   ansible.builtin.import_tasks: cluster_config.yml
   tags: [deploy_k8s, cluster_config]
+
+- name: "deploy_k8s | local-path-provisioner (rke2 only; k3s ships its own)"
+  when: deploy_k8s_is_rke2 | bool
+  ansible.builtin.import_tasks: local_path.yml
+  tags: [deploy_k8s, local_path]
 
 - name: "deploy_k8s | Sealed Secrets controller (BYOK)"
   when: sealed_secrets_enabled | bool

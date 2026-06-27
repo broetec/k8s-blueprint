@@ -1,0 +1,99 @@
+---
+# =============================================================================
+# tasks/main.yml — Role reset_k8s entrypoint (destructive, opt-in)
+# =============================================================================
+#
+# Purpose
+#   Remove ALL Kubernetes workloads except the cluster baseline, WITHOUT
+#   uninstalling the cluster. Instead of an allow-list of namespaces (which would
+#   rot as the project grows), the role deletes every namespace and Helm release
+#   that is NOT in reset_k8s_protected_namespaces. Preserved: the rke2/k3s
+#   service, the CNI core and everything else in the protected namespaces
+#   (kube-system, etc.) and the CRDs. After a reset, `make deploy-k8s`
+#   re-bootstraps the cluster from scratch.
+#
+# Teardown order (avoids finalizer/Terminating hangs)
+#   1. helm uninstall every release outside the protected namespaces (clean
+#      removal of release-owned cluster-scoped objects: ClusterRoles, webhooks).
+#   2. delete every namespace outside the protected list, with a timeout +
+#      finalizer-stripping fallback for namespaces stuck in Terminating.
+#
+# Distribution awareness
+#   None needed: the k3s built-in local-path (and coredns/metrics-server) live
+#   in kube-system, which is protected; the rke2 local-path-storage namespace is
+#   an application namespace and is removed like any other.
+#
+# Related commands
+#   make reset-k8s   (then: make deploy-k8s)
+# =============================================================================
+
+- name: "reset_k8s | Connectivity check"
+  become: false
+  ansible.builtin.ping:
+
+- name: "reset_k8s | Show protected namespaces"
+  ansible.builtin.debug:
+    msg: "Protected (never deleted): {{ reset_k8s_protected_namespaces | join(', ') }}"
+
+# ---------------------------------------------------------------------------
+# 1. helm uninstall — discover releases dynamically and skip protected ns.
+# ---------------------------------------------------------------------------
+- name: "reset_k8s | Discover Helm releases (all namespaces)"
+  become: false
+  ansible.builtin.command:
+    cmd: helm list --all-namespaces --output json
+  environment:
+    PATH: "{{ reset_k8s_kube_path }}"
+  register: _reset_helm_list
+  changed_when: false
+
+- name: "reset_k8s | Select releases outside protected namespaces"
+  ansible.builtin.set_fact:
+    _reset_helm_releases: >-
+      {{ (_reset_helm_list.stdout | from_json)
+         | rejectattr('namespace', 'in', reset_k8s_protected_namespaces)
+         | list }}
+
+- name: "reset_k8s | helm uninstall releases"
+  become: false
+  kubernetes.core.helm:
+    name: "{{ item.name }}"
+    release_namespace: "{{ item.namespace }}"
+    state: absent
+    wait: true
+  loop: "{{ _reset_helm_releases }}"
+  loop_control:
+    label: "{{ item.namespace }}/{{ item.name }}"
+  failed_when: false
+
+# ---------------------------------------------------------------------------
+# 2. Delete every namespace outside the protected list (resilient to hangs).
+# ---------------------------------------------------------------------------
+- name: "reset_k8s | Discover all namespaces"
+  become: false
+  ansible.builtin.command:
+    cmd: kubectl get namespaces -o jsonpath={.items[*].metadata.name}
+  environment:
+    PATH: "{{ reset_k8s_kube_path }}"
+  register: _reset_ns_all
+  changed_when: false
+
+- name: "reset_k8s | Compute namespaces to delete"
+  ansible.builtin.set_fact:
+    _reset_ns_to_delete: "{{ _reset_ns_all.stdout.split() | difference(reset_k8s_protected_namespaces) }}"
+
+- name: "reset_k8s | Namespaces to delete"
+  ansible.builtin.debug:
+    msg: "{{ _reset_ns_to_delete | sort | join(', ') if _reset_ns_to_delete else '(none)' }}"
+
+- name: "reset_k8s | Teardown namespaces (timeout + finalizer fallback)"
+  ansible.builtin.include_tasks: namespace_teardown.yml
+  loop: "{{ _reset_ns_to_delete }}"
+  loop_control:
+    loop_var: reset_k8s_ns
+
+- name: "reset_k8s | Done"
+  ansible.builtin.debug:
+    msg: >-
+      Reset complete. Cluster, CNI core (protected namespaces) and CRDs preserved.
+      Run `make deploy-k8s` to re-bootstrap.

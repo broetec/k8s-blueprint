@@ -1,0 +1,35 @@
+---
+# =============================================================================
+# defaults/main.yml — Role reset_k8s (teardown of k8s workloads)
+# =============================================================================
+#
+# Purpose
+#   Tunables for the destructive reset. The role deletes EVERY namespace and
+#   Helm release except the ones explicitly protected below, so the project can
+#   grow (more apps/namespaces via Argo CD) without maintaining an allow-list.
+#   It does NOT uninstall the cluster, the CNI core (kube-system) or the CRDs.
+#
+# Variables
+#   reset_k8s_protected_namespaces — namespaces NEVER deleted (cluster baseline).
+#                                    Helm releases living in these namespaces are
+#                                    also never uninstalled (e.g. rke2-managed
+#                                    Cilium in kube-system, k3s built-in
+#                                    local-path/coredns/metrics-server).
+#   reset_k8s_ns_delete_timeout    — per-namespace delete timeout before the
+#                                    finalizer-stripping fallback kicks in.
+#   reset_k8s_kube_path            — PATH used for kubectl/helm on the VM.
+# =============================================================================
+
+# Everything that is NOT in this list is removed by the reset.
+# Add cluster-baseline namespaces here (never application namespaces).
+reset_k8s_protected_namespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - default
+
+# Per-namespace delete timeout; after this the finalizer-stripping fallback runs.
+reset_k8s_ns_delete_timeout: "60s"
+
+# PATH so kubectl/helm resolve on the VM (rke2 ships them under /var/lib/rancher).
+reset_k8s_kube_path: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"

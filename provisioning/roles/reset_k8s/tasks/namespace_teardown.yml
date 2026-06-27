@@ -1,0 +1,37 @@
+---
+# =============================================================================
+# tasks/namespace_teardown.yml — Delete one namespace, resilient to finalizers
+# =============================================================================
+#
+# Included in a loop from main.yml (loop var: reset_k8s_ns). A plain
+# `kubectl delete namespace` can hang in Terminating when a resource keeps a
+# finalizer. We bound the delete with a timeout and, if it does not complete,
+# clear spec.finalizers through the /finalize subresource so the namespace is
+# removed without waiting on a stuck controller.
+# =============================================================================
+
+- name: "reset_k8s | Delete namespace {{ reset_k8s_ns }} (bounded)"
+  become: false
+  block:
+    - name: "reset_k8s | kubectl delete namespace {{ reset_k8s_ns }} (timeout {{ reset_k8s_ns_delete_timeout }})"
+      ansible.builtin.command:
+        cmd: >-
+          kubectl delete namespace {{ reset_k8s_ns }}
+          --ignore-not-found --timeout={{ reset_k8s_ns_delete_timeout }}
+      environment:
+        PATH: "{{ reset_k8s_kube_path }}"
+      changed_when: true
+  rescue:
+    - name: "reset_k8s | Namespace {{ reset_k8s_ns }} stuck — strip finalizers via /finalize"
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          kubectl get namespace {{ reset_k8s_ns }} -o json
+          | python3 -c "import sys, json; d = json.load(sys.stdin); d['spec']['finalizers'] = []; json.dump(d, sys.stdout)"
+          | kubectl replace --raw /api/v1/namespaces/{{ reset_k8s_ns }}/finalize -f -
+        executable: /bin/bash
+      environment:
+        PATH: "{{ reset_k8s_kube_path }}"
+      register: _reset_ns_finalize
+      changed_when: _reset_ns_finalize.rc == 0
+      failed_when: false

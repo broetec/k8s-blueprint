@@ -1,0 +1,62 @@
+---
+# =============================================================================
+# tasks/local_path.yml — Bootstrap deploy of local-path-provisioner (rke2 only)
+# =============================================================================
+#
+# Purpose
+#   Deploy local-path-provisioner so PVCs can be provisioned before Argo CD is
+#   bootstrapped. Runs only on rke2 (k3s ships its own local-path under
+#   kube-system); the caller gates this import with `when: deploy_k8s_is_rke2`.
+#
+#   1. Namespace local-path-storage with PSA privileged labels — applied via
+#      kubectl apply -k, reusing the namespace.yaml from
+#      k8s/local-path-provisioner/overlays/<overlay>.
+#   2. Helm chart rancher/local-path-provisioner — values from
+#      k8s/local-path-provisioner/base/values.yaml and the overlay values.yaml.
+#
+# Bootstrap note on priorityClassName
+#   base/values.yaml sets priorityClassName: "pc-0-infra-core" which is created
+#   by cluster-config (applied earlier in this role). The override to "" keeps
+#   parity with the original bootstrap and avoids ordering surprises if the
+#   PriorityClass is not yet reconciled; Argo CD restores the correct value once
+#   it takes ownership of the release.
+#
+# Variables
+#   deploy_k8s_local_path_overlay       — overlay directory name.
+#   deploy_k8s_local_path_chart_version — chart version to pin; empty = latest.
+#   deploy_k8s_remote_path              — synced k8s/ path on the VM (set in main.yml).
+#
+# Node prerequisite
+#   The host storage directory (mkdir + chmod 1777 + SELinux container_file_t)
+#   is prepared by role 03 (03_install_rke2/tasks/local_path.yml).
+# =============================================================================
+
+- name: "local-path | Apply namespace (PSA labels) via Kustomize"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply -k
+      {{ deploy_k8s_remote_path }}/local-path-provisioner/overlays/{{ deploy_k8s_local_path_overlay }}
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true
+
+- name: "local-path | Add Helm repo rancher-local-path-provisioner"
+  become: false
+  kubernetes.core.helm_repository:
+    name: rancher-local-path-provisioner
+    repo_url: https://charts.rancher.io/v2
+
+- name: "local-path | Deploy Helm chart"
+  become: false
+  kubernetes.core.helm:
+    name: local-path-provisioner
+    chart_ref: rancher-local-path-provisioner/local-path-provisioner
+    chart_version: "{{ deploy_k8s_local_path_chart_version | default(omit) }}"
+    release_namespace: local-path-storage
+    values_files:
+      - "{{ deploy_k8s_remote_path }}/local-path-provisioner/base/values.yaml"
+      - "{{ deploy_k8s_remote_path }}/local-path-provisioner/overlays/{{ deploy_k8s_local_path_overlay }}/values.yaml"
+    values:
+      priorityClassName: ""
+    wait: true

@@ -1,0 +1,20 @@
+---
+# Ansible role metadata (not executed as tasks).
+#
+# galaxy_info  — catalog fields for Ansible Galaxy / tooling.
+# dependencies — other roles Ansible runs before this one (empty here).
+#                Galaxy collections belong in provisioning/collections/requirements.yml.
+#
+galaxy_info:
+  author: Broetec
+  description: Reset (teardown) of role 04 k8s workloads without uninstalling the cluster.
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  galaxy_tags:
+    - kubernetes
+    - rke2
+    - k3s
+    - teardown
+    - reset
+
+dependencies: []

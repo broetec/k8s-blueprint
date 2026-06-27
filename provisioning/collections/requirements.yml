@@ -7,7 +7,8 @@
 # ansible.posix     — firewalld/sysctl on the KVM host (role 00_install_kvm / tasks/firewall/).
 # ansible.netcommon — libssh connection plugin for VM plays (inventory: ansible.netcommon.libssh).
 #                     Avoids forking the system ssh binary; helps with Cursor integrated terminal.
-# kubernetes.core   — helm / helm_repository modules used in role 03_install_rke2/tasks/local_path_deploy.yml.
+# kubernetes.core   — helm / helm_repository modules used in role 04_deploy_k8s (cert-manager,
+#                     argocd, sealed-secrets, local-path) and role reset_k8s (helm uninstall).
 #
 # Add a collection here when a role or connection plugin needs it, then re-run `make deps`.
 # See provisioning/collections/README.md.

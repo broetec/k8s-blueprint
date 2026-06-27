@@ -41,9 +41,16 @@ make install-rke2 OVERLAY=broetec-core
 |---|---|
 | `rke2_preflight` | NetworkManager (firewalld off and sysctl in role 02) |
 | `rke2_config` | `/etc/rancher/rke2/config.yaml` + Cilium HelmChartConfig |
+| `rke2_local_path` | node storage directory for local-path-provisioner (mkdir + chmod 1777 + SELinux) |
 | `rke2_install` | download script, enable `rke2-server`, wait Ready |
 | `rke2_fine_tuning` | systemd drop-in hardening + optional API health watchdog |
 | `rke2_user` | kubeconfig |
+
+> **local-path-provisioner:** this role only prepares the node directory
+> (`rke2_local_path_dir`, default `/opt/local-path-provisioner`). The cluster-level
+> deploy (namespace + Helm) lives in role 04 ([04_deploy_k8s](../04_deploy_k8s/README.md))
+> and runs only on rke2, so `make deploy-k8s` / `make reset-k8s` re-apply it. k3s
+> ships its own local-path under `kube-system`.
 
 ## Fine tuning
 

@@ -2,7 +2,7 @@
 # make/targets.mk — playbook pipeline (roles 00–04) and lab flows
 # =============================================================================
 
-.PHONY: setup-host create-vm prepare-vm install-rke2 install-k3s install-k8s deploy-k8s deploy up up-all
+.PHONY: setup-host create-vm prepare-vm install-rke2 install-k3s install-k8s deploy-k8s reset-k8s redeploy-k8s deploy up up-all
 
 setup-host: setup inventory-overlay deps ensure-user-known-hosts ## 1ª vez: controlador + host KVM (role 00)
 	@printf "$(B)==> [00] setup-host (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
@@ -31,6 +31,12 @@ install-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar
 deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — bootstrap k8s (cluster-config, cert-manager, argocd; SEALED_SECRETS=true p/ sealed-secrets)
 	@printf "$(Y)==> [04] deploy-k8s (OVERLAY=$(OVERLAY), SEALED_SECRETS=$(SEALED_SECRETS))$(N)\n"
 	$(call run-playbook,deploy_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e sealed_secrets_enabled=$(SEALED_SECRETS) $(EXTRA))
+
+reset-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04⁻¹ — destruir todos os namespaces/releases (exceto os protegidos) SEM desinstalar o cluster
+	@printf "$(R)==> [reset] reset-k8s (OVERLAY=$(OVERLAY)) — apaga tudo exceto namespaces protegidos$(N)\n"
+	$(call run-playbook,reset_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))
+
+redeploy-k8s: reset-k8s deploy-k8s ## reset-k8s + deploy-k8s — reaplicar a etapa 04 do zero
 
 deploy: install-k8s deploy-k8s ## 03 + 04 — instalar k8s + deploy manifests (usa K8S_DISTRIBUTION)
 

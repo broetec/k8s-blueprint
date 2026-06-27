@@ -19,15 +19,17 @@
 #   5. fine_tuning.yml      — (opt-in) systemd drop-in hardening + optional API
 #                             health watchdog (see role README).
 #   6. user_access.yml      — copy kubeconfig to ~/.kube/config.
-#   7. local_path_deploy.yml — (opt-in) namespace PSA + Helm chart deploy of
-#                             local-path-provisioner (requires cluster Ready).
+#
+#   The cluster-level local-path-provisioner deploy (namespace + Helm) lives in
+#   role 04 (04_deploy_k8s/tasks/local_path.yml) so it is re-applied by
+#   make deploy-k8s. Role 03 only prepares the node directory (step 3).
 #
 # Variables
 #   rke2_version, rke2_channel, rke2_node_ip, rke2_tls_san, rke2_cni,
 #   rke2_disable, rke2_cilium_version, rke2_kubeconfig_user,
 #   rke2_fine_tuning_enabled, rke2_systemd_hardening, rke2_healthcheck_enabled,
-#   rke2_local_path_dir, rke2_local_path_deploy, rke2_local_path_overlay,
-#   rke2_local_path_chart_version (all in defaults/main.yml).
+#   rke2_local_path_dir (defaults/main.yml; node directory only — the
+#   cluster-level deploy moved to role 04).
 #
 # Tags
 #   rke2_preflight, rke2_config, rke2_install, rke2_fine_tuning, rke2_user,
@@ -70,8 +72,7 @@
   ansible.builtin.import_tasks: user_access.yml
   tags: [rke2_user]
 
-- name: "RKE2 | Deploy local-path-provisioner (namespace + Helm)"
-  become: false
-  when: rke2_local_path_deploy | bool
-  ansible.builtin.import_tasks: local_path_deploy.yml
-  tags: [rke2_local_path]
+# NOTE: the cluster-level deploy of local-path-provisioner (namespace + Helm)
+# moved to role 04 (04_deploy_k8s/tasks/local_path.yml), so it is re-applied by
+# `make deploy-k8s` / `make reset-k8s` + re-deploy. Role 03 only prepares the
+# node storage directory above (tasks/local_path.yml).

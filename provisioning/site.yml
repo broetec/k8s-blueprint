@@ -111,3 +111,19 @@
     - k8s
   roles:
     - role: 04_deploy_k8s
+
+# -----------------------------------------------------------------------------
+# Utility play (opt-in, never runs unless explicitly tagged): reset_k8s.
+# Removes role 04 workloads (+ rke2 local-path) without uninstalling the cluster.
+# The `never` tag keeps it out of make up / make deploy-k8s / --tags k8s.
+#   make reset-k8s   ->   ansible-playbook ... --tags reset_k8s
+# -----------------------------------------------------------------------------
+- name: "[reset] Teardown k8s workloads (role 04 + local-path)"
+  hosts: vms
+  become: true
+  gather_facts: false
+  tags:
+    - reset_k8s
+    - never
+  roles:
+    - role: reset_k8s

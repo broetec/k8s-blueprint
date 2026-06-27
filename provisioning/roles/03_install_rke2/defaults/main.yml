@@ -160,17 +160,12 @@ rke2_healthcheck_wait_api_seconds: 600
 # Node directory created before RKE2 starts (mkdir + chmod 1777 + SELinux
 # container_file_t).  Must match nodePathMap.paths[0] in
 # k8s/local-path-provisioner/base/values.yaml.  Empty = skip OS prep.
-rke2_local_path_dir: ""
+# Defaults to /opt/local-path-provisioner so the node is always ready for the
+# cluster-level deploy done by role 04 (04_deploy_k8s/tasks/local_path.yml).
+rke2_local_path_dir: "/opt/local-path-provisioner"
 
-# Deploy local-path-provisioner via Helm after cluster is Ready.
-# Applies k8s/local-path-provisioner/overlays/<rke2_local_path_overlay>
-# (namespace + PSA labels) and installs the Helm chart.
-# Set true together with rke2_local_path_dir.  false = skip.
-rke2_local_path_deploy: false
-
-# Overlay directory under k8s/local-path-provisioner/overlays/.
-# Defaults to inventory_hostname (e.g. broetec-core).
-rke2_local_path_overlay: "{{ inventory_hostname }}"
-
-# Pin chart version (e.g. "0.0.35").  Empty = latest available.
-rke2_local_path_chart_version: ""
+# NOTE: the cluster-level deploy (namespace + Helm) moved to role 04
+# (04_deploy_k8s/tasks/local_path.yml), gated on runtime rke2 detection. The
+# former rke2_local_path_deploy / rke2_local_path_overlay /
+# rke2_local_path_chart_version variables are no longer used by this role; see
+# deploy_k8s_local_path_* in 04_deploy_k8s/defaults/main.yml.

@@ -23,6 +23,8 @@ flowchart TB
 | Make target | What it runs |
 |-------------|--------------|
 | `make deploy-k8s` | Role **04** only |
+| `make reset-k8s` | Teardown: deletes all namespaces/Helm releases except the protected baseline, without uninstalling the cluster (role [`reset_k8s`](../reset_k8s/README.md)) |
+| `make redeploy-k8s` | `reset-k8s` + `deploy-k8s` (re-apply step 04 from scratch) |
 | `make deploy` | Roles **03–04** (refresh k8s without recreating the VM) |
 | `make up` | Roles **01–04** (full pipeline) |
 
@@ -45,6 +47,7 @@ follow remain as a manual reference.
 | **Seal (offline)** | [`seal.yml`](tasks/seal.yml) | When `sealed_secrets_enabled`: generate/reuse BYOK keypair (`k8s-blueprint-seal genkey`) in `env/<overlay>/` and seal `*-secret.yaml` into `*-sealedsecret.yaml` on the controller (no `kubeseal`) | `deploy_k8s`, `sealed_secrets` |
 | **Sync** | [`sync.yml`](tasks/sync.yml) | Copy `k8s/` to the VM (`~/<deploy_k8s_remote_dir>`); verify `helm`/`kubectl` exist (installed by role 02 `k8s_tools.yml`) | `deploy_k8s` |
 | **Cluster config** | [`cluster_config.yml`](tasks/cluster_config.yml) | `kubectl apply --server-side -k cluster-config/overlays/<overlay>` (Cilium + PriorityClasses) | `deploy_k8s`, `cluster_config` |
+| **local-path** (rke2 only) | [`local_path.yml`](tasks/local_path.yml) | namespace (PSA) + Helm `rancher/local-path-provisioner`; runs only when rke2 is detected at runtime (k3s ships its own). Node directory prepared by role 03 | `deploy_k8s`, `local_path` |
 | **Sealed Secrets** | [`sealed_secrets.yml`](tasks/sealed_secrets.yml) | Pre-apply BYOK key (label `sealedsecrets.bitnami.com/sealed-secrets-key=active`) **before** controller `helm install`, which then adopts it | `deploy_k8s`, `sealed_secrets` |
 | **cert-manager** | [`cert_manager.yml`](tasks/cert_manager.yml) | Helm + ClusterIssuers (self-signed always; DNS-01 Cloudflare when token present) | `deploy_k8s`, `cert_manager` |
 | **Argo CD** | [`argocd.yml`](tasks/argocd.yml) | Helm; admin password via Helm values (default) or SealedSecret | `deploy_k8s`, `argocd` |
@@ -154,6 +157,7 @@ kubectl apply -k k8s/argocd/overlays/<environment_overlay>
 |---|---|
 | `deploy_k8s` | All task imports in this role |
 | `cluster_config` | Cilium + PriorityClasses only |
+| `local_path` | local-path-provisioner (rke2 only) |
 | `sealed_secrets` | Offline sealing + controller install |
 | `cert_manager` | cert-manager Helm + ClusterIssuers |
 | `argocd` | Argo CD Helm + overlay manifests |
