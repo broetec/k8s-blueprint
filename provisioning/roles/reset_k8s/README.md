@@ -25,6 +25,8 @@ Depois do reset, `make deploy-k8s` volta a fazer o bootstrap do cluster do zero.
 
 - `kube-system` — CNI core (Cilium no rke2; flannel no k3s), CoreDNS,
   metrics-server e o **local-path embutido do k3s**.
+- `cilium` — configuração de cluster do Cilium (Gateway API, GatewayClass,
+  LB pool, L2 policy) aplicada por `cluster-config`; não é namespace de app.
 - `kube-public`, `kube-node-lease`, `default`.
 
 Também preservados: o serviço `rke2-server` / `k3s` (o cluster continua a correr)
@@ -53,7 +55,7 @@ pelo subrecurso `/finalize`
 
 | Variável | Default | Descrição |
 |---|---|---|
-| `reset_k8s_protected_namespaces` | kube-system, kube-public, kube-node-lease, default | Namespaces nunca apagados |
+| `reset_k8s_protected_namespaces` | kube-system, kube-public, kube-node-lease, default, cilium | Namespaces nunca apagados |
 | `reset_k8s_ns_delete_timeout` | `60s` | Timeout antes do fallback de finalizers |
 | `reset_k8s_kube_path` | `/var/lib/rancher/rke2/bin:...` | PATH para kubectl/helm na VM |
 

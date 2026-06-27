@@ -11,10 +11,10 @@
 #
 # Variables
 #   reset_k8s_protected_namespaces — namespaces NEVER deleted (cluster baseline).
-#                                    Helm releases living in these namespaces are
-#                                    also never uninstalled (e.g. rke2-managed
-#                                    Cilium in kube-system, k3s built-in
-#                                    local-path/coredns/metrics-server).
+#                                    Includes kube-system (CNI pods) and cilium
+#                                    (Gateway API / LB pool cluster config from
+#                                    role 04 cluster-config). Helm releases in
+#                                    these namespaces are also never uninstalled.
 #   reset_k8s_ns_delete_timeout    — per-namespace delete timeout before the
 #                                    finalizer-stripping fallback kicks in.
 #   reset_k8s_kube_path            — PATH used for kubectl/helm on the VM.
@@ -27,6 +27,7 @@ reset_k8s_protected_namespaces:
   - kube-public
   - kube-node-lease
   - default
+  - cilium
 
 # Per-namespace delete timeout; after this the finalizer-stripping fallback runs.
 reset_k8s_ns_delete_timeout: "60s"

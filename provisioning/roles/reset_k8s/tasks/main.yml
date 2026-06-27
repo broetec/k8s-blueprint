@@ -8,9 +8,8 @@
 #   uninstalling the cluster. Instead of an allow-list of namespaces (which would
 #   rot as the project grows), the role deletes every namespace and Helm release
 #   that is NOT in reset_k8s_protected_namespaces. Preserved: the rke2/k3s
-#   service, the CNI core and everything else in the protected namespaces
-#   (kube-system, etc.) and the CRDs. After a reset, `make deploy-k8s`
-#   re-bootstraps the cluster from scratch.
+#   service, the CNI core (kube-system + cilium namespace config) and the CRDs.
+#   After a reset, `make deploy-k8s` re-bootstraps the cluster from scratch.
 #
 # Teardown order (avoids finalizer/Terminating hangs)
 #   1. helm uninstall every release outside the protected namespaces (clean
