@@ -11,7 +11,7 @@
 #   1. Namespace local-path-storage with PSA privileged labels — applied via
 #      kubectl apply -k, reusing the namespace.yaml from
 #      k8s/local-path-provisioner/overlays/<overlay>.
-#   2. Helm chart rancher/local-path-provisioner — values from
+#   2. Helm chart (OCI) ghcr.io/rancher/local-path-provisioner — values from
 #      k8s/local-path-provisioner/base/values.yaml and the overlay values.yaml.
 #
 # Bootstrap note on priorityClassName
@@ -41,17 +41,11 @@
     PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
   changed_when: true
 
-- name: "local-path | Add Helm repo rancher-local-path-provisioner"
-  become: false
-  kubernetes.core.helm_repository:
-    name: rancher-local-path-provisioner
-    repo_url: https://charts.rancher.io/v2
-
-- name: "local-path | Deploy Helm chart"
+- name: "local-path | Deploy Helm chart (OCI)"
   become: false
   kubernetes.core.helm:
     name: local-path-provisioner
-    chart_ref: rancher-local-path-provisioner/local-path-provisioner
+    chart_ref: "{{ deploy_k8s_local_path_chart_ref }}"
     chart_version: "{{ deploy_k8s_local_path_chart_version | default(omit) }}"
     release_namespace: local-path-storage
     values_files:

@@ -7,7 +7,6 @@ sortOptions:
   order: fifo
 
 resources:
-  - https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
   - namespace.yaml
   - gatewayclass.yaml
   - gateway-public.yaml

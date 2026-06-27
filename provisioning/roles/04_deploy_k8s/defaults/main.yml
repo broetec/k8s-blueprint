@@ -41,8 +41,14 @@ deploy_k8s_repo_root: "{{ playbook_dir | dirname }}"
 # -----------------------------------------------------------------------------
 deploy_k8s_local_path_overlay: "{{ deploy_k8s_overlay }}"
 
+# Official chart is published as OCI (charts.rancher.io is deprecated/unavailable).
+deploy_k8s_local_path_chart_ref: "oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner"
+
 # Pin chart version (e.g. "0.0.35"). Empty = latest available.
-deploy_k8s_local_path_chart_version: ""
+deploy_k8s_local_path_chart_version: "0.0.35"
+
+# Gateway API CRDs must be Established before Gateway/GatewayClass resources.
+deploy_k8s_gateway_api_crd_wait_seconds: 120
 
 # -----------------------------------------------------------------------------
 # Sealed Secrets (optional, BYOK) — default OFF.

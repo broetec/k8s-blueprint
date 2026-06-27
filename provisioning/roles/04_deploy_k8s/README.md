@@ -46,8 +46,8 @@ follow remain as a manual reference.
 |------|-------|--------------|-----|
 | **Seal (offline)** | [`seal.yml`](tasks/seal.yml) | When `sealed_secrets_enabled`: generate/reuse BYOK keypair (`k8s-blueprint-seal genkey`) in `env/<overlay>/` and seal `*-secret.yaml` into `*-sealedsecret.yaml` on the controller (no `kubeseal`) | `deploy_k8s`, `sealed_secrets` |
 | **Sync** | [`sync.yml`](tasks/sync.yml) | Copy `k8s/` to the VM (`~/<deploy_k8s_remote_dir>`); verify `helm`/`kubectl` exist (installed by role 02 `k8s_tools.yml`) | `deploy_k8s` |
-| **Cluster config** | [`cluster_config.yml`](tasks/cluster_config.yml) | `kubectl apply --server-side -k cluster-config/overlays/<overlay>` (Cilium + PriorityClasses) | `deploy_k8s`, `cluster_config` |
-| **local-path** (rke2 only) | [`local_path.yml`](tasks/local_path.yml) | namespace (PSA) + Helm `rancher/local-path-provisioner`; runs only when rke2 is detected at runtime (k3s ships its own). Node directory prepared by role 03 | `deploy_k8s`, `local_path` |
+| **Cluster config** | [`cluster_config.yml`](tasks/cluster_config.yml) | Gateway API CRDs (server-side) → wait Established → `kubectl apply --server-side -k cluster-config/overlays/<overlay>` (Cilium + PriorityClasses) | `deploy_k8s`, `cluster_config` |
+| **local-path** (rke2 only) | [`local_path.yml`](tasks/local_path.yml) | namespace (PSA) + Helm OCI `ghcr.io/rancher/local-path-provisioner`; runs only when rke2 is detected at runtime (k3s ships its own). Node directory prepared by role 03 | `deploy_k8s`, `local_path` |
 | **Sealed Secrets** | [`sealed_secrets.yml`](tasks/sealed_secrets.yml) | Pre-apply BYOK key (label `sealedsecrets.bitnami.com/sealed-secrets-key=active`) **before** controller `helm install`, which then adopts it | `deploy_k8s`, `sealed_secrets` |
 | **cert-manager** | [`cert_manager.yml`](tasks/cert_manager.yml) | Helm + ClusterIssuers (self-signed always; DNS-01 Cloudflare when token present) | `deploy_k8s`, `cert_manager` |
 | **Argo CD** | [`argocd.yml`](tasks/argocd.yml) | Helm; admin password via Helm values (default) or SealedSecret | `deploy_k8s`, `argocd` |
@@ -94,7 +94,13 @@ Replace `<environment_overlay>` with your overlay (e.g. `broetec-core`).
 
 ### 3.0 Apply base Cilium config (PriorityClasses + Cilium)
 
+Gateway API CRDs must be Established before Gateway/GatewayClass resources:
+
 ```bash
+kubectl apply --server-side -k k8s/cluster-config/gateway-api
+for crd in $(kubectl get crd -o name | grep 'gateway\.networking\.k8s\.io'); do
+  kubectl wait --for=condition=Established "$crd" --timeout=120s
+done
 kubectl apply --server-side -k k8s/cluster-config/overlays/<environment_overlay>
 ```
 

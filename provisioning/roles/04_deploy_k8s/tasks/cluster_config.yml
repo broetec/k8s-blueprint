@@ -8,10 +8,41 @@
 #   L2 policy and the PriorityClasses consumed by the rest of the stack.
 #   Server-side apply is required for the large Gateway API CRDs.
 #
+#   Gateway API CRDs must be Established before Gateway/GatewayClass resources;
+#   a single kubectl apply -k on the full overlay races and fails on first run.
+#
 # Scope
 #   become: false — runs kubectl as the connecting user (kubeconfig at
 #   ~/.kube/config). The overlay is the synced copy on the VM.
 # =============================================================================
+
+- name: "cluster_config | Apply Gateway API CRDs (server-side)"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply --server-side -k
+      {{ deploy_k8s_remote_path }}/cluster-config/gateway-api
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true
+
+- name: "cluster_config | Wait for Gateway API CRDs to be Established"
+  become: false
+  ansible.builtin.shell: |
+    set -euo pipefail
+    crds=$(kubectl get crd -o name | grep 'gateway\.networking\.k8s\.io' || true)
+    if [ -z "$crds" ]; then
+      echo "No Gateway API CRDs found" >&2
+      exit 1
+    fi
+    for crd in $crds; do
+      kubectl wait --for=condition=Established "$crd" --timeout={{ deploy_k8s_gateway_api_crd_wait_seconds }}s
+    done
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: false
 
 - name: "cluster_config | Apply Cilium + PriorityClasses overlay (server-side)"
   become: false

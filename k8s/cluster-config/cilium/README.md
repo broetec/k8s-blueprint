@@ -46,10 +46,10 @@ spec:
 > pode derrubar conexões SSH ativas. Faça sempre em janela de manutenção e, se
 > possível, com acesso de console (out‑of‑band) ao nó.
 
-- CRDs do Gateway API instalados:
+- CRDs do Gateway API instalados (antes do overlay Cilium):
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+kubectl apply --server-side -k k8s/cluster-config/gateway-api
 ```
 
 ### 2. Estrutura dos arquivos

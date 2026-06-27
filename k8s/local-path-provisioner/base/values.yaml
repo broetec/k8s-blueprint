@@ -1,4 +1,4 @@
-# Chart Helm public: https://github.com/rancher/local-path-provisioner (path deploy/chart/local-path-provisioner)
+# Chart OCI: oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner
 # Reference values: https://github.com/rancher/local-path-provisioner/blob/v0.0.35/deploy/chart/local-path-provisioner/values.yaml
 
 replicaCount: 1
