@@ -49,16 +49,27 @@
   delegate_to: localhost
   run_once: true
   become: false
+  vars:
+    _seal_out: "{{ item.path | replace('-secret.yaml', '-sealedsecret.yaml') }}"
   ansible.builtin.command:
-    cmd: >-
-      uv run --directory {{ deploy_k8s_repo_root | quote }}
-      k8s-blueprint-seal seal
-      --cert {{ deploy_k8s_repo_root }}/{{ sealed_secrets_keydir }}/sealed-secrets-pub.pem
-      --in {{ item.path | quote }}
-      --out {{ item.path | regex_replace('-secret\\.yaml$', '-sealedsecret.yaml') | quote }}
+    argv:
+      - uv
+      - run
+      - --directory
+      - "{{ deploy_k8s_repo_root }}"
+      - k8s-blueprint-seal
+      - seal
+      - --cert
+      - "{{ deploy_k8s_repo_root }}/{{ sealed_secrets_keydir }}/sealed-secrets-pub.pem"
+      - --in
+      - "{{ item.path }}"
+      - --out
+      - "{{ _seal_out }}"
   loop: "{{ _seal_plain_secrets.files }}"
   loop_control:
     label: "{{ item.path }}"
-  when: "'/overlays/' + deploy_k8s_overlay + '/' in item.path"
+  when:
+    - "'/overlays/' + deploy_k8s_overlay + '/' in item.path"
+    - "'kind: SealedSecret' not in lookup('file', item.path)"
   register: _seal_run
   changed_when: "'Written:' in _seal_run.stdout"

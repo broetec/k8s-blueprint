@@ -110,7 +110,7 @@ Manual bootstrap; after Argo CD deploy (step 3.3), the `sealed-secrets`
 Application takes over the release (sync/upgrades).
 
 ```bash
-helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+helm repo add sealed-secrets https://bitnami.github.io/sealed-secrets
 helm repo update
 helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace sealed-secrets \
@@ -183,6 +183,6 @@ kubectl rollout restart deployment -n kube-system cilium-operator
 ## Reference
 
 - [k8s/ manifests](../../../k8s/README.md)
-- [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets)
+- [Sealed Secrets](https://github.com/bitnami/sealed-secrets)
 - [cert-manager](https://cert-manager.io/docs/)
 - [Argo CD](https://argo-cd.readthedocs.io/)

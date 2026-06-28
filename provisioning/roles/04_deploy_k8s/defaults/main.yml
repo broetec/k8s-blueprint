@@ -61,7 +61,7 @@ sealed_secrets_keydir: "env/{{ deploy_k8s_overlay }}"
 sealed_secrets_namespace: sealed-secrets
 sealed_secrets_chart_version: "2.18.3"
 sealed_secrets_repo_name: sealed-secrets
-sealed_secrets_repo_url: "https://bitnami-labs.github.io/sealed-secrets"
+sealed_secrets_repo_url: "https://bitnami.github.io/sealed-secrets"
 
 # -----------------------------------------------------------------------------
 # cert-manager

@@ -155,7 +155,7 @@ The `kubeseal` command-line tool is used to create `SealedSecret` resources from
 
 - **Linux (amd64):**
   ```bash
-  wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v<VERSION>/kubeseal-<VERSION>-linux-amd64.tar.gz
+  wget https://github.com/bitnami/sealed-secrets/releases/download/v<VERSION>/kubeseal-<VERSION>-linux-amd64.tar.gz
   tar -xvzf kubeseal-<VERSION>-linux-amd64.tar.gz kubeseal
   sudo install -m 755 kubeseal /usr/local/bin/kubeseal
   ```
