@@ -1,8 +1,8 @@
 # k8s-blueprint
 
 Laboratório de estudo para aprender **Ansible**, **KVM/libvirt** e
-**Kubernetes** com um fluxo simples: `make up` provisiona a VM, prepara o SO e
-corre as etapas k8s (stubs 03/04 até implementação completa).
+**Kubernetes** com um fluxo simples: `make up` provisiona a VM, prepara o SO,
+instala o RKE2 e faz o bootstrap do cluster (Cilium, cert-manager, Argo CD).
 
 Dependências Python (Ansible, pylibssh) via [uv](https://docs.astral.sh/uv/)
 num `.venv` local.
@@ -36,8 +36,8 @@ Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` pa
 | 00 | `00_install_kvm` | `make setup-host` (uma vez) |
 | 01 | `01_create_vm` | `make create-vm` |
 | 02 | `02_prepare_vm` | `make prepare-vm` |
-| 03 | `03_install_rke2` | `make install-rke2` (stub) |
-| 04 | `04_deploy_k8s` | `make deploy-k8s` (stub) |
+| 03 | `03_install_rke2` | `make install-rke2` (ou `make install-k3s`) |
+| 04 | `04_deploy_k8s` | `make deploy-k8s` |
 
 `make up` = 01 + 02 + 03 + 04 (default overlay `broetec-core`).
 
@@ -50,7 +50,7 @@ Defaults locais: `cp env/.env.example env/.env` · `KVM_HOST_BOOTSTRAP=false` pa
 | [`provisioning/`](provisioning/) | Ansible: playbook, inventário, roles, `ansible.cfg` |
 | [`lab/`](lab/) | Discos e cache qcow2 gerados pelo `make up` (gitignored) |
 | [`env/`](env/) | Chave SSH, `.env` do Make e credenciais locais |
-| [`k8s/`](k8s/) | Manifests Kubernetes (futuro) |
+| [`k8s/`](k8s/) | Manifests Kubernetes (values Helm + kustomize) |
 | [`docs/`](docs/) | Documentação completa do projeto |
 | [`tests/`](tests/) | Testes do app Python |
 

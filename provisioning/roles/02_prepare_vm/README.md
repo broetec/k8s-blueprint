@@ -77,6 +77,7 @@ Play [`site.yml`](../../site.yml) runs this role with **`become: true`** on `hos
 | `prepare_vm_selinux_mode` | `enforcing` | Value written to `/etc/selinux/config`; runtime `setenforce 1` when enforcing |
 | `prepare_vm_dnf_max_parallel_downloads` | `10` | Written to `/etc/dnf/dnf.conf` |
 | `prepare_vm_dnf_update` | `true` | Run `dnf update` before other package installs |
+| `prepare_vm_dnf_update_force` | `false` | Run `dnf update` + reboot even on clones of the [golden image](../golden_image/README.md) (skipped there by default) |
 | `prepare_vm_reboot_after_update` | `true` | Reboot when `needs-restarting -r` reports kernel/lib updates |
 | `prepare_vm_epel` | `true` | Install `epel-release` (required for `htop` on Rocky 10) |
 | `prepare_vm_packages` | `[htop]` | Auxiliary RPMs for VM day-to-day use; empty list skips install |

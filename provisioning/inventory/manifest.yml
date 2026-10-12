@@ -55,3 +55,12 @@ overlays:
     vms:
       - name: broetec-monitor
         ip: 10.20.30.60
+
+  # Temporary builder VM for `make golden` (role golden_image). Not a lab node:
+  # it is prepared by role 02, sealed, exported to lab/cache/ and destroyed.
+  golden:
+    label: Golden image builder (make golden)
+    role: golden
+    vms:
+      - name: golden-builder
+        ip: 10.20.30.250

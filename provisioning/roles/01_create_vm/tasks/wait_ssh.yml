@@ -4,7 +4,8 @@
 # =============================================================================
 #
 # Purpose
-#   Poll port 22 on each VM IP until cloud-init has finished and sshd is up.
+#   Poll port 22 on each VM IP until sshd answers with its banner (an open
+#   port alone is not enough). Role 02 waits for cloud-init itself.
 #
 # Variables
 #   hostvars[item].vm_ip, create_vm_ssh_wait_delay, create_vm_ssh_wait_timeout.
@@ -13,11 +14,12 @@
 #   make create-vm, make up
 # =============================================================================
 
-- name: Wait for SSH on each VM (cloud-init complete)
+- name: Wait for the SSH banner on each VM
   ansible.builtin.wait_for:
     host: "{{ hostvars[item].vm_ip }}"
     port: 22
     state: started
+    search_regex: OpenSSH
     delay: "{{ create_vm_ssh_wait_delay }}"
     timeout: "{{ create_vm_ssh_wait_timeout }}"
   loop: "{{ groups['vms'] }}"

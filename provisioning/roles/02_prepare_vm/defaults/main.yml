@@ -26,6 +26,8 @@ prepare_vm_selinux_mode: enforcing
 # DNF bootstrap (tasks/dnf.yml) — runs before swap/iptables and other package installs.
 prepare_vm_dnf_max_parallel_downloads: 10
 prepare_vm_dnf_update: true
+# true = run dnf update even on clones of the golden image (make golden).
+prepare_vm_dnf_update_force: false
 prepare_vm_reboot_after_update: true
 prepare_vm_epel: true
 

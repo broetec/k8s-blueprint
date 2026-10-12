@@ -22,5 +22,5 @@
 #   make create-vm, make up
 # =============================================================================
 
-create_vm_ssh_wait_delay: 15
+create_vm_ssh_wait_delay: 2
 create_vm_ssh_wait_timeout: 600

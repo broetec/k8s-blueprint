@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# tasks/export.yml — Export the sealed builder disk as the golden image (host)
+# =============================================================================
+#
+# Purpose
+#   After tasks/seal.yml powers the builder off, flatten its disk (a linked
+#   clone of the Rocky cloud image) into a standalone qcow2 in the image cache.
+#
+# Pipeline
+#   1. Wait for every builder domain to be shut off.
+#   2. Refuse when an existing VM disk uses the current golden as backing file
+#      (replacing a backing file corrupts its clones).
+#   3. qemu-img convert → <golden>.tmp, then atomic rename.
+#
+# Variables
+#   groups['vms'] (builder), libvirt_pool.path, os_image.cache_dir,
+#   golden_image.filename, golden_image_shutdown_*.
+#
+# Related commands
+#   make golden
+# =============================================================================
+
+- name: "golden | Wait for the builder VM to shut off"
+  ansible.builtin.command: "virsh -c qemu:///system domstate {{ item }}"
+  register: golden_builder_state
+  loop: "{{ groups['vms'] }}"
+  loop_control:
+    label: "{{ item }}"
+  retries: "{{ golden_image_shutdown_retries }}"
+  delay: "{{ golden_image_shutdown_delay }}"
+  until: "'shut off' in golden_builder_state.stdout"
+  changed_when: false
+
+- name: "golden | Find VM disks that use the current golden as backing file"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    golden="{{ os_image.cache_dir }}/{{ golden_image.filename }}"
+    for disk in "{{ libvirt_pool.path }}"/*.qcow2; do
+      [ -e "$disk" ] || continue
+      if qemu-img info -U "$disk" | grep -Fq "backing file: ${golden}"; then
+        echo "$disk"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  register: golden_clones
+  changed_when: false
+
+- name: "golden | Refuse to replace a golden image that still has clones"
+  ansible.builtin.fail:
+    msg: |-
+      These VM disks use {{ golden_image.filename }} as backing file:
+      {{ golden_clones.stdout }}
+      Replacing it would corrupt them. Destroy those VMs first (make destroy).
+  when: golden_clones.stdout | trim | length > 0
+
+- name: "golden | Flatten builder disk into the image cache"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    src="{{ libvirt_pool.path }}/{{ groups['vms'] | first }}.qcow2"
+    dst="{{ os_image.cache_dir }}/{{ golden_image.filename }}"
+    rm -f "${dst}.tmp"
+    qemu-img convert -O qcow2 "$src" "${dst}.tmp"
+    mv -f "${dst}.tmp" "$dst"
+    qemu-img info "$dst"
+  args:
+    executable: /bin/bash
+  register: golden_export
+  changed_when: true
+
+- name: "golden | Exported image"
+  ansible.builtin.debug:
+    msg: "{{ golden_export.stdout_lines }}"

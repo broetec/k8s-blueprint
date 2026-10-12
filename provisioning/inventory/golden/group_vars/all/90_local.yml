@@ -1,0 +1,8 @@
+---
+# golden local overrides — editable, not overwritten by make inventory.
+
+# Builder VM for `make golden` (role golden_image). Its virtual disk size is the
+# minimum disk size of every VM cloned from the golden image, so keep it small;
+# clones grow to their own vm_disk_size_gb on first boot (cloud-init growpart).
+vm_disk_size_gb: 20
+vm_memory_mb: 4096

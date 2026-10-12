@@ -96,6 +96,18 @@ os_image:
   cache_dir: "{{ lab_cache_dir | default(_repo_root ~ '/lab/cache', true) }}"
 
 # -----------------------------------------------------------------------------
+# Golden image — prepared-OS base built by `make golden` (role golden_image)
+# -----------------------------------------------------------------------------
+# When <cache_dir>/<filename> exists and use_golden is true, role 01_create_vm
+# uses it as backing file for new VM disks instead of the raw Rocky image, and
+# role 02_prepare_vm skips dnf update + reboot when it finds the marker.
+# Via Make: USE_GOLDEN=false forces the raw Rocky image.
+golden_image:
+  filename: golden-rocky10.qcow2
+  marker: /etc/k8s-blueprint-golden
+use_golden: true
+
+# -----------------------------------------------------------------------------
 # Lab SSH key (explicit name: k8s-blueprint in env/)
 # -----------------------------------------------------------------------------
 # Files at <repo>/env/k8s-blueprint and .pub, created by make keys / make up.

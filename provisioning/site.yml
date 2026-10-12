@@ -16,6 +16,8 @@
 #   5/5  | vms       | 04_deploy_k8s   | deploy_k8s, k8s     | make deploy-k8s, make up
 #
 #   make up runs plays 2–5 (not play 1). make deploy = install-k8s (K8S_DISTRIBUTION) + deploy-k8s.
+#   Opt-in utility plays (tag `never`): reset_k8s (make reset-k8s) and
+#   golden_seal / golden_export (make golden).
 #
 # Pre-task (play 3 only)
 #   ssh-keygen -R on localhost when ansible_prune_ssh_known_hosts=true.
@@ -27,7 +29,7 @@
 # Tags
 #   bootstrap — host package install (role 00); skip with --skip-tags bootstrap or
 #               KVM_HOST_BOOTSTRAP=false in env/.env.
-#   k8s       — plays 4–5 (stubs today).
+#   k8s       — plays 4–5.
 #
 # Examples
 #   make setup-host OVERLAY=broetec-core
@@ -102,7 +104,7 @@
         name: 03_install_k3s
       when: (k8s_distribution | default('rke2')) == 'k3s'
 
-- name: "[5/5] Deploy k8s manifests (stub)"
+- name: "[5/5] Deploy k8s manifests"
   hosts: vms
   become: true
   gather_facts: false
@@ -127,3 +129,35 @@
     - never
   roles:
     - role: reset_k8s
+
+# -----------------------------------------------------------------------------
+# Utility plays (opt-in, never run unless explicitly tagged): golden image.
+# Seal the builder VM of the `golden` overlay (already prepared by play 3) and
+# export its disk to lab/cache/ as the backing image for new VMs.
+#   make golden   ->   create-vm + prepare-vm + these two plays + destroy
+# -----------------------------------------------------------------------------
+- name: "[golden] Seal builder VM (generalize + power off)"
+  hosts: vms
+  become: true
+  gather_facts: false
+  tags:
+    - golden_seal
+    - never
+  tasks:
+    - name: "Seal the golden builder"
+      ansible.builtin.import_role:
+        name: golden_image
+        tasks_from: seal
+
+- name: "[golden] Export builder disk to the image cache"
+  hosts: kvm_hosts
+  become: false
+  gather_facts: false
+  tags:
+    - golden_export
+    - never
+  tasks:
+    - name: "Export the golden image"
+      ansible.builtin.import_role:
+        name: golden_image
+        tasks_from: export

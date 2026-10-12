@@ -1,0 +1,55 @@
+---
+# =============================================================================
+# tasks/seal.yml — Generalize the builder VM and power it off (guest side)
+# =============================================================================
+#
+# Purpose
+#   Turn a VM that role 02_prepare_vm already prepared into a reusable image:
+#   stamp the golden marker, drop per-instance identity, and shut down so the
+#   host can export the disk (tasks/export.yml).
+#
+# Pipeline
+#   1. Guard — refuse any overlay other than golden_image_overlay.
+#   2. Marker — golden_image.marker tells role 02 to skip dnf update + reboot
+#      on clones.
+#   3. Generalize + poweroff in ONE task: host keys and the NM keyfile are
+#      removed, so no further SSH task may run after it.
+#
+# Variables
+#   golden_image.marker, golden_image_overlay, os_image.filename, overlay_id.
+#
+# Related commands
+#   make golden
+# =============================================================================
+
+- name: "golden | Guard — only the golden overlay may be sealed"
+  ansible.builtin.assert:
+    that:
+      - overlay_id | default('') == golden_image_overlay
+    fail_msg: >-
+      Refusing to seal overlay '{{ overlay_id | default('?') }}': sealing wipes
+      the VM identity and powers it off. Run via `make golden`.
+
+- name: "golden | Write golden marker"
+  ansible.builtin.copy:
+    dest: "{{ golden_image.marker }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      built={{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}
+      base={{ os_image.filename }}
+
+- name: "golden | Generalize (cloud-init, machine-id, host keys) and power off"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dnf clean all
+    cloud-init clean --logs --machine-id
+    rm -f /etc/NetworkManager/system-connections/cloud-init-*.nmconnection
+    rm -f /etc/ssh/ssh_host_*
+    fstrim -av || true
+    sync
+    systemd-run --on-active=5s --timer-property=AccuracySec=1s systemctl poweroff
+  args:
+    executable: /bin/bash
+  changed_when: true

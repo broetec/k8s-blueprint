@@ -47,9 +47,9 @@ for the full create flow.
 | Step | Tasks | What it does | Tag |
 |------|-------|--------------|-----|
 | **Preflight** | [`preflight.yml`](tasks/preflight.yml) | SSH public key exists; each VM has `vm_mac`; `virt-install` on PATH | `create_vm` |
-| **Image cache** | [`image_cache.yml`](tasks/image_cache.yml) | Creates `lab/disks` and `lab/cache`; downloads Rocky qcow2 once | `create_vm` |
-| **Provision** | [`provision.yml`](tasks/provision.yml) | Skips existing domains; clones disk; cloud-init seed ISO; `virt-install`; MAC assert | `create_vm` |
-| **Wait SSH** | [`wait_ssh.yml`](tasks/wait_ssh.yml) | Polls port 22 on each `vm_ip` until cloud-init finishes | `create_vm` |
+| **Image cache** | [`image_cache.yml`](tasks/image_cache.yml) | Creates `lab/disks` and `lab/cache`; downloads Rocky qcow2 once; picks the backing image (golden when present, see [`golden_image`](../golden_image/README.md)) | `create_vm` |
+| **Provision** | [`provision.yml`](tasks/provision.yml) | Skips existing domains; linked-clone disk (`qemu-img create -b`); cloud-init seed ISO; `virt-install`; MAC assert | `create_vm` |
+| **Wait SSH** | [`wait_ssh.yml`](tasks/wait_ssh.yml) | Polls port 22 on each `vm_ip` until the SSH banner answers | `create_vm` |
 
 ## Network model
 
@@ -99,14 +99,15 @@ Per-host overrides in `hosts.ini`: `vm_vcpus`, `vm_memory_mb`, `vm_disk_size_gb`
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `create_vm_ssh_wait_delay` | `15` | Seconds before first SSH poll |
+| `create_vm_ssh_wait_delay` | `2` | Seconds before first SSH poll |
 | `create_vm_ssh_wait_timeout` | `600` | Max seconds to wait for SSH per VM |
 
 ## Idempotency
 
 - **Existing VMs:** `virsh dominfo` skips domains that already exist; only new hosts are provisioned.
 - **Image download:** `get_url` with `force: false` — no re-download when cache file exists.
-- **Disk clone:** `copy` with `force: false` — existing per-VM qcow2 is not overwritten.
+- **Disk clone:** runs only for VMs without a libvirt domain; a leftover qcow2 is removed and
+  recreated as a linked clone, so a new VM never boots an old disk.
 - **Seed ISO:** Regenerated only for VMs in `vms_to_create`.
 
 To change IP or MAC after first create: update manifest, `make inventory`, then

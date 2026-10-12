@@ -2,7 +2,7 @@
 # make/targets.mk — playbook pipeline (roles 00–04) and lab flows
 # =============================================================================
 
-.PHONY: setup-host create-vm prepare-vm install-rke2 install-k3s install-k8s deploy-k8s reset-k8s redeploy-k8s deploy up up-all
+.PHONY: setup-host create-vm prepare-vm install-rke2 install-k3s install-k8s deploy-k8s reset-k8s redeploy-k8s deploy up up-all golden golden-seal
 
 setup-host: setup inventory-overlay deps ensure-user-known-hosts ## 1ª vez: controlador + host KVM (role 00)
 	@printf "$(B)==> [00] setup-host (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
@@ -53,3 +53,28 @@ up-all: inventory deps keys ensure-ssh-global-known-hosts ## Sobe todos os overl
 	  $(SUBMAKE) -f $(CURDIR)/Makefile up OVERLAY=$$o || exit $$?; \
 	done
 	@printf "\n$(G)==> Lab completo ($(words $(LAB_OVERLAYS)) VMs).$(N)\n"
+
+# --- Golden image (role golden_image) -------------------------------------------
+# Builder VM = overlay GOLDEN_OVERLAY, sempre a partir da imagem Rocky crua.
+GOLDEN_OVERLAY ?= golden
+GOLDEN_TAGS := golden_seal,golden_export
+GOLDEN_IMAGE ?= $(LAB_CACHE_PATH)/golden-rocky10.qcow2
+
+golden: ## SO preparado em lab/cache/golden-*.qcow2 — base das VMs novas (refazer p/ atualizar pacotes)
+	@for disk in $(LAB_DISKS_PATH)/*.qcow2; do \
+	  [ -e "$$disk" ] || continue; \
+	  if qemu-img info -U "$$disk" 2>/dev/null | grep -Fq "backing file: $(GOLDEN_IMAGE)"; then \
+	    printf "$(R)==> %s usa a golden como backing file — make destroy antes de refazer.$(N)\n" "$$disk"; exit 1; \
+	  fi; \
+	done
+	@printf "$(B)==> golden (builder OVERLAY=$(GOLDEN_OVERLAY))$(N)\n"
+	@$(SUBMAKE) -f $(CURDIR)/Makefile destroy OVERLAY=$(GOLDEN_OVERLAY)
+	@$(SUBMAKE) -f $(CURDIR)/Makefile create-vm OVERLAY=$(GOLDEN_OVERLAY) USE_GOLDEN=false
+	@$(SUBMAKE) -f $(CURDIR)/Makefile prepare-vm OVERLAY=$(GOLDEN_OVERLAY) USE_GOLDEN=false
+	@$(SUBMAKE) -f $(CURDIR)/Makefile golden-seal OVERLAY=$(GOLDEN_OVERLAY)
+	@$(SUBMAKE) -f $(CURDIR)/Makefile destroy OVERLAY=$(GOLDEN_OVERLAY)
+	@printf "\n$(G)==> Golden pronta:$(N) $(GOLDEN_IMAGE)\n"
+
+golden-seal: inventory-overlay deps keys ssh-host-key-refresh ## (interno) sela o builder e exporta o disco
+	@printf "$(Y)==> [golden] seal + export (OVERLAY=$(OVERLAY))$(N)\n"
+	$(call run-playbook,$(GOLDEN_TAGS),$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(EXTRA))

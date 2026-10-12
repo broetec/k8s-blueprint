@@ -1,0 +1,6 @@
+# Auto-generated — DO NOT EDIT.
+# Source: manifest.yml (+ env/.env when applicable). Regenerate: make inventory
+---
+vm_role: golden
+overlay_id: golden
+overlay_label: Golden image builder (make golden)

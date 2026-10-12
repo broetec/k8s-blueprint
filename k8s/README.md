@@ -1,12 +1,12 @@
 # `k8s/` — manifests Kubernetes
 
-Esta pasta guardará os manifests e configurações Kubernetes do laboratório
-(RKE2, CNI, workloads de exemplo, etc.).
+Esta pasta guarda os values Helm e os overlays kustomize do bootstrap do cluster
+(Cilium/Gateway API, PriorityClasses, local-path, cert-manager, Argo CD,
+Sealed Secrets).
 
-Por enquanto os manifests serão aplicados pela role Ansible
-[`04_deploy_k8s`](../provisioning/roles/04_deploy_k8s/) (stub). O RKE2 será
-instalado pela role [`03_install_rke2`](../provisioning/roles/03_install_rke2/)
-(stub).
+São aplicados pela role Ansible
+[`04_deploy_k8s`](../provisioning/roles/04_deploy_k8s/), depois de o RKE2 ser
+instalado pela role [`03_install_rke2`](../provisioning/roles/03_install_rke2/).
 
 Bootstrap guide: [`04_deploy_k8s`](../provisioning/roles/04_deploy_k8s/README.md).
 

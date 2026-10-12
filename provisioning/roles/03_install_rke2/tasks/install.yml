@@ -5,13 +5,13 @@
 #
 # Purpose
 #   Run the official get.rke2.io install script (skipped if the binary already
-#   exists), enable rke2-server.service, then poll until the node reports
-#   Ready status — confirming that the control plane and CNI are healthy.
+#   exists), enable rke2-server.service, then wait until the node condition
+#   Ready is True (wait_ready.yml) — confirming that the control plane and CNI
+#   are healthy.
 #
 # Scope
-#   The install script is idempotent by design (guards on binary presence).
-#   The wait loop retries for up to 10 minutes (60 × 10s); first boot with
-#   image pulls can take 4–6 min on a cold lab VM.
+#   The install script is idempotent by design (guards on binary presence), so
+#   changing rke2_version on a node that already has RKE2 does nothing here.
 #   RKE2 binary lands at /usr/local/bin/rke2; kubectl/helm are under
 #   /var/lib/rancher/rke2/bin/ (added to PATH by user_access.yml).
 #
@@ -19,7 +19,7 @@
 #   rke2_install_url — install script URL (defaults/main.yml).
 #   rke2_version     — passed as INSTALL_RKE2_VERSION env var when non-empty.
 #   rke2_channel     — passed as INSTALL_RKE2_CHANNEL env var.
-#   rke2_node_name   — node name used in the kubectl get node poll.
+#   rke2_node_name   — node name used by wait_ready.yml.
 #
 # Related commands
 #   make install-rke2 [RKE2_VERSION=vX.Y.Z+rke2rN], make deploy, make up
@@ -49,21 +49,5 @@
     enabled: true
     daemon_reload: true
 
-- name: "RKE2 install | Wait for node to become Ready (up to 10 min)"
-  ansible.builtin.command:
-    argv:
-      - /var/lib/rancher/rke2/bin/kubectl
-      - --kubeconfig
-      - /etc/rancher/rke2/rke2.yaml
-      - get
-      - node
-      - "{{ rke2_node_name }}"
-      - --no-headers
-      - -o
-      - "custom-columns=STATUS:.status.conditions[-1].type"
-  register: _rke2_node_status
-  retries: 60
-  delay: 10
-  until: _rke2_node_status.stdout.strip() == "Ready"
-  changed_when: false
-  failed_when: _rke2_node_status.rc != 0 and _rke2_node_status.retries | default(0) >= 60
+- name: "RKE2 install | Wait for Ready after start"
+  ansible.builtin.import_tasks: wait_ready.yml

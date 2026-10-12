@@ -1,0 +1,27 @@
+---
+# =============================================================================
+# defaults/main.yml — Role golden_image (build the prepared-OS base image)
+# =============================================================================
+#
+# Purpose
+#   Tunables for sealing the builder VM and exporting its disk as the golden
+#   image that role 01_create_vm uses as backing file for new VM disks.
+#
+# Variables
+#   golden_image_overlay          — only this overlay may be sealed (guard: the
+#                                   seal wipes the VM identity and powers it off).
+#   golden_image_shutdown_retries — polls of `virsh domstate` before giving up.
+#   golden_image_shutdown_delay   — seconds between polls.
+#
+# Inventory (not duplicated here)
+#   golden_image.filename, golden_image.marker, os_image, libvirt_pool — see
+#   provisioning/inventory/_shared/group_vars/all.yml.
+#
+# Related commands
+#   make golden
+# =============================================================================
+
+golden_image_overlay: golden
+
+golden_image_shutdown_retries: 60
+golden_image_shutdown_delay: 3

@@ -27,8 +27,10 @@ provisioning/
     ├── 00_install_kvm/README.md   # host bootstrap, libvirt network, firewall
     ├── 01_create_vm/README.md     # qcow2, seed ISO, virt-install
     ├── 02_prepare_vm/README.md    # swap, SELinux, iptables baseline inside VM
-    ├── 03_install_rke2/README.md  # RKE2 (stub)
-    └── 04_deploy_k8s/README.md    # k8s manifests (stub)
+    ├── 03_install_rke2/README.md  # RKE2 server, Cilium, Gateway API
+    ├── 04_deploy_k8s/README.md    # cluster-config, cert-manager, Argo CD
+    ├── reset_k8s/README.md        # teardown of k8s workloads (opt-in)
+    └── golden_image/README.md     # prepared-OS base image (opt-in)
 ```
 
 Generator for `make inventory`: [`app/inventory/README.md`](../app/inventory/README.md).
@@ -223,7 +225,7 @@ make setup-host
 # Daily use (default broetec-core):
 make sync
 make inventory          # required after fresh clone
-make up                 # 01–04: VM + OS + k8s (stubs 03/04)
+make up                 # 01–04: VM + OS + k8s
 make ssh
 make status
 make destroy

@@ -4,16 +4,17 @@
 # =============================================================================
 #
 # Purpose
-#   Create new VMs from inventory: skip existing domains, clone qcow2, seed ISO,
-#   virt-install with inventory vm_mac, verify NIC MAC matches network-config.
+#   Create new VMs from inventory: skip existing domains, linked-clone qcow2,
+#   seed ISO, virt-install with inventory vm_mac, verify NIC MAC matches
+#   network-config.
 #
 # Variables
 #   groups['vms'], hostvars (vm_ip, vm_mac, vm_* overrides), vm_defaults,
-#   kvm_network, libvirt_pool, os_image, base_domain.
+#   kvm_network, libvirt_pool, vm_base_image (image_cache.yml), base_domain.
 #
 # Pipeline
 #   1. virsh dominfo → vms_to_create
-#   2. clone + resize disk
+#   2. drop leftover disk; qemu-img create with vm_base_image as backing file
 #   3. render cloud-init templates → seed ISO
 #   4. virt-install --import
 #   5. assert MAC in dumpxml matches hostvars vm_mac
@@ -42,20 +43,18 @@
            )
       }}
 
-- name: Clone base image to each new VM disk
-  ansible.builtin.copy:
-    src: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
-    dest: "{{ libvirt_pool.path }}/{{ item }}.qcow2"
-    remote_src: true
-    force: false
-    mode: "0644"
+- name: Remove leftover disk of each VM to create (no domain owns it)
+  ansible.builtin.file:
+    path: "{{ libvirt_pool.path }}/{{ item }}.qcow2"
+    state: absent
   loop: "{{ vms_to_create }}"
   loop_control:
     label: "{{ item }}"
 
-- name: Resize each new VM disk
+- name: Create each new VM disk as a linked clone of the base image
   ansible.builtin.command: >-
-    qemu-img resize
+    qemu-img create -f qcow2 -F qcow2
+    -b {{ vm_base_image }}
     {{ libvirt_pool.path }}/{{ item }}.qcow2
     {{ hostvars[item].vm_disk_size_gb | default(vm_defaults.disk_size_gb) }}G
   loop: "{{ vms_to_create }}"

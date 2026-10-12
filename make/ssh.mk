@@ -3,7 +3,8 @@
 # =============================================================================
 
 .PHONY: ensure-user-known-hosts ensure-ssh-global-known-hosts ssh ssh-add-lab \
-	ssh-host-key-forget ssh-host-key-refresh status destroy clean
+	ssh-host-key-forget ssh-host-key-refresh status destroy clean \
+	snapshot revert snapshots
 
 ensure-user-known-hosts: ## Prepara ~/.ssh e stubs SSH do lab no controlador (sem sudo)
 	@mkdir -p $(HOME)/.ssh && chmod 700 $(HOME)/.ssh 2>/dev/null || true
@@ -66,11 +67,38 @@ destroy: ssh-host-key-forget ## Remove VMs do overlay activo (mantém cache qcow
 	fi
 	@for vm in $(_inventory_vms_list); do \
 	  printf "$(Y)==> Removendo VM '%s'...$(N)\n" "$$vm"; \
-	  virsh -c qemu:///system destroy "$$vm" 2>/dev/null || true; \
-	  virsh -c qemu:///system undefine "$$vm" --remove-all-storage 2>/dev/null || true; \
-	  rm -f "$(LAB_DISKS_PATH)/$$vm-seed.iso" 2>/dev/null || true; \
+	  if virsh -c qemu:///system dominfo "$$vm" >/dev/null 2>&1; then \
+	    virsh -c qemu:///system destroy "$$vm" >/dev/null 2>&1 || true; \
+	    virsh -c qemu:///system undefine "$$vm" --managed-save --snapshots-metadata \
+	      || { printf "$(R)==> Falha ao remover o domínio '%s'$(N)\n" "$$vm"; exit 1; }; \
+	  fi; \
+	  rm -f "$(LAB_DISKS_PATH)/$$vm.qcow2" "$(LAB_DISKS_PATH)/$$vm-seed.iso" \
+	    || { printf "$(R)==> Falha ao apagar os discos de '%s'$(N)\n" "$$vm"; exit 1; }; \
 	done
 	@printf "$(G)==> VM(s) do overlay removida(s) (cache preservado).$(N)\n"
+
+snapshot: ## Snapshot das VMs do overlay (NAME=<nome>; guarda a memória se a VM estiver ligada)
+	@test -n "$(NAME)" || { printf "$(R)Use: make snapshot NAME=<nome>$(N)\n"; exit 1; }
+	@for vm in $(_inventory_vms_list); do \
+	  printf "$(Y)==> Snapshot '%s' de '%s'...$(N)\n" "$(NAME)" "$$vm"; \
+	  virsh -c qemu:///system snapshot-create-as "$$vm" "$(NAME)" --atomic || exit 1; \
+	done
+
+revert: ## Reverte as VMs do overlay para um snapshot (NAME=<nome>)
+	@test -n "$(NAME)" || { printf "$(R)Use: make revert NAME=<nome>$(N)\n"; exit 1; }
+	@for vm in $(_inventory_vms_list); do \
+	  printf "$(Y)==> Revertendo '%s' para '%s'...$(N)\n" "$$vm" "$(NAME)"; \
+	  virsh -c qemu:///system snapshot-revert "$$vm" "$(NAME)" || exit 1; \
+	  for try in 1 2 3 4 5; do \
+	    virsh -c qemu:///system domtime "$$vm" --sync >/dev/null 2>&1 && break; sleep 1; \
+	  done; \
+	done
+
+snapshots: ## Lista os snapshots das VMs do overlay
+	@for vm in $(_inventory_vms_list); do \
+	  printf "$(B)%s:$(N)\n" "$$vm"; \
+	  virsh -c qemu:///system snapshot-list "$$vm" || true; \
+	done
 
 clean: destroy ## VM + rede + lab/ + chave SSH
 	-virsh -c qemu:///system net-destroy $(KVM_NETWORK)

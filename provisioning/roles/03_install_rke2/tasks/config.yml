@@ -10,9 +10,9 @@
 #
 # Scope
 #   Both files must exist BEFORE rke2-server.service starts for the first
-#   time. If the cluster is already running and a file changes, the handler
-#   "restart rke2-server" is notified. A restart causes a brief API server
-#   outage (~30s); plan accordingly in production.
+#   time. If the server was already running and a file changes, restart.yml
+#   restarts it and waits for Ready (results registered here as
+#   _rke2_config_file and _rke2_cilium_config_file).
 #   The Cilium HelmChartConfig is only written when rke2_cni == 'cilium'.
 #
 # Variables
@@ -44,7 +44,7 @@
     owner: root
     group: root
     mode: "0600"
-  notify: restart rke2-server
+  register: _rke2_config_file
 
 - name: "RKE2 config | Ensure /var/lib/rancher/rke2/server/manifests/ exists"
   ansible.builtin.file:
@@ -62,4 +62,4 @@
     owner: root
     group: root
     mode: "0644"
-  notify: restart rke2-server
+  register: _rke2_cilium_config_file

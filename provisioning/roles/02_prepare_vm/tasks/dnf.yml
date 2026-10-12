@@ -8,11 +8,14 @@
 #   1. Tune dnf.conf (fastestmirror + parallel downloads; Rocky Mirror Manager).
 #   2. dnf update all packages.
 #   3. Reboot when kernel/libs require it (needs-restarting).
+#      Steps 2–3 are skipped on clones of the golden image (marker file
+#      golden_image.marker) unless prepare_vm_dnf_update_force is true.
 #   4. Install epel-release so auxiliary packages (htop, etc.) resolve.
 #
 # Variables (defaults/main.yml)
 #   prepare_vm_dnf_max_parallel_downloads, prepare_vm_dnf_update,
-#   prepare_vm_reboot_after_update, prepare_vm_epel.
+#   prepare_vm_dnf_update_force, prepare_vm_reboot_after_update, prepare_vm_epel.
+#   Inventory: golden_image.marker.
 #
 # Related commands
 #   make prepare-vm, make up
@@ -32,31 +35,43 @@
     line: "max_parallel_downloads={{ prepare_vm_dnf_max_parallel_downloads }}"
     insertafter: '^\[main\]'
 
+- name: Check for the golden image marker
+  ansible.builtin.stat:
+    path: "{{ golden_image.marker }}"
+  register: _prepare_vm_golden_marker
+
+- name: Decide whether dnf update runs (skipped on golden image clones)
+  ansible.builtin.set_fact:
+    _prepare_vm_run_dnf_update: >-
+      {{ prepare_vm_dnf_update | bool
+         and (prepare_vm_dnf_update_force | bool
+              or not _prepare_vm_golden_marker.stat.exists) }}
+
 - name: Update all system packages
   ansible.builtin.dnf:
     name: "*"
     state: latest
     update_cache: true
-  when: prepare_vm_dnf_update | bool
+  when: _prepare_vm_run_dnf_update | bool
 
 - name: Install yum-utils for needs-restarting
   ansible.builtin.dnf:
     name: yum-utils
     state: present
-  when: prepare_vm_dnf_update | bool
+  when: _prepare_vm_run_dnf_update | bool
 
 - name: Check if reboot is required after system update
   ansible.builtin.command: needs-restarting -r
   register: _prepare_vm_needs_reboot
   changed_when: _prepare_vm_needs_reboot.rc == 1
   failed_when: _prepare_vm_needs_reboot.rc not in [0, 1]
-  when: prepare_vm_dnf_update | bool
+  when: _prepare_vm_run_dnf_update | bool
 
 - name: Reboot VM to apply kernel and library updates
   ansible.builtin.reboot:
     reboot_timeout: 600
   when:
-    - prepare_vm_dnf_update | bool
+    - _prepare_vm_run_dnf_update | bool
     - prepare_vm_reboot_after_update | bool
     - _prepare_vm_needs_reboot.rc == 1
 

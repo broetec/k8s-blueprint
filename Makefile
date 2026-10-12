@@ -31,8 +31,8 @@ help: ## Lista targets e config actual
 	@printf "\n$(B)Etapas (01–04):$(N)\n"
 	@printf "  $(G)create-vm$(N)      01 — libvirt + qcow2\n"
 	@printf "  $(G)prepare-vm$(N)     02 — SO na VM\n"
-	@printf "  $(G)install-rke2$(N)   03 — RKE2 (stub)\n"
-	@printf "  $(G)deploy-k8s$(N)     04 — manifests (stub)\n"
+	@printf "  $(G)install-rke2$(N)   03 — RKE2 (install-k3s p/ k3s)\n"
+	@printf "  $(G)deploy-k8s$(N)     04 — bootstrap k8s (Cilium, cert-manager, Argo CD)\n"
 	@printf "\n$(B)Operações:$(N)\n"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / { \
 		if ($$1 !~ /^(setup|setup-host|create-vm|prepare-vm|install-rke2|deploy-k8s|deploy|up|up-all)$$/) \

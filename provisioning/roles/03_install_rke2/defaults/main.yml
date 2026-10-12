@@ -72,8 +72,14 @@ rke2_disable_kube_proxy: true
 # -----------------------------------------------------------------------------
 # Components to disable (RKE2 built-ins)
 # -----------------------------------------------------------------------------
+# Ingress is the Cilium Gateway API (role 04 cluster-config), so every bundled
+# ingress controller is disabled: ingress-nginx (default up to v1.35) and
+# Traefik (default from v1.36). rke2-traefik-crd installs its own Gateway API
+# CRDs, which conflict with the ones role 04 applies.
 rke2_disable:
   - rke2-ingress-nginx
+  - rke2-traefik
+  - rke2-traefik-crd
 
 # -----------------------------------------------------------------------------
 # Security

@@ -5,12 +5,12 @@
 #
 # Purpose
 #   Run the official get.k3s.io install script (skipped if the binary already
-#   exists), enable k3s.service, then poll until the node reports Ready status
-#   — confirming that the control plane and CNI are healthy.
+#   exists), enable k3s.service, then wait until the node condition Ready is
+#   True — confirming that the control plane and CNI are healthy.
 #
 # Scope
 #   The install script is idempotent by design (guards on binary presence).
-#   The wait loop retries for up to 10 minutes (60 × 10s); first boot with
+#   The wait loop retries 60 times, 5s apart, each waiting up to 10s; first boot with
 #   image pulls can take 3–5 min on a cold lab VM.
 #   k3s installs a single binary at /usr/local/bin/k3s and symlinks kubectl,
 #   crictl, and ctr from the same path — no extra PATH change is needed for
@@ -20,7 +20,7 @@
 #   k3s_install_url — install script URL (defaults/main.yml).
 #   k3s_version     — passed as INSTALL_K3S_VERSION env var when non-empty.
 #   k3s_channel     — passed as INSTALL_K3S_CHANNEL env var.
-#   k3s_node_name   — node name used in the kubectl get node poll.
+#   k3s_node_name   — node name used by kubectl wait.
 #
 # Related commands
 #   make install-k3s [K3S_VERSION=vX.Y.Z+k3sN], make deploy, make up
@@ -50,21 +50,18 @@
     enabled: true
     daemon_reload: true
 
-- name: "k3s install | Wait for node to become Ready (up to 10 min)"
+- name: "k3s install | Wait for node to become Ready"
   ansible.builtin.command:
     argv:
       - /usr/local/bin/kubectl
       - --kubeconfig
       - /etc/rancher/k3s/k3s.yaml
-      - get
-      - node
-      - "{{ k3s_node_name }}"
-      - --no-headers
-      - -o
-      - "custom-columns=STATUS:.status.conditions[-1].type"
+      - wait
+      - --for=condition=Ready
+      - "node/{{ k3s_node_name }}"
+      - --timeout=10s
   register: _k3s_node_status
   retries: 60
-  delay: 10
-  until: _k3s_node_status.stdout.strip() == "Ready"
+  delay: 5
+  until: _k3s_node_status.rc == 0
   changed_when: false
-  failed_when: _k3s_node_status.rc != 0 and _k3s_node_status.retries | default(0) >= 60

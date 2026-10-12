@@ -36,14 +36,16 @@ k8s-blueprint/
 │   │   ├── 00_install_kvm/
 │   │   ├── 01_create_vm/
 │   │   ├── 02_prepare_vm/
-│   │   ├── 03_install_rke2/  # stub
-│   │   └── 04_deploy_k8s/    # stub
+│   │   ├── 03_install_rke2/  # RKE2 (ou 03_install_k3s/)
+│   │   ├── 04_deploy_k8s/    # bootstrap k8s (Helm + kustomize)
+│   │   ├── reset_k8s/        # teardown dos workloads (opt-in)
+│   │   └── golden_image/     # imagem base com SO preparado (opt-in)
 │   └── templates/
 │
 ├── lab/                      # Artefactos locais KVM (conteúdo gitignored)
 ├── env/                      # Credenciais e .env local
-├── k8s/                      # Manifests Kubernetes (futuro)
-└── docs/                     # Documentação (futuro Sphinx)
+├── k8s/                      # Manifests Kubernetes (values Helm + kustomize)
+└── docs/                     # Documentação (Sphinx)
 ```
 
 ---
@@ -96,8 +98,8 @@ All **Ansible** configuration for the lab.
 | [roles/00_install_kvm/](../provisioning/roles/00_install_kvm/README.md) | Host bootstrap, libvirt network, firewall (opt-in) |
 | [roles/01_create_vm/](../provisioning/roles/01_create_vm/README.md) | qcow2, cloud-init, virt-install |
 | [roles/02_prepare_vm/](../provisioning/roles/02_prepare_vm/README.md) | swap, SELinux, iptables baseline in VM |
-| [roles/03_install_rke2/](../provisioning/roles/03_install_rke2/README.md) | RKE2 (stub) |
-| [roles/04_deploy_k8s/](../provisioning/roles/04_deploy_k8s/README.md) | k8s manifests (stub) |
+| [roles/03_install_rke2/](../provisioning/roles/03_install_rke2/README.md) | RKE2 server, Cilium, Gateway API |
+| [roles/04_deploy_k8s/](../provisioning/roles/04_deploy_k8s/README.md) | cluster-config, local-path, cert-manager, Argo CD |
 | [templates/README.md](../provisioning/templates/README.md) | NoCloud seed ISO templates |
 | [collections/README.md](../provisioning/collections/README.md) | Galaxy collections (`ansible.posix`, `ansible.netcommon`) |
 
@@ -190,9 +192,9 @@ sequenceDiagram
   Make->>Ansible: 02 prepare_vm
   Ansible->>VM: 02_prepare_vm
   Make->>Ansible: 03 install_rke2
-  Ansible->>VM: 03_install_rke2 stub
+  Ansible->>VM: 03_install_rke2
   Make->>Ansible: 04 deploy_k8s
-  Ansible->>VM: 04_deploy_k8s stub
+  Ansible->>VM: 04_deploy_k8s
 ```
 
 ### Targets Make
@@ -203,13 +205,15 @@ sequenceDiagram
 | `up` | 01 + 02 + 03 + 04 (default `OVERLAY=broetec-core`) |
 | `up-all` | loop `up` nos 3 overlays |
 | `deploy` | 03 + 04 |
+| `golden` | Constrói a golden image (SO preparado) em `lab/cache/` com o overlay `golden` |
+| `snapshot` / `revert` / `snapshots` | Snapshots libvirt das VMs do overlay (`NAME=<nome>`) |
 ### Ordem das roles
 
 1. **00_install_kvm** — host (`kvm_hosts`): pacotes KVM, rede, firewall (opt-in)
 2. **01_create_vm** — host: qcow2, virt-install, wait SSH
 3. **02_prepare_vm** — VM: swap, SELinux, iptables baseline (firewalld off)
-4. **03_install_rke2** — VM: RKE2 (stub)
-5. **04_deploy_k8s** — VM: manifests (stub)
+4. **03_install_rke2** — VM: RKE2 server com Cilium (ou **03_install_k3s**)
+5. **04_deploy_k8s** — VM: cluster-config, local-path, cert-manager, Argo CD
 
 ---
 

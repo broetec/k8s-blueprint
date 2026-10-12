@@ -1,0 +1,38 @@
+---
+# =============================================================================
+# tasks/wait_ready.yml — wait until the node condition Ready is True
+# =============================================================================
+#
+# Purpose
+#   Block until the control plane answers and the node reports Ready=True
+#   (CNI up). Imported after the first start (install.yml) and after a restart
+#   (restart.yml).
+#
+# Scope
+#   `kubectl wait` returns as soon as the node is Ready, but fails fast while
+#   the API is still down or the node object does not exist yet, so the task
+#   retries: 60 attempts, 5s apart, each waiting up to 10s (5–15 min in total).
+#   First boot with image pulls can take 4–6 min on a cold lab VM.
+#
+# Variables
+#   rke2_node_name — node checked by kubectl wait.
+#
+# Related commands
+#   make install-rke2, make deploy, make up
+# =============================================================================
+
+- name: "RKE2 | Wait for node to become Ready"
+  ansible.builtin.command:
+    argv:
+      - /var/lib/rancher/rke2/bin/kubectl
+      - --kubeconfig
+      - /etc/rancher/rke2/rke2.yaml
+      - wait
+      - --for=condition=Ready
+      - "node/{{ rke2_node_name }}"
+      - --timeout=10s
+  register: _rke2_node_ready
+  retries: 60
+  delay: 5
+  until: _rke2_node_ready.rc == 0
+  changed_when: false

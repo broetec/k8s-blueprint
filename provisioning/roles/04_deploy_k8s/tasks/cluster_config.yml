@@ -11,10 +11,24 @@
 #   Gateway API CRDs must be Established before Gateway/GatewayClass resources;
 #   a single kubectl apply -k on the full overlay races and fails on first run.
 #
+#   cilium-operator only starts its Gateway API controller when the CRDs exist
+#   at startup. On a fresh cluster they are installed here, after the operator
+#   is already running, so the operator is restarted once (first install only).
+#
 # Scope
 #   become: false — runs kubectl as the connecting user (kubeconfig at
 #   ~/.kube/config). The overlay is the synced copy on the VM.
 # =============================================================================
+
+- name: "cluster_config | Check whether Gateway API CRDs already exist"
+  become: false
+  ansible.builtin.command:
+    cmd: kubectl get crd gatewayclasses.gateway.networking.k8s.io
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  register: _deploy_k8s_gateway_api_crd
+  changed_when: false
+  failed_when: false
 
 - name: "cluster_config | Apply Gateway API CRDs (server-side)"
   become: false
@@ -43,6 +57,21 @@
   environment:
     PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
   changed_when: false
+
+- name: "cluster_config | Restart cilium-operator after the first Gateway API CRD install"
+  become: false
+  when: _deploy_k8s_gateway_api_crd.rc != 0
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if kubectl -n kube-system get deploy cilium-operator >/dev/null 2>&1; then
+      kubectl -n kube-system rollout restart deploy/cilium-operator
+      kubectl -n kube-system rollout status deploy/cilium-operator --timeout=180s
+    fi
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+  changed_when: true
 
 - name: "cluster_config | Apply Cilium + PriorityClasses overlay (server-side)"
   become: false

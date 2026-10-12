@@ -113,8 +113,8 @@ Most playbook targets depend on `inventory-overlay` implicitly.
 |--------|------|-------|
 | `create-vm` | **01** | qcow2, cloud-init seed ISO, `virt-install` |
 | `prepare-vm` | **02** | Guest OS prep (swap, SELinux, iptables baseline) |
-| `install-rke2` | **03** | RKE2 install (stub) |
-| `deploy-k8s` | **04** | k8s manifests (stub) |
+| `install-rke2` | **03** | RKE2 server, Cilium (`install-k3s` / `install-k8s` for the alternative) |
+| `deploy-k8s` | **04** | cluster-config, local-path, cert-manager, Argo CD |
 | `deploy` | **03** + **04** | Update k8s only on an existing VM |
 
 ### Lab flows
@@ -123,6 +123,7 @@ Most playbook targets depend on `inventory-overlay` implicitly.
 |--------|--------------|
 | `up` | `create-vm` → `prepare-vm` → `deploy` for active overlay |
 | `up-all` | Run `up` for each overlay in `LAB_OVERLAYS` |
+| `golden` | Build `lab/cache/golden-rocky10.qcow2` (role 02 output) with the `golden` overlay; new VMs clone it and skip `dnf update` + reboot. Refuses while a VM disk still uses the current golden. See [`golden_image`](../provisioning/roles/golden_image/README.md) |
 
 `up` uses `SUBMAKE` (not `$(MAKE)`) so recursive invocations work when the IDE
 redefines `MAKE` to an AppImage.
@@ -134,7 +135,10 @@ redefines `MAKE` to an AppImage.
 | `ssh` | SSH into the VM (`VM_USER@VM_IP` from inventory, lab private key) |
 | `ssh-add-lab` | Add lab private key to `ssh-agent` |
 | `status` | List libvirt domains and networks |
-| `destroy` | Undefine VMs for active overlay; keep qcow2 cache |
+| `destroy` | Undefine VMs for active overlay and delete their disk + seed ISO; keep the image cache. Fails if a domain cannot be removed |
+| `snapshot NAME=x` | libvirt snapshot of each VM in the overlay (includes memory when the VM is running) |
+| `revert NAME=x` | Revert each VM to the snapshot and sync the guest clock |
+| `snapshots` | List snapshots of each VM in the overlay |
 | `clean` | `destroy` + remove libvirt network + `lab/` + lab SSH key |
 
 ### SSH helpers
@@ -169,6 +173,7 @@ Copy `env/.env.example` → `env/.env` (gitignored). The Makefile loads it with
 | `KVM_NETWORK` | `broetec-lab` | `clean` | libvirt network name |
 | `LAB_PATH` | `./lab` | Derived paths | Root for disk artifacts |
 | `LAB_DISKS_PATH`, `LAB_CACHE_PATH` | `lab/disks`, `lab/cache` | `run-playbook`, `destroy`, `clean` | Passed as `-e lab_disks_path` / `lab_cache_dir` |
+| `USE_GOLDEN` | `true` | `run-playbook` | `false` clones new VMs from the raw Rocky image even when a golden image exists |
 | `KVM_HOST_BOOTSTRAP` | `true` | `setup-host` | Host package install (role 00 bootstrap tag) |
 | `KVM_HOST_FIREWALL` | `false` | `setup-host` | NAT/FORWARD rules on host |
 | `ANSIBLE_FLAGS` | empty | All playbook targets | Extra flags appended to `ansible-playbook` |
@@ -232,7 +237,8 @@ Defines `run-playbook` and `setup-host` logic:
 
 ### [`ssh.mk`](ssh.mk)
 
-SSH known_hosts management, `make ssh`, libvirt `status` / `destroy` / `clean`.
+SSH known_hosts management, `make ssh`, libvirt `status` / `destroy` / `clean`,
+and `snapshot` / `revert` / `snapshots`.
 
 ### `run-playbook` macro
 

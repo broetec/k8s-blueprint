@@ -23,7 +23,7 @@ make install-rke2 OVERLAY=broetec-core
 | `rke2_tls_san` | `[]` | Extra TLS SANs for the API server cert |
 | `rke2_cni` | `cilium` | CNI plugin |
 | `rke2_disable_kube_proxy` | `true` | Let Cilium replace kube-proxy |
-| `rke2_disable` | `[rke2-ingress-nginx]` | Built-in components to skip |
+| `rke2_disable` | `[rke2-ingress-nginx, rke2-traefik, rke2-traefik-crd]` | Built-in components to skip (every bundled ingress; Traefik is the default from v1.36 and its CRD chart conflicts with the Gateway API CRDs of role 04) |
 | `rke2_cilium_version` | `v1.18.7` | Pinned Cilium image tag |
 | `rke2_cilium_operator_replicas` | `1` | Single-node safe (avoids port conflicts) |
 | `rke2_secrets_encryption` | `true` | Encrypt secrets at rest |
@@ -42,7 +42,7 @@ make install-rke2 OVERLAY=broetec-core
 | `rke2_preflight` | NetworkManager (firewalld off and sysctl in role 02) |
 | `rke2_config` | `/etc/rancher/rke2/config.yaml` + Cilium HelmChartConfig |
 | `rke2_local_path` | node storage directory for local-path-provisioner (mkdir + chmod 1777 + SELinux) |
-| `rke2_install` | download script, enable `rke2-server`, wait Ready |
+| `rke2_install` | download script, enable `rke2-server`, wait until the node condition Ready is True |
 | `rke2_fine_tuning` | systemd drop-in hardening + optional API health watchdog |
 | `rke2_user` | kubeconfig |
 
@@ -54,8 +54,9 @@ make install-rke2 OVERLAY=broetec-core
 
 ## Fine tuning
 
-Implemented in [`tasks/fine_tuning.yml`](tasks/fine_tuning.yml). Runs after the cluster
-is Ready (`install.yml`). Disable entirely with `rke2_fine_tuning_enabled: false`.
+The systemd drop-in is written by [`tasks/systemd.yml`](tasks/systemd.yml) **before** the
+first start; the API watchdog is in [`tasks/fine_tuning.yml`](tasks/fine_tuning.yml) and runs
+after the cluster is Ready. Disable both with `rke2_fine_tuning_enabled: false`.
 
 ### Systemd hardening (`rke2_systemd_hardening: true`)
 
@@ -72,8 +73,10 @@ RKE2 runs etcd in the same process as the rest of the control plane
 3. **Extend start/stop timeouts** — slow etcd WAL recovery gets up to 20 min
    (`TimeoutStartSec`).
 
-The drop-in triggers one `rke2-server` restart when first applied; subsequent
-Ansible runs are no-op.
+On a fresh node the drop-in is in place before the first start, so it costs no
+restart. If the drop-in, `config.yaml` or the Cilium HelmChartConfig changes on a
+server that was already running, [`tasks/restart.yml`](tasks/restart.yml) restarts
+`rke2-server` once and waits for Ready. Unchanged runs are no-op.
 
 > **Note:** `Nice=-10` requires adequate permissions. If systemd rejects it, try
 > `-5` or check `ulimit`/system policy limits.

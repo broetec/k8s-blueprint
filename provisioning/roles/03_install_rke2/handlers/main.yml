@@ -4,13 +4,14 @@
 # =============================================================================
 #
 # Purpose
-#   Triggered by notify directives in tasks/preflight.yml and tasks/config.yml.
+#   Triggered by notify directives in tasks/preflight.yml.
 #   Handlers run once at the end of the play, regardless of how many tasks
 #   notify them, and only when at least one notifying task reported changed.
+#   Restarting rke2-server after a config change is NOT a handler: see
+#   tasks/restart.yml (explicit, followed by a wait for Ready).
 #
 # Handlers
 #   reload NetworkManager — reload NM config after drop-in file changes.
-#   restart rke2-server   — restart the server service after config changes.
 #
 # Related commands
 #   make install-rke2, make deploy, make up
@@ -20,9 +21,3 @@
   ansible.builtin.systemd:
     name: NetworkManager
     state: reloaded
-
-- name: restart rke2-server
-  ansible.builtin.systemd:
-    name: rke2-server.service
-    state: restarted
-  listen: restart rke2-server

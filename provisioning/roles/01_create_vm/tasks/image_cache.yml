@@ -4,10 +4,13 @@
 # =============================================================================
 #
 # Purpose
-#   Ensure lab storage directories exist and download the base qcow2 once.
+#   Ensure lab storage directories exist, download the base qcow2 once, and
+#   select the backing image for new VM disks (vm_base_image): the golden image
+#   when it exists and use_golden is true, otherwise the raw Rocky image.
 #
 # Variables
-#   libvirt_pool.path, os_image (url, filename, cache_dir), kvm_host_libvirt_user.
+#   libvirt_pool.path, os_image (url, filename, cache_dir), kvm_host_libvirt_user,
+#   golden_image.filename, use_golden.
 #
 # Related commands
 #   make create-vm, make up
@@ -30,3 +33,17 @@
     dest: "{{ os_image.cache_dir }}/{{ os_image.filename }}"
     mode: "0644"
     force: false
+
+- name: Check for a golden image in the cache
+  ansible.builtin.stat:
+    path: "{{ os_image.cache_dir }}/{{ golden_image.filename }}"
+  register: golden_image_stat
+  check_mode: false
+
+- name: Select backing image for new VM disks (golden when present and enabled)
+  ansible.builtin.set_fact:
+    vm_base_image: >-
+      {{ os_image.cache_dir ~ '/' ~
+         (golden_image.filename
+          if (use_golden | default(true) | bool and golden_image_stat.stat.exists)
+          else os_image.filename) }}

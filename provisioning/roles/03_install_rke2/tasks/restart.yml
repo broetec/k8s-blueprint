@@ -1,0 +1,38 @@
+---
+# =============================================================================
+# tasks/restart.yml — restart an already-running rke2-server after a change
+# =============================================================================
+#
+# Purpose
+#   Apply a changed config.yaml, Cilium HelmChartConfig or systemd drop-in to a
+#   server that was already running BEFORE this run, then wait for Ready.
+#
+# Scope
+#   On a fresh node nothing happens here: the files are written before the
+#   first start (config.yml, systemd.yml), so install.yml starts the server
+#   with the final configuration. A restart causes a brief API server outage
+#   (~30s); plan accordingly in production.
+#
+# Variables
+#   _rke2_active_before (main.yml), _rke2_config_file, _rke2_cilium_config_file
+#   (config.yml), _rke2_systemd_override (systemd.yml).
+#
+# Related commands
+#   make install-rke2, make deploy, make up
+# =============================================================================
+
+- name: "RKE2 restart | Restart rke2-server after config or drop-in change"
+  when:
+    - _rke2_active_before.stdout | default('') | trim == 'active'
+    - >-
+      (_rke2_config_file | default({})) is changed
+      or (_rke2_cilium_config_file | default({})) is changed
+      or (_rke2_systemd_override | default({})) is changed
+  ansible.builtin.systemd:
+    name: rke2-server.service
+    state: restarted
+  register: _rke2_restart
+
+- name: "RKE2 restart | Wait for Ready after restart"
+  when: _rke2_restart is changed
+  ansible.builtin.import_tasks: wait_ready.yml

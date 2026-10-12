@@ -1,0 +1,47 @@
+---
+# =============================================================================
+# tasks/systemd.yml — rke2-server.service drop-in (CPU/I/O priority, restart)
+# =============================================================================
+#
+# Purpose
+#   Write the systemd drop-in for rke2-server.service: CPU/I/O priority and
+#   resilient auto-restart without StartLimit (VPS-oriented tuning).
+#
+# Scope
+#   Runs BEFORE install.yml so the first start of rke2-server already picks the
+#   drop-in up — no extra restart on a fresh node. On a server that is already
+#   running, a changed drop-in is applied by restart.yml.
+#
+# Variables
+#   rke2_systemd_hardening, rke2_systemd_* (defaults/main.yml).
+#
+# Related commands
+#   make install-rke2, make deploy, make up
+#   ansible-playbook ... --tags rke2_fine_tuning
+# =============================================================================
+
+- name: "RKE2 systemd | Ensure rke2-server.service.d directory exists"
+  when: rke2_systemd_hardening | bool
+  ansible.builtin.file:
+    path: /etc/systemd/system/rke2-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "RKE2 systemd | Write rke2-server.service drop-in override"
+  when: rke2_systemd_hardening | bool
+  ansible.builtin.template:
+    src: rke2-server-override.conf.j2
+    dest: /etc/systemd/system/rke2-server.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: _rke2_systemd_override
+
+- name: "RKE2 systemd | Reload systemd after drop-in change"
+  when:
+    - rke2_systemd_hardening | bool
+    - _rke2_systemd_override is changed
+  ansible.builtin.systemd:
+    daemon_reload: true

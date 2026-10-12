@@ -14,11 +14,14 @@
 #                             under /var/lib/rancher/rke2/server/manifests/.
 #   3. local_path.yml       — (opt-in) node directory for local-path-provisioner:
 #                             mkdir + chmod 1777 + SELinux container_file_t.
-#   4. install.yml          — download get.rke2.io, enable rke2-server.service,
-#                             wait until node status = Ready (up to 10 min).
-#   5. fine_tuning.yml      — (opt-in) systemd drop-in hardening + optional API
-#                             health watchdog (see role README).
-#   6. user_access.yml      — copy kubeconfig to ~/.kube/config.
+#   4. systemd.yml          — (opt-in) rke2-server.service drop-in, written
+#                             before the first start.
+#   5. install.yml          — download get.rke2.io, enable rke2-server.service,
+#                             wait until the node is Ready (wait_ready.yml).
+#   6. restart.yml          — restart + wait Ready, only when the server was
+#                             already running and steps 2 or 4 changed a file.
+#   7. fine_tuning.yml      — (opt-in) API health watchdog (see role README).
+#   8. user_access.yml      — copy kubeconfig to ~/.kube/config.
 #
 #   The cluster-level local-path-provisioner deploy (namespace + Helm) lives in
 #   role 04 (04_deploy_k8s/tasks/local_path.yml) so it is re-applied by
@@ -49,6 +52,13 @@
   ansible.builtin.import_tasks: preflight.yml
   tags: [rke2_preflight]
 
+- name: "RKE2 | Detect whether rke2-server was already running"
+  ansible.builtin.command: systemctl is-active rke2-server.service
+  register: _rke2_active_before
+  changed_when: false
+  failed_when: false
+  tags: [rke2_config, rke2_install, rke2_fine_tuning]
+
 - name: "RKE2 | Write config files"
   ansible.builtin.import_tasks: config.yml
   tags: [rke2_config]
@@ -58,11 +68,20 @@
   ansible.builtin.import_tasks: local_path.yml
   tags: [rke2_local_path]
 
+- name: "RKE2 | systemd drop-in (before the first start)"
+  when: rke2_fine_tuning_enabled | bool
+  ansible.builtin.import_tasks: systemd.yml
+  tags: [rke2_fine_tuning]
+
 - name: "RKE2 | Install and start rke2-server"
   ansible.builtin.import_tasks: install.yml
   tags: [rke2_install]
 
-- name: "RKE2 | Fine-tuning (systemd hardening + optional healthcheck)"
+- name: "RKE2 | Restart an already-running server after config changes"
+  ansible.builtin.import_tasks: restart.yml
+  tags: [rke2_config, rke2_install, rke2_fine_tuning]
+
+- name: "RKE2 | Fine-tuning (optional healthcheck)"
   when: rke2_fine_tuning_enabled | bool
   ansible.builtin.import_tasks: fine_tuning.yml
   tags: [rke2_fine_tuning]

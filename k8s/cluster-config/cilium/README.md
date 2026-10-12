@@ -11,7 +11,7 @@ O objetivo desta configuração é:
 
 - Cluster **RKE2** com:
   - `cni: cilium` em `/etc/rancher/rke2/config.yaml`
-  - `disable: rke2-ingress-nginx`
+  - `disable: rke2-ingress-nginx`, `rke2-traefik`, `rke2-traefik-crd`
 - Cilium instalado via manifest do RKE2, com algo próximo de:
 
 ```yaml

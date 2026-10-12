@@ -25,7 +25,10 @@ KVM_NETWORK ?= broetec-lab
 LAB_PATH ?= $(CURDIR)/lab
 LAB_DISKS_PATH ?= $(LAB_PATH)/disks
 LAB_CACHE_PATH ?= $(LAB_PATH)/cache
-ANSIBLE_LAB_EXTRA = -e lab_disks_path=$(LAB_DISKS_PATH) -e lab_cache_dir=$(LAB_CACHE_PATH)
+# Golden image (make golden): true usa lab/cache/golden-*.qcow2 como base das VMs
+# novas quando existir; false força a imagem Rocky crua.
+USE_GOLDEN ?= true
+ANSIBLE_LAB_EXTRA = -e lab_disks_path=$(LAB_DISKS_PATH) -e lab_cache_dir=$(LAB_CACHE_PATH) -e use_golden=$(USE_GOLDEN)
 LAB_KEY ?= env/k8s-blueprint
 LAB_KEY_ABS := $(CURDIR)/$(LAB_KEY)
 
