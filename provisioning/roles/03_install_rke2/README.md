@@ -17,14 +17,14 @@ make install-rke2 OVERLAY=broetec-core
 
 | Variable | Default | Description |
 |---|---|---|
-| `rke2_version` | `""` | Pin version (e.g. `v1.31.4+rke2r1`); empty = latest stable |
-| `rke2_channel` | `stable` | Install channel |
+| `rke2_version` | `v1.36.5+rke2r1` | Pinned version; empty = latest patch of `rke2_channel`. Override per run with `RKE2_VERSION=` |
+| `rke2_channel` | `v1.36` | Install channel (`stable`, `latest`, `v1.NN`); only used when `rke2_version` is empty |
 | `rke2_node_ip` | `{{ vm_ip }}` | Intra-cluster IP |
 | `rke2_tls_san` | `[]` | Extra TLS SANs for the API server cert |
 | `rke2_cni` | `cilium` | CNI plugin |
 | `rke2_disable_kube_proxy` | `true` | Let Cilium replace kube-proxy |
 | `rke2_disable` | `[rke2-ingress-nginx, rke2-traefik, rke2-traefik-crd]` | Built-in components to skip (every bundled ingress; Traefik is the default from v1.36 and its CRD chart conflicts with the Gateway API CRDs of role 04) |
-| `rke2_cilium_version` | `v1.18.7` | Pinned Cilium image tag |
+| `rke2_cilium_version` | `v1.20.2` | Pinned Cilium image tag; matches the chart RKE2 v1.36.5 bundles. Cilium 1.20 needs Gateway API CRDs v1.6.3 (`k8s/cluster-config/gateway-api`) |
 | `rke2_cilium_operator_replicas` | `1` | Single-node safe (avoids port conflicts) |
 | `rke2_secrets_encryption` | `true` | Encrypt secrets at rest |
 | `rke2_write_kubeconfig_mode` | `0644` | Kubeconfig file permissions |

@@ -110,16 +110,19 @@ Equivalente a *pin* explícito - escolha esta opção se quer que o upgrade seja
 
 ## 4) Cilium e o `HelmChartConfig`
 
-O RKE2 distribui um chart `rke2-cilium` empacotado. Cada release de RKE2 traz uma **versão default** desse chart (ex.: RKE2 `v1.34.7` -> Cilium `v1.18.x`; RKE2 `v1.35.4` -> Cilium `v1.19.x`).
+O RKE2 distribui um chart `rke2-cilium` empacotado. Cada release de RKE2 traz uma **versão default** desse chart (ex.: RKE2 `v1.34.7` -> Cilium `v1.18.x`; RKE2 `v1.35.4` -> Cilium `v1.19.x`; RKE2 `v1.36.5` e `v1.37.1` -> Cilium `v1.20.2`).
 
-Como o `HelmChartConfig` deste repositório (em `cluster-config/cilium/...` e no manifest aplicado em `/var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml`) **fixa explicitamente** a tag das imagens (`image.tag: v1.18.7`, `operator.image.override: ...:v1.18.7`), o upgrade do RKE2 **não muda** a versão do Cilium em execução - apenas o *chart wrapper* é atualizado.
+O `HelmChartConfig` deste repositório (template `rke2-cilium-config.yaml.j2` do role `03_install_rke2`, aplicado em `/var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml`) **fixa explicitamente** a tag das imagens com `rke2_cilium_version` (`image.tag` e `operator.image.override`). Por isso o upgrade do RKE2 **não muda** a versão do Cilium em execução - apenas o *chart wrapper* é atualizado.
 
-Recomendação:
+Estado atual do repositório: RKE2 fixado em `v1.36.5+rke2r1` (`rke2_version`) e Cilium em `v1.20.2`, a mesma versão do chart empacotado, para que imagens e templates do chart coincidam. A série 1.19 foi saltada por causa do [issue 44430](https://github.com/cilium/cilium/issues/44430) (`>= 1.19.0` e `< 1.20.0`), que quebrava o SSH para o nó e as conexões saintes do host.
 
-1. **Primeiro upgrade**: RKE2 `v1.34.x` -> `v1.35.x` mantendo Cilium fixado em `v1.18.7`. Valida-se o data plane (Gateway API, kpr) com a versão de CNI já conhecida.
-2. **Depois**, em janela separada, considerar atualizar o Cilium para `v1.19.x` (atenção ao [issue 44430](https://github.com/cilium/cilium/issues/44430), que afetava conexões saintes do host em `1.18.7 -> 1.19.1`; verifique se foi corrigido na *patch* alvo antes de avançar).
+Ao subir a versão, mexa nas três coisas em conjunto:
 
-> **Compatibilidade Cilium x Kubernetes:** Cilium 1.18 foi testado oficialmente até Kubernetes 1.34. Operar com K8s 1.35 e Cilium 1.18.7 funciona na prática, mas algumas features novas do K8s podem não estar disponíveis. Se sentir warnings ou regressões, é o sinal para avançar para Cilium 1.19.x.
+1. `rke2_version` (e `rke2_channel`) em `provisioning/roles/03_install_rke2/defaults/main.yml`.
+2. `rke2_cilium_version`, para a versão do chart que a release nova do RKE2 empacota (tabela de componentes nas *release notes*).
+3. Os CRDs do Gateway API em `k8s/cluster-config/gateway-api/kustomization.yaml`, para a versão que a documentação dessa série do Cilium exige (Cilium 1.18 -> `v1.3.0`; Cilium 1.20 -> `v1.6.3`). São aplicados pelo role `04_deploy_k8s`, não vêm com o chart.
+
+> **Compatibilidade Cilium x Kubernetes:** Cilium 1.20 foi testado oficialmente de Kubernetes 1.31 a 1.36. O RKE2 `v1.37.1` já empacota o Cilium 1.20.2, mas o K8s 1.37 ainda não consta da matriz do Cilium e essa release troca o etcd para a série 3.7; teste primeiro numa VM descartável (`make install-rke2 RKE2_VERSION=v1.37.1+rke2r1`).
 
 ---
 
@@ -279,9 +282,9 @@ Repita o passo 6.
 ## 8) Notas específicas v1.34 -> v1.35
 
 - **Kubernetes 1.35**: ler [`CHANGELOG-1.35.md`](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.35.md) para *deprecations* e *urgent upgrade notes*.
-- **Cilium chart**: o RKE2 1.35.x empacota Cilium 1.19.x. Como o `HelmChartConfig` deste repositório fixa `v1.18.7`, **o data plane mantém-se em 1.18.7** após o upgrade. Para mover para 1.19, ver passo 4 e o issue [cilium/cilium#44430](https://github.com/cilium/cilium/issues/44430).
+- **Cilium chart**: o RKE2 1.35.x empacota Cilium 1.19.x. Na altura deste upgrade o `HelmChartConfig` fixava `v1.18.7`, e **o data plane manteve-se em 1.18.7**; a série 1.19 foi saltada por causa do issue [cilium/cilium#44430](https://github.com/cilium/cilium/issues/44430). O estado atual está no passo 4.
 - **Etcd**: o RKE2 1.35.x continua a usar `etcd v3.6` (mesma série da v1.34.x). Sem mudança de formato/binário esperada.
-- **Gateway API**: as CRDs vêm com o chart de Cilium e seguem a versão fixada. Não há ação adicional desde que o `HelmChartConfig` se mantenha.
+- **Gateway API**: as CRDs são aplicadas pelo role `04_deploy_k8s` (`k8s/cluster-config/gateway-api`) e devem seguir a versão do Cilium fixada. Não há ação adicional enquanto o Cilium não mudar de série.
 
 ---
 

@@ -59,8 +59,9 @@ endif
 # Override in env/.env or on the command line.
 # make install-rke2 and make install-k3s set K8S_DISTRIBUTION automatically.
 #
-# Version pins (empty = latest stable from the selected channel):
-#   RKE2_VERSION=v1.31.4+rke2r1   make install-rke2
+# Version pins (empty = role default: rke2_version in role 03 defaults, latest
+# stable for k3s):
+#   RKE2_VERSION=v1.37.1+rke2r1   make install-rke2
 #   K3S_VERSION=v1.31.4+k3s1      make install-k3s
 #
 K8S_DISTRIBUTION ?= rke2

@@ -9,7 +9,7 @@
 #
 # Variables
 #   rke2_version          — pin installer version; empty = latest from channel.
-#   rke2_channel          — install channel: stable | latest | testing.
+#   rke2_channel          — install channel: stable | latest | testing | v1.NN.
 #   rke2_install_url      — official install script URL.
 #   rke2_node_name        — node name registered in the cluster (default: inventory hostname).
 #   rke2_node_ip          — IP for intra-cluster traffic; defaults to vm_ip from inventory.
@@ -39,11 +39,16 @@
 # -----------------------------------------------------------------------------
 # Version & install
 # -----------------------------------------------------------------------------
-# Empty string = latest stable. Pin with e.g. "v1.31.4+rke2r1".
-rke2_version: ""
+# Pinned so that recreating a VM always gives the same cluster (an unpinned
+# `stable` channel moved from v1.35 to v1.36 and broke the pipeline).
+# Bump deliberately; keep rke2_cilium_version and the Gateway API CRDs
+# (k8s/cluster-config/gateway-api) in step with the Cilium chart it bundles.
+# Empty string = latest patch of rke2_channel.
+rke2_version: "v1.36.5+rke2r1"
 
-# Channel: stable | latest | testing
-rke2_channel: stable
+# Channel: stable | latest | testing | v1.NN (minor pin). Only used when
+# rke2_version is empty.
+rke2_channel: v1.36
 
 # Install script URL (official).
 rke2_install_url: https://get.rke2.io
@@ -118,8 +123,10 @@ rke2_control_plane_resource_limits: []
 # Cilium (HelmChartConfig)
 # -----------------------------------------------------------------------------
 # Pin to a specific Cilium version.  Empty = use whatever RKE2 bundles.
-# Known-good version for RKE2 v1.31.x: v1.18.7.
-rke2_cilium_version: "v1.18.7"
+# v1.20.2 is the version RKE2 v1.36.5 bundles (chart rke2-cilium 1.20.200), so
+# images and chart templates match. The 1.19 series was skipped: cilium#44430
+# (>= 1.19.0, < 1.20.0) broke SSH to the node and outbound host traffic.
+rke2_cilium_version: "v1.20.2"
 
 # 1 replica avoids port conflicts (9234, 9963) on single-node clusters.
 rke2_cilium_operator_replicas: 1
