@@ -25,7 +25,7 @@
   ansible.builtin.command:
     cmd: kubectl get crd gatewayclasses.gateway.networking.k8s.io
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   register: _deploy_k8s_gateway_api_crd
   changed_when: false
   failed_when: false
@@ -35,9 +35,9 @@
   ansible.builtin.command:
     cmd: >-
       kubectl apply --server-side -k
-      {{ deploy_k8s_remote_path }}/cluster-config/gateway-api
+      {{ deploy_k8s_k8s_path }}/core/cluster-config/gateway-api
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   changed_when: true
 
 - name: "cluster_config | Wait for Gateway API CRDs to be Established"
@@ -55,7 +55,7 @@
   args:
     executable: /bin/bash
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   changed_when: false
 
 - name: "cluster_config | Restart cilium-operator after the first Gateway API CRD install"
@@ -70,15 +70,19 @@
   args:
     executable: /bin/bash
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   changed_when: true
 
+# --force-conflicts: on a re-run these objects already belong to the
+# `cluster-config` Application (field manager argocd-controller). Both sides
+# apply the same files, so taking the fields back is harmless and Argo CD
+# reclaims them on its next sync.
 - name: "cluster_config | Apply Cilium + PriorityClasses overlay (server-side)"
   become: false
   ansible.builtin.command:
     cmd: >-
-      kubectl apply --server-side -k
-      {{ deploy_k8s_remote_path }}/cluster-config/overlays/{{ deploy_k8s_overlay }}
+      kubectl apply --server-side --force-conflicts -k
+      {{ deploy_k8s_k8s_path }}/core/cluster-config/overlays/{{ deploy_k8s_overlay }}
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   changed_when: true

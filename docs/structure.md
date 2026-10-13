@@ -21,10 +21,11 @@ k8s-blueprint/
 │   ├── setup.mk
 │   ├── inventory.mk
 │   ├── targets.mk
+│   ├── overlays.mk
 │   └── ssh.mk
 ├── pyproject.toml            # Dependências Python (Ansible via uv)
 │
-├── app/                      # App Python
+├── app/                      # App Python (inventário, overlays, menu, sealed secrets)
 ├── tests/                    # Testes do app/
 │
 ├── provisioning/             # Todo o Ansible
@@ -37,14 +38,17 @@ k8s-blueprint/
 │   │   ├── 01_create_vm/
 │   │   ├── 02_prepare_vm/
 │   │   ├── 03_install_rke2/  # RKE2 (ou 03_install_k3s/)
-│   │   ├── 04_deploy_k8s/    # bootstrap k8s (Helm + kustomize)
+│   │   ├── 04_deploy_k8s/    # bootstrap k8s + entrega ao Argo CD (app-of-apps)
 │   │   ├── reset_k8s/        # teardown dos workloads (opt-in)
 │   │   └── golden_image/     # imagem base com SO preparado (opt-in)
 │   └── templates/
 │
 ├── lab/                      # Artefactos locais KVM (conteúdo gitignored)
 ├── env/                      # Credenciais e .env local
-├── k8s/                      # Manifests Kubernetes (values Helm + kustomize)
+├── k8s/                      # Manifests Kubernetes por stack (core, storage)
+│   ├── catalog.yml           #   stacks e componentes disponíveis
+│   ├── core/                 #   applications/ + componentes base/overlays
+│   └── storage/
 └── docs/                     # Documentação (Sphinx)
 ```
 
@@ -52,9 +56,14 @@ k8s-blueprint/
 
 ## app
 
-App Python do projeto. Hoje contém o **gerador de inventário Ansible**
-(`app/inventory/`), invocado por `make inventory` via o script
-`k8s-blueprint-inventory`.
+App Python do projeto.
+
+| Pacote | Função | Comando |
+|--------|--------|---------|
+| `app/inventory/` | Gera `hosts.ini` e `group_vars` a partir de `manifest.yml` (+ `manifest.local.yml`) | `k8s-blueprint-inventory`, `make inventory` |
+| `app/scaffold/` | Catálogo (`k8s/catalog.yml`), render dos `overlays/_template/`, criação/remoção de overlays locais, checagem de DNS, validação com kustomize | `k8s-blueprint`, `make new`, `make dns-check`, `make validate-k8s` |
+| `app/tui/` | Menu interativo (Textual) sobre a mesma engine | `k8s-blueprint tui`, `make tui` |
+| `app/secrets/` | Chave BYOK e selamento offline de Secrets; segredos de laboratório | `k8s-blueprint-seal`, `k8s-blueprint secrets` |
 
 | Conteúdo | Versionado |
 |----------|------------|
@@ -80,7 +89,7 @@ defaults (`env/.env`), invocação Ansible e utilitários SSH/libvirt.
 | `inventory.mk` | `inventory`, `inventory-overlay` |
 | `targets.mk` | Playbook pipeline (`setup-host`, `up`, …) |
 | `ansible.mk` | `run-playbook` macro, `setup-host` tag logic |
-| `ssh.mk` | SSH known_hosts, `make ssh`, `destroy`, `clean` |
+| `ssh.mk` | SSH known_hosts, `make ssh`, `destroy`, `destroy-all`, `clean` |
 
 ---
 
@@ -99,7 +108,7 @@ All **Ansible** configuration for the lab.
 | [roles/01_create_vm/](../provisioning/roles/01_create_vm/README.md) | qcow2, cloud-init, virt-install |
 | [roles/02_prepare_vm/](../provisioning/roles/02_prepare_vm/README.md) | swap, SELinux, iptables baseline in VM |
 | [roles/03_install_rke2/](../provisioning/roles/03_install_rke2/README.md) | RKE2 server, Cilium, Gateway API |
-| [roles/04_deploy_k8s/](../provisioning/roles/04_deploy_k8s/README.md) | cluster-config, local-path, cert-manager, Argo CD |
+| [roles/04_deploy_k8s/](../provisioning/roles/04_deploy_k8s/README.md) | cluster-config, local-path, Argo CD, Git local, Application raiz |
 | [templates/README.md](../provisioning/templates/README.md) | NoCloud seed ISO templates |
 | [collections/README.md](../provisioning/collections/README.md) | Galaxy collections (`ansible.posix`, `ansible.netcommon`) |
 
@@ -141,8 +150,17 @@ Documentação: [env/README.md](../env/README.md).
 
 ## k8s
 
-Reservado para **manifests Kubernetes** (RKE2, CNI, workloads). Ainda não
-integrado no fluxo automatizado do `make up`.
+Manifests Kubernetes organizados por **stack** (`core`, `storage`), cada uma
+com `applications/{base,overlays/<id>}` (Applications do Argo CD) e
+componentes `base/` + `overlays/<id>/`. O role 04 faz o bootstrap mínimo e
+aplica a Application raiz do overlay; o Argo CD instala o restante lendo um
+Git servido pela própria VM.
+
+| Conteúdo | Versionado |
+|----------|------------|
+| `catalog.yml`, `base/`, `overlays/_template/`, `overlays/broetec-*/` | Sim |
+| `overlays/<overlay local>/` (criados por `k8s-blueprint overlay new`) | Não |
+| `*-sealedsecret.yaml` (selados com a chave BYOK da máquina) | Não |
 
 Documentação: [k8s/README.md](../k8s/README.md) · bootstrap:
 [04_deploy_k8s/README.md](../provisioning/roles/04_deploy_k8s/README.md).
@@ -205,6 +223,9 @@ sequenceDiagram
 | `up` | 01 + 02 + 03 + 04 (default `OVERLAY=broetec-core`) |
 | `up-all` | loop `up` nos 3 overlays |
 | `deploy` | 03 + 04 |
+| `k8s-push` | Reenvia `k8s/` ao Git local da VM e pede refresh ao Argo CD |
+| `tui` / `new` / `rm-overlay` | Cria ou remove um overlay local (não versionado) |
+| `dns-check` / `validate-k8s` | Registros DNS esperados · `kustomize build` de todos os overlays |
 | `golden` | Constrói a golden image (SO preparado) em `lab/cache/` com o overlay `golden` |
 | `snapshot` / `revert` / `snapshots` | Snapshots libvirt das VMs do overlay (`NAME=<nome>`) |
 ### Ordem das roles
@@ -213,7 +234,9 @@ sequenceDiagram
 2. **01_create_vm** — host: qcow2, virt-install, wait SSH
 3. **02_prepare_vm** — VM: swap, SELinux, iptables baseline (firewalld off)
 4. **03_install_rke2** — VM: RKE2 server com Cilium (ou **03_install_k3s**)
-5. **04_deploy_k8s** — VM: cluster-config, local-path, cert-manager, Argo CD
+5. **04_deploy_k8s** — VM: cluster-config, local-path, Argo CD, Git local e
+   Application raiz; o Argo CD instala sealed-secrets, cert-manager, External
+   Secrets e as demais stacks
 
 ---
 
@@ -223,6 +246,9 @@ sequenceDiagram
 |----------|-------------|
 | Topologia de VMs (nome, IP, overlay) | `provisioning/inventory/manifest.yml` → `make inventory` |
 | Sobrescrever overlay ativo | `env/.env` (`OVERLAY`, `VM_NAME`, `VM_IP`) |
+| Criar um overlay próprio (VM + stacks k8s) | `make tui` ou `make new NAME=...` → `manifest.local.yml` |
+| Stacks/componentes de um overlay versionado | `k8s:` em `manifest.yml` → `uv run k8s-blueprint overlay render <id>` |
+| Acrescentar um componente ao catálogo | `k8s/catalog.yml` + `base/` e `overlays/_template/` do componente |
 | Variáveis Ansible partilhadas | `provisioning/inventory/_shared/group_vars/` |
 | Caminho dos discos | `env/.env` (`LAB_PATH`) ou `group_vars/all.yml` |
 | Pular instalação de pacotes no host | `env/.env` → `KVM_HOST_BOOTSTRAP=false` (ou `make setup-host KVM_HOST_BOOTSTRAP=false`) |
@@ -238,5 +264,7 @@ sequenceDiagram
 | Código, playbooks, inventário base | `.venv/`, `lab/disks/`, `lab/cache/` |
 | `env/.env.example`, `env/README.md` | `env/.env`, chaves SSH |
 | Overlays `broetec-*` no inventário | `kubeconfig*`, `.ansible/` |
+| Overlays `broetec-*` e `_template` em `k8s/` | Overlays locais: `manifest.local.yml`, `provisioning/inventory/<id>/`, `k8s/**/overlays/<id>/` |
+| `*-secret.yaml.example` | `*-secret.yaml` (exceto o didático do Argo CD), `*-sealedsecret.yaml`, `env/<overlay>/` |
 
 Ver [.gitignore](../.gitignore) para a lista completa.

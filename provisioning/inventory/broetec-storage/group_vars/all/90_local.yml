@@ -3,3 +3,8 @@
 
 # Larger disk for persistent data (consumed by role 01_create_vm via hostvars).
 vm_disk_size_gb: 120
+
+# Stack storage (PostgreSQL x2, SeaweedFS, Harbor) on top of core: mínimo
+# sugerido em k8s/catalog.yml (stacks.storage.vm).
+vm_vcpus: 6
+vm_memory_mb: 16384

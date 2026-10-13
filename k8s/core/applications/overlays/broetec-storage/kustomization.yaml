@@ -1,0 +1,168 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - ../../base
+  # Stack storage: AppProject + app-of-apps (k8s/storage/applications).
+  - ../../../../storage/applications/root
+
+patches:
+  - path: _release-source.yaml
+    target:
+      kind: ConfigMap
+      name: core-release-source
+
+  - path: core-apps.yaml
+    target:
+      kind: Application
+      name: core-apps
+
+  - path: cluster-config.yaml
+    target:
+      kind: Application
+      name: cluster-config
+
+  - path: local-path-provisioner.yaml
+    target:
+      kind: Application
+      name: local-path-provisioner
+
+  - path: sealed-secrets.yaml
+    target:
+      kind: Application
+      name: sealed-secrets
+
+  - path: cert-manager.yaml
+    target:
+      kind: Application
+      name: cert-manager
+
+  - path: argocd.yaml
+    target:
+      kind: Application
+      name: argocd
+
+  - path: external-secrets-operator.yaml
+    target:
+      kind: Application
+      name: external-secrets-operator
+
+  - path: storage-apps.yaml
+    target:
+      kind: Application
+      name: storage-apps
+
+# Propaga repoURL/targetRevision do ConfigMap core-release-source para as
+# Applications (fontes Git) e para o AppProject.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: core-release-source
+      fieldPath: data.repoURL
+    targets:
+      - select:
+          kind: AppProject
+          name: core
+        fieldPaths:
+          - spec.sourceRepos.0
+      - select:
+          kind: Application
+          name: core-apps
+        fieldPaths:
+          - spec.source.repoURL
+      - select:
+          kind: Application
+          name: cluster-config
+        fieldPaths:
+          - spec.source.repoURL
+      - select:
+          kind: Application
+          name: local-path-provisioner
+        fieldPaths:
+          - spec.sources.1.repoURL
+          - spec.sources.2.repoURL
+      - select:
+          kind: Application
+          name: sealed-secrets
+        fieldPaths:
+          - spec.sources.1.repoURL
+      - select:
+          kind: Application
+          name: cert-manager
+        fieldPaths:
+          - spec.sources.1.repoURL
+          - spec.sources.2.repoURL
+      - select:
+          kind: Application
+          name: argocd
+        fieldPaths:
+          - spec.sources.1.repoURL
+          - spec.sources.2.repoURL
+      - select:
+          kind: Application
+          name: external-secrets-operator
+        fieldPaths:
+          - spec.sources.1.repoURL
+          - spec.sources.2.repoURL
+      - select:
+          kind: AppProject
+          name: storage
+        fieldPaths:
+          - spec.sourceRepos.0
+      - select:
+          kind: Application
+          name: storage-apps
+        fieldPaths:
+          - spec.source.repoURL
+
+  - source:
+      kind: ConfigMap
+      name: core-release-source
+      fieldPath: data.targetRevision
+    targets:
+      - select:
+          kind: Application
+          name: core-apps
+        fieldPaths:
+          - spec.source.targetRevision
+      - select:
+          kind: Application
+          name: cluster-config
+        fieldPaths:
+          - spec.source.targetRevision
+      - select:
+          kind: Application
+          name: local-path-provisioner
+        fieldPaths:
+          - spec.sources.1.targetRevision
+          - spec.sources.2.targetRevision
+      - select:
+          kind: Application
+          name: sealed-secrets
+        fieldPaths:
+          - spec.sources.1.targetRevision
+      - select:
+          kind: Application
+          name: cert-manager
+        fieldPaths:
+          - spec.sources.1.targetRevision
+          - spec.sources.2.targetRevision
+      - select:
+          kind: Application
+          name: argocd
+        fieldPaths:
+          - spec.sources.1.targetRevision
+          - spec.sources.2.targetRevision
+      - select:
+          kind: Application
+          name: external-secrets-operator
+        fieldPaths:
+          - spec.sources.1.targetRevision
+          - spec.sources.2.targetRevision
+      - select:
+          kind: Application
+          name: storage-apps
+        fieldPaths:
+          - spec.source.targetRevision

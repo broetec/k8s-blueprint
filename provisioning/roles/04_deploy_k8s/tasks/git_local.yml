@@ -1,0 +1,162 @@
+---
+# =============================================================================
+# tasks/git_local.yml — Local Git served by the node (source read by Argo CD)
+# =============================================================================
+#
+# Purpose
+#   Let Argo CD run the app-of-apps without pushing anything to GitHub: the
+#   k8s/ mirror on the VM is committed and pushed to a bare repository owned by
+#   a restricted system user, and Argo CD clones it over SSH from the node
+#   itself — the same URL shape used in production
+#   (git@<host>:k8s-blueprint.git).
+#
+#   1. System user `git` with git-shell (no interactive login).
+#   2. Bare repository ~git/k8s-blueprint.git.
+#   3. One ed25519 key pair on the VM, authorized for `git`; used by the
+#      publish step below and stored in the Argo CD repository Secret.
+#   4. Commit of <remote_dir>/k8s + push to the bare repository.
+#   5. Repository Secret in the argocd namespace (insecure: host key of the
+#      node is not pinned — lab only).
+#
+# Scope
+#   become: true only for the user/repository setup; publishing and kubectl run
+#   as the connecting user.
+#
+# Related commands
+#   make deploy-k8s, make k8s-push
+# =============================================================================
+
+- name: "git_local | Ensure system user {{ deploy_k8s_git_user }} (git-shell)"
+  become: true
+  ansible.builtin.user:
+    name: "{{ deploy_k8s_git_user }}"
+    shell: /usr/bin/git-shell
+    create_home: true
+    system: true
+    comment: k8s-blueprint local Git
+
+- name: "git_local | Resolve home of {{ deploy_k8s_git_user }}"
+  become: false
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ deploy_k8s_git_user }}"
+
+- name: "git_local | Set local Git path facts"
+  ansible.builtin.set_fact:
+    deploy_k8s_git_home: "{{ getent_passwd[deploy_k8s_git_user][4] }}"
+    deploy_k8s_git_key: "{{ deploy_k8s_user_home }}/.ssh/{{ deploy_k8s_git_key_name }}"
+
+- name: "git_local | Ensure ~/.ssh of the connecting user"
+  become: false
+  ansible.builtin.file:
+    path: "{{ deploy_k8s_user_home }}/.ssh"
+    state: directory
+    mode: "0700"
+
+- name: "git_local | Generate the key pair used to reach the local Git"
+  become: false
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -q
+      - -t
+      - ed25519
+      - -N
+      - ""
+      - -C
+      - k8s-blueprint-local-git
+      - -f
+      - "{{ deploy_k8s_git_key }}"
+    creates: "{{ deploy_k8s_git_key }}"
+
+- name: "git_local | Read the public key"
+  become: false
+  ansible.builtin.slurp:
+    src: "{{ deploy_k8s_git_key }}.pub"
+  register: _deploy_k8s_git_pub
+
+- name: "git_local | Authorize the key for {{ deploy_k8s_git_user }}"
+  become: true
+  ansible.posix.authorized_key:
+    user: "{{ deploy_k8s_git_user }}"
+    key: "{{ _deploy_k8s_git_pub.content | b64decode | trim }}"
+    exclusive: true
+
+# runuser (as root) instead of become_user: becoming an unprivileged user needs
+# the `acl` package on the VM for Ansible's temporary files.
+- name: "git_local | Create the bare repository"
+  become: true
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ deploy_k8s_git_user }}"
+      - --
+      - git
+      - init
+      - --bare
+      - --initial-branch
+      - "{{ deploy_k8s_git_branch }}"
+      - "{{ deploy_k8s_git_home }}/{{ deploy_k8s_git_repo_name }}"
+    creates: "{{ deploy_k8s_git_home }}/{{ deploy_k8s_git_repo_name }}/HEAD"
+
+- name: "git_local | Commit k8s/ and push it to the local Git"
+  become: false
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd {{ deploy_k8s_remote_path | quote }}
+    if [ ! -d .git ]; then
+      git init -q --initial-branch {{ deploy_k8s_git_branch | quote }}
+      git config user.name k8s-blueprint
+      git config user.email k8s-blueprint@localhost
+    fi
+    git remote remove origin 2>/dev/null || true
+    git remote add origin {{ (deploy_k8s_git_user + '@localhost:' + deploy_k8s_git_repo_name) | quote }}
+    git add -A k8s
+    if git diff --cached --quiet && git rev-parse -q --verify HEAD >/dev/null; then
+      echo "NO_CHANGES"
+    else
+      git commit -q -m "k8s-blueprint: sync {{ deploy_k8s_overlay }} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "COMMITTED $(git rev-parse --short HEAD)"
+    fi
+    git push -q --force origin {{ ('HEAD:refs/heads/' + deploy_k8s_git_branch) | quote }}
+  args:
+    executable: /bin/bash
+  environment:
+    GIT_SSH_COMMAND: >-
+      ssh -i {{ deploy_k8s_git_key }} -o IdentitiesOnly=yes
+      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR
+  register: _deploy_k8s_git_publish
+  changed_when: "'COMMITTED' in _deploy_k8s_git_publish.stdout"
+
+- name: "git_local | Read the private key (for the Argo CD repository Secret)"
+  become: false
+  ansible.builtin.slurp:
+    src: "{{ deploy_k8s_git_key }}"
+  register: _deploy_k8s_git_priv
+  no_log: true
+
+- name: "git_local | Apply the Argo CD repository Secret"
+  become: false
+  ansible.builtin.command:
+    cmd: kubectl apply -f -
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: {{ deploy_k8s_git_secret_name }}
+        namespace: {{ argocd_namespace }}
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      type: Opaque
+      data:
+        type: {{ 'git' | b64encode }}
+        name: {{ 'k8s-blueprint-local' | b64encode }}
+        url: {{ deploy_k8s_git_url | b64encode }}
+        insecure: {{ 'true' | b64encode }}
+        sshPrivateKey: {{ _deploy_k8s_git_priv.content }}
+  environment:
+    PATH: "{{ deploy_k8s_bin_path }}"
+  no_log: true
+  register: _deploy_k8s_git_secret
+  changed_when: "'unchanged' not in _deploy_k8s_git_secret.stdout"

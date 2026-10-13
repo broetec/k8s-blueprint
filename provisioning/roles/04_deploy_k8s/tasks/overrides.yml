@@ -1,0 +1,87 @@
+---
+# =============================================================================
+# tasks/overrides.yml — Lab-only rewrite of the "_" files of the overlay
+# =============================================================================
+#
+# Purpose
+#   The committed overlay describes the production shape: Argo CD reads the
+#   GitHub repository and the Gateway uses the issuer declared in the
+#   inventory. In the lab two files are rewritten ONLY in the VM copy (the one
+#   published to the local Git), never in the repo:
+#
+#     <stack>/applications/overlays/<overlay>/_release-source.yaml
+#         repoURL/targetRevision -> local Git of the node (argo_source: local)
+#     core/cluster-config/cilium/overlays/<overlay>/_tls-issuer.yaml
+#         cert-manager issuer of the Gateway. A letsencrypt-* issuer needs the
+#         Cloudflare token; without it the Gateway falls back to `selfsigned`
+#         so HTTPS still works.
+#
+# Scope
+#   become: false — files under the connecting user's home.
+# =============================================================================
+
+- name: "overrides | Look for the Cloudflare token Secret (controller)"
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ deploy_k8s_cloudflare_token_file }}"
+  register: _deploy_k8s_cf_token
+
+- name: "overrides | Resolve the effective Gateway TLS issuer"
+  ansible.builtin.set_fact:
+    deploy_k8s_tls_issuer_effective: >-
+      {{
+        deploy_k8s_tls_issuer
+        if (_deploy_k8s_cf_token.stat.exists
+            or not (deploy_k8s_tls_issuer is match('^letsencrypt')))
+        else 'selfsigned'
+      }}
+
+- name: "overrides | Report the TLS issuer fallback"
+  when: deploy_k8s_tls_issuer_effective != deploy_k8s_tls_issuer
+  ansible.builtin.debug:
+    msg: >-
+      Issuer {{ deploy_k8s_tls_issuer }} needs a Cloudflare token
+      ({{ deploy_k8s_cloudflare_token_file | relpath(deploy_k8s_repo_root) }}
+      not found): the Gateway uses `selfsigned` in this run.
+
+- name: "overrides | Write _tls-issuer.yaml (VM copy)"
+  become: false
+  ansible.builtin.copy:
+    dest: "{{ deploy_k8s_k8s_path }}/core/cluster-config/cilium/overlays/{{ deploy_k8s_overlay }}/_tls-issuer.yaml"
+    mode: "0644"
+    content: |
+      - op: replace
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: "{{ deploy_k8s_tls_issuer_effective }}"
+  changed_when: false
+
+- name: "overrides | Find _release-source.yaml of every stack (VM copy)"
+  become: false
+  when: deploy_k8s_argo_source == 'local'
+  ansible.builtin.find:
+    paths: "{{ deploy_k8s_k8s_path }}"
+    patterns: "_release-source.yaml"
+    recurse: true
+    hidden: true
+  register: _deploy_k8s_release_sources
+
+- name: "overrides | Point _release-source.yaml at the local Git (VM copy)"
+  become: false
+  when:
+    - deploy_k8s_argo_source == 'local'
+    - "'/applications/overlays/' + deploy_k8s_overlay + '/' in item.path"
+  ansible.builtin.copy:
+    dest: "{{ item.path }}"
+    mode: "0644"
+    content: |
+      - op: replace
+        path: /data/repoURL
+        value: {{ deploy_k8s_git_url }}
+      - op: replace
+        path: /data/targetRevision
+        value: {{ deploy_k8s_git_branch }}
+  loop: "{{ _deploy_k8s_release_sources.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | relpath(deploy_k8s_k8s_path) }}"
+  changed_when: false

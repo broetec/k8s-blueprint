@@ -68,10 +68,24 @@ K8S_DISTRIBUTION ?= rke2
 RKE2_VERSION     ?=
 K3S_VERSION      ?=
 
-# Sealed Secrets (role 04) — opcional, default desligado. Quando true, o role 04
-# gera a chave BYOK localmente (env/<overlay>/), sela os Secrets offline e
-# instala o controller adotando a chave. Override em env/.env ou na linha de comando.
-SEALED_SECRETS   ?= false
+# Role 04 — o Sealed Secrets é sempre usado: a chave BYOK é gerada localmente
+# (env/<overlay>/), os Secrets do overlay são selados offline e o Argo CD instala
+# o controller adotando a chave.
+#
+# Fonte lida pelo Argo CD e emissor TLS do Gateway (vazio = o que o overlay
+# declara no manifest do inventário):
+#   ARGO_SOURCE=remote      make deploy-k8s   # lê o repoURL commitado (GitHub)
+#   TLS_ISSUER=selfsigned   make deploy-k8s
+ARGO_SOURCE      ?=
+TLS_ISSUER       ?=
+
+DEPLOY_K8S_EXTRA :=
+ifneq ($(strip $(ARGO_SOURCE)),)
+DEPLOY_K8S_EXTRA += -e argo_source=$(ARGO_SOURCE)
+endif
+ifneq ($(strip $(TLS_ISSUER)),)
+DEPLOY_K8S_EXTRA += -e tls_issuer=$(TLS_ISSUER)
+endif
 
 # Build the -e flags passed to ansible-playbook for role 03.
 # Version extras are only appended when the variable is non-empty.

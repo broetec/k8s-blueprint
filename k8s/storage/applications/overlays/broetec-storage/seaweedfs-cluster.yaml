@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/source/path
+  value: k8s/storage/seaweedfs/clusters/lab/overlays/broetec-storage

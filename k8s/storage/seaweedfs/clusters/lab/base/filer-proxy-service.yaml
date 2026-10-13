@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs-lab-filer-proxy
+spec:
+  selector:
+    app: seaweedfs-lab-filer-proxy
+  ports:
+    - name: http
+      port: 8888
+      targetPort: http

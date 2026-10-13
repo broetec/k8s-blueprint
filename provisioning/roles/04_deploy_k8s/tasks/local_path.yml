@@ -4,27 +4,25 @@
 # =============================================================================
 #
 # Purpose
-#   Deploy local-path-provisioner so PVCs can be provisioned before Argo CD is
-#   bootstrapped. Runs only on rke2 (k3s ships its own local-path under
-#   kube-system); the caller gates this import with `when: deploy_k8s_is_rke2`.
+#   Deploy local-path-provisioner so the PVCs of Argo CD (redis-ha) can be
+#   provisioned before Argo CD exists. Runs only on rke2 (k3s ships its own
+#   local-path under kube-system); the caller gates this import with
+#   `when: deploy_k8s_is_rke2`.
 #
 #   1. Namespace local-path-storage with PSA privileged labels — applied via
-#      kubectl apply -k, reusing the namespace.yaml from
-#      k8s/local-path-provisioner/overlays/<overlay>.
+#      kubectl apply -k from k8s/core/local-path-provisioner/overlays/<overlay>.
 #   2. Helm chart (OCI) ghcr.io/rancher/local-path-provisioner — values from
-#      k8s/local-path-provisioner/base/values.yaml and the overlay values.yaml.
+#      k8s/core/local-path-provisioner/base/values.yaml and the overlay
+#      values.yaml (priorityClassName pc-0-infra-core exists already: it is
+#      created by cluster-config, applied earlier in this role).
 #
-# Bootstrap note on priorityClassName
-#   base/values.yaml sets priorityClassName: "pc-0-infra-core" which is created
-#   by cluster-config (applied earlier in this role). The override to "" keeps
-#   parity with the original bootstrap and avoids ordering surprises if the
-#   PriorityClass is not yet reconciled; Argo CD restores the correct value once
-#   it takes ownership of the release.
+#   The release name matches the `local-path-provisioner` Application, which
+#   adopts these resources once Argo CD takes over.
 #
 # Variables
-#   deploy_k8s_local_path_overlay       — overlay directory name.
-#   deploy_k8s_local_path_chart_version — chart version to pin; empty = latest.
-#   deploy_k8s_remote_path              — synced k8s/ path on the VM (set in main.yml).
+#   deploy_k8s_local_path_chart_version — chart version; must match the
+#                                         Application targetRevision.
+#   deploy_k8s_k8s_path                 — synced k8s/ path on the VM (main.yml).
 #
 # Node prerequisite
 #   The host storage directory (mkdir + chmod 1777 + SELinux container_file_t)
@@ -36,9 +34,9 @@
   ansible.builtin.command:
     cmd: >-
       kubectl apply -k
-      {{ deploy_k8s_remote_path }}/local-path-provisioner/overlays/{{ deploy_k8s_local_path_overlay }}
+      {{ deploy_k8s_k8s_path }}/core/local-path-provisioner/overlays/{{ deploy_k8s_overlay }}
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   changed_when: true
 
 - name: "local-path | Deploy Helm chart (OCI)"
@@ -49,8 +47,6 @@
     chart_version: "{{ deploy_k8s_local_path_chart_version | default(omit) }}"
     release_namespace: local-path-storage
     values_files:
-      - "{{ deploy_k8s_remote_path }}/local-path-provisioner/base/values.yaml"
-      - "{{ deploy_k8s_remote_path }}/local-path-provisioner/overlays/{{ deploy_k8s_local_path_overlay }}/values.yaml"
-    values:
-      priorityClassName: ""
+      - "{{ deploy_k8s_k8s_path }}/core/local-path-provisioner/base/values.yaml"
+      - "{{ deploy_k8s_k8s_path }}/core/local-path-provisioner/overlays/{{ deploy_k8s_overlay }}/values.yaml"
     wait: true

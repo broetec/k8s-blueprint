@@ -1,0 +1,3 @@
+- op: replace
+  path: /data/REGISTRY_HOST
+  value: "harbor.[[ apps_domain ]]"

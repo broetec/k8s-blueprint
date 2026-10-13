@@ -24,7 +24,7 @@ make install-rke2 OVERLAY=broetec-core
 | `rke2_cni` | `cilium` | CNI plugin |
 | `rke2_disable_kube_proxy` | `true` | Let Cilium replace kube-proxy |
 | `rke2_disable` | `[rke2-ingress-nginx, rke2-traefik, rke2-traefik-crd]` | Built-in components to skip (every bundled ingress; Traefik is the default from v1.36 and its CRD chart conflicts with the Gateway API CRDs of role 04) |
-| `rke2_cilium_version` | `v1.20.2` | Pinned Cilium image tag; matches the chart RKE2 v1.36.5 bundles. Cilium 1.20 needs Gateway API CRDs v1.6.3 (`k8s/cluster-config/gateway-api`) |
+| `rke2_cilium_version` | `v1.20.2` | Pinned Cilium image tag; matches the chart RKE2 v1.36.5 bundles. Cilium 1.20 needs Gateway API CRDs v1.6.3 (`k8s/core/cluster-config/gateway-api`) |
 | `rke2_cilium_operator_replicas` | `1` | Single-node safe (avoids port conflicts) |
 | `rke2_secrets_encryption` | `true` | Encrypt secrets at rest |
 | `rke2_write_kubeconfig_mode` | `0644` | Kubeconfig file permissions |

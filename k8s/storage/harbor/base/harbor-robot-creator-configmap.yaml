@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-robot-creator-conf
+data:
+  # API do Harbor (interna) e host usado no pull secret gerado.
+  HARBOR_URL: "http://harbor-core"
+  REGISTRY_HOST: "PLACEHOLDER"
+  PULLER_ROBOT_NAME: "global-k8s-puller"
+  PUSHER_ROBOT_NAME: "github-pusher"
+  TARGET_NAMESPACE: "harbor"
+  TARGET_SECRET_NAME: "harbor-global-pull-secret"

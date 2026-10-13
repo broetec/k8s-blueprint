@@ -3,7 +3,7 @@
 # =============================================================================
 
 .PHONY: ensure-user-known-hosts ensure-ssh-global-known-hosts ssh ssh-add-lab \
-	ssh-host-key-forget ssh-host-key-refresh status destroy clean \
+	ssh-host-key-forget ssh-host-key-refresh status destroy destroy-all clean \
 	snapshot revert snapshots
 
 ensure-user-known-hosts: ## Prepara ~/.ssh e stubs SSH do lab no controlador (sem sudo)
@@ -61,21 +61,68 @@ status: ## Estado das VMs e redes libvirt
 	@printf "\n$(B)Redes libvirt:$(N)\n"
 	@virsh -c qemu:///system net-list --all
 
+# Uso interno do destroy-all: DESTROY_QUIET=1 cala os avisos de overlay sem VM
+# e DESTROY_REPORT=<ficheiro> recebe o nome de cada VM removida.
+DESTROY_QUIET ?=
+DESTROY_REPORT ?=
+_inventory_root := $(CURDIR)/provisioning/inventory
+
 destroy: ssh-host-key-forget ## Remove VMs do overlay activo (mantém cache qcow2)
 	@if [ -z "$(strip $(_inventory_vms_list))" ]; then \
 	  printf "$(R)==> Nenhum host em [vms] em $(INVENTORY)$(N)\n"; exit 1; \
 	fi
-	@for vm in $(_inventory_vms_list); do \
+	@removed=""; \
+	for vm in $(_inventory_vms_list); do \
+	  disk="$(LAB_DISKS_PATH)/$$vm.qcow2"; seed="$(LAB_DISKS_PATH)/$$vm-seed.iso"; \
+	  defined=0; virsh -c qemu:///system dominfo "$$vm" >/dev/null 2>&1 && defined=1; \
+	  if [ $$defined -eq 0 ] && [ ! -e "$$disk" ] && [ ! -e "$$seed" ]; then \
+	    [ -n "$(DESTROY_QUIET)" ] \
+	      || printf "$(Y)==> VM '%s' não existe (OVERLAY=$(OVERLAY)): nada a remover.$(N)\n" "$$vm"; \
+	    continue; \
+	  fi; \
 	  printf "$(Y)==> Removendo VM '%s'...$(N)\n" "$$vm"; \
-	  if virsh -c qemu:///system dominfo "$$vm" >/dev/null 2>&1; then \
+	  if [ $$defined -eq 1 ]; then \
 	    virsh -c qemu:///system destroy "$$vm" >/dev/null 2>&1 || true; \
 	    virsh -c qemu:///system undefine "$$vm" --managed-save --snapshots-metadata \
 	      || { printf "$(R)==> Falha ao remover o domínio '%s'$(N)\n" "$$vm"; exit 1; }; \
 	  fi; \
-	  rm -f "$(LAB_DISKS_PATH)/$$vm.qcow2" "$(LAB_DISKS_PATH)/$$vm-seed.iso" \
+	  rm -f "$$disk" "$$seed" \
 	    || { printf "$(R)==> Falha ao apagar os discos de '%s'$(N)\n" "$$vm"; exit 1; }; \
+	  removed="$$removed $$vm"; \
+	  [ -z "$(DESTROY_REPORT)" ] || printf '%s\n' "$$vm" >> "$(DESTROY_REPORT)"; \
+	done; \
+	[ -z "$$removed" ] \
+	  || printf "$(G)==> VM(s) removida(s):%s (cache preservado).$(N)\n" "$$removed"; \
+	[ -z "$(DESTROY_QUIET)" ] || exit 0; \
+	for disk in "$(LAB_DISKS_PATH)"/*.qcow2; do \
+	  [ -e "$$disk" ] || continue; \
+	  vm=$$(basename "$$disk" .qcow2); overlay=""; \
+	  for inv in "$(_inventory_root)"/*/hosts.ini; do \
+	    [ -e "$$inv" ] || continue; \
+	    if awk -v vm="$$vm" 'BEGIN{v=0;f=0} /^\[vms\]$$/{v=1;next} /^\[/{v=0;next} v&&$$1==vm{f=1} END{exit !f}' "$$inv"; then \
+	      overlay=$$(basename "$$(dirname "$$inv")"); break; \
+	    fi; \
+	  done; \
+	  if [ -n "$$overlay" ]; then \
+	    printf "$(B)==> VM '%s' continua existindo:$(N) make destroy OVERLAY=%s (ou make destroy-all)\n" "$$vm" "$$overlay"; \
+	  else \
+	    printf "$(B)==> Disco '%s' sem overlay no inventário:$(N) %s\n" "$$vm" "$$disk"; \
+	  fi; \
 	done
-	@printf "$(G)==> VM(s) do overlay removida(s) (cache preservado).$(N)\n"
+
+destroy-all: ## Remove as VMs de todos os overlays (versionados, locais e golden)
+	@report=$$(mktemp); trap 'rm -f "$$report"' EXIT; \
+	for inv in "$(_inventory_root)"/*/hosts.ini; do \
+	  [ -e "$$inv" ] || continue; \
+	  o=$$(basename "$$(dirname "$$inv")"); \
+	  $(SUBMAKE) --no-print-directory -f $(CURDIR)/Makefile destroy OVERLAY=$$o \
+	    DESTROY_QUIET=1 DESTROY_REPORT="$$report" || exit $$?; \
+	done; \
+	if [ -s "$$report" ]; then \
+	  printf "\n$(G)==> %s VM(s) removida(s):$(N) %s\n" "$$(wc -l < "$$report")" "$$(tr '\n' ' ' < "$$report")"; \
+	else \
+	  printf "$(Y)==> Nenhuma VM do lab existe: nada a remover.$(N)\n"; \
+	fi
 
 snapshot: ## Snapshot das VMs do overlay (NAME=<nome>; guarda a memória se a VM estiver ligada)
 	@test -n "$(NAME)" || { printf "$(R)Use: make snapshot NAME=<nome>$(N)\n"; exit 1; }

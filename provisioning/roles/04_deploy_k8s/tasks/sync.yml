@@ -1,31 +1,60 @@
 ---
 # =============================================================================
-# tasks/sync.yml — Copy k8s/ manifests to the VM + tooling preflight
+# tasks/sync.yml — Mirror k8s/ on the VM + tooling preflight
 # =============================================================================
 #
 # Purpose
-#   Make the k8s/ tree (including any SealedSecrets generated offline by
-#   seal.yml) available on the VM so `kubectl apply -k` and Helm value files
-#   resolve locally. helm/kubectl are installed by role 02 (tasks/k8s_tools.yml);
-#   this only checks they are present and fails early with a clear message.
+#   Make the k8s/ tree (including the SealedSecrets generated offline by
+#   seal.yml) available on the VM: `kubectl apply -k` and Helm value files
+#   resolve locally, and the same directory is the working tree published to
+#   the local Git read by Argo CD.
+#
+# Behaviour
+#   k8s/ is packed on the controller into one archive and unpacked on the VM
+#   after removing the previous copy, so the VM always holds an exact mirror
+#   (files deleted locally disappear there too). Plain *-secret.yaml files are
+#   left out: only SealedSecrets travel.
 #
 # Scope
-#   become: false — writes under the connecting user's home and runs kubectl as
-#   that user (kubeconfig at ~/.kube/config).
+#   Packaging: delegate_to localhost. Everything else: become false, under the
+#   connecting user's home.
 # =============================================================================
 
-- name: "sync | Preflight — helm and kubectl available on the VM"
+- name: "sync | Preflight — helm, kubectl and git available on the VM"
   become: false
   ansible.builtin.command:
-    cmd: "{{ item }} version --client"
+    cmd: "{{ item }}"
   environment:
-    PATH: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+    PATH: "{{ deploy_k8s_bin_path }}"
   loop:
-    - kubectl
-    - helm
+    - kubectl version --client
+    - helm version
+    - git --version
   changed_when: false
-  register: _deploy_tooling
-  failed_when: _deploy_tooling.rc != 0
+
+- name: "sync | Create a temporary archive path (controller)"
+  delegate_to: localhost
+  become: false
+  ansible.builtin.tempfile:
+    state: file
+    prefix: k8s-blueprint-
+    suffix: .tar.gz
+  register: _deploy_k8s_archive
+  changed_when: false
+
+- name: "sync | Pack k8s/ without plain Secrets (controller)"
+  delegate_to: localhost
+  become: false
+  ansible.builtin.command:
+    argv:
+      - tar
+      - --exclude=*-secret.yaml
+      - -czf
+      - "{{ _deploy_k8s_archive.path }}"
+      - -C
+      - "{{ deploy_k8s_repo_root }}"
+      - k8s
+  changed_when: false
 
 - name: "sync | Ensure remote manifests directory exists"
   become: false
@@ -34,10 +63,39 @@
     state: directory
     mode: "0755"
 
-- name: "sync | Copy k8s/ tree to the VM"
+- name: "sync | Remove the previous k8s/ copy from the VM"
   become: false
-  ansible.builtin.copy:
-    src: "{{ deploy_k8s_repo_root }}/k8s/"
-    dest: "{{ deploy_k8s_remote_path }}/"
-    mode: "0644"
-    directory_mode: "0755"
+  ansible.builtin.file:
+    path: "{{ deploy_k8s_k8s_path }}"
+    state: absent
+  changed_when: false
+
+- name: "sync | Unpack k8s/ on the VM"
+  become: false
+  ansible.builtin.unarchive:
+    src: "{{ _deploy_k8s_archive.path }}"
+    dest: "{{ deploy_k8s_remote_path }}"
+  changed_when: false
+
+- name: "sync | Remove the temporary archive (controller)"
+  delegate_to: localhost
+  become: false
+  ansible.builtin.file:
+    path: "{{ _deploy_k8s_archive.path }}"
+    state: absent
+  changed_when: false
+
+- name: "sync | Check the overlay exists in k8s/core/applications"
+  become: false
+  ansible.builtin.stat:
+    path: "{{ deploy_k8s_k8s_path }}/core/applications/overlays/{{ deploy_k8s_overlay }}/kustomization.yaml"
+  register: _deploy_k8s_overlay_stat
+
+- name: "sync | Fail early when the overlay has no k8s manifests"
+  ansible.builtin.assert:
+    that: _deploy_k8s_overlay_stat.stat.exists
+    fail_msg: >-
+      k8s/core/applications/overlays/{{ deploy_k8s_overlay }} not found. Declare a
+      `k8s:` section for the overlay in the inventory manifest and render it with
+      `uv run k8s-blueprint overlay render {{ deploy_k8s_overlay }}`.
+    quiet: true

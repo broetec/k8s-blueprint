@@ -1,0 +1,159 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seaweedfs-s3-sync
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          serviceAccountName: seaweedfs-s3-sync
+          restartPolicy: OnFailure
+          containers:
+            - name: sync-s3
+              image: alpine:3.20
+              env:
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: seaweedfs-s3-buckets-config
+                      key: s3-endpoint
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: seaweedfs-s3-buckets-config
+                      key: aws-default-region
+                - name: S3_IDENTITY_LABEL
+                  valueFrom:
+                    configMapKeyRef:
+                      name: seaweedfs-s3-buckets-config
+                      key: s3-identity-label
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: S3_ADMIN_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: seaweedfs-s3-bootstrap-admin
+                      key: access-key
+                - name: S3_ADMIN_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: seaweedfs-s3-bootstrap-admin
+                      key: secret-key
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  apk add --no-cache aws-cli kubectl jq >/dev/null
+
+                  echo "[s3-sync] namespace=${POD_NAMESPACE} endpoint=${S3_ENDPOINT} label=${S3_IDENTITY_LABEL}"
+                  echo "[s3-sync] admin_access_key_prefix=$(echo "${S3_ADMIN_ACCESS_KEY}" | cut -c1-4)****"
+
+                  tmp_json="/tmp/s3-identities.json"
+                  old_conf_tmp="/tmp/s3-old-conf.json"
+                  kubectl -n "${POD_NAMESPACE}" get secret -l "${S3_IDENTITY_LABEL}" -o json \
+                    | jq --arg adminAccessKey "${S3_ADMIN_ACCESS_KEY}" --arg adminSecretKey "${S3_ADMIN_SECRET_KEY}" '{
+                        identities: (
+                          [
+                            .items[]
+                            | {
+                                name: (.metadata.name | sub("^seaweedfs-s3-"; "")),
+                                credentials: [
+                                  {
+                                    accessKey: (.data["access-key"] | @base64d),
+                                    secretKey: (.data["secret-key"] | @base64d)
+                                  }
+                                ],
+                                actions: ["Read", "Write", "List"],
+                                buckets: [(.data["bucket-name"] | @base64d)]
+                              }
+                          ] + [
+                            {
+                              name: "bootstrap-admin",
+                              credentials: [
+                                {
+                                  accessKey: $adminAccessKey,
+                                  secretKey: $adminSecretKey
+                                }
+                              ],
+                              actions: ["Admin"]
+                            }
+                          ]
+                        ) | sort_by(.name)
+                      }' > "${tmp_json}"
+
+                  identities_count="$(jq '[.identities[] | select(.buckets != null)] | length' "${tmp_json}")"
+                  if [ "${identities_count}" -eq 0 ]; then
+                    echo "Nenhum Secret com label ${S3_IDENTITY_LABEL} encontrado"
+                    exit 1
+                  fi
+
+                  echo "[s3-sync] identities de aplicacao encontradas: ${identities_count}"
+                  jq -r '.identities[] | select(.buckets != null) | "- \(.name) -> \(.buckets[0])"' "${tmp_json}"
+
+                  old_conf_hash=""
+                  if kubectl -n "${POD_NAMESPACE}" get secret seaweedfs-s3-config >/dev/null 2>&1; then
+                    kubectl -n "${POD_NAMESPACE}" get secret seaweedfs-s3-config -o jsonpath='{.data.s3\.conf}' \
+                      | base64 -d | jq -cS . > "${old_conf_tmp}" || echo '{}' > "${old_conf_tmp}"
+                    old_conf_hash="$(sha256sum "${old_conf_tmp}" | awk '{print $1}')"
+                  fi
+
+                  new_conf_hash="$(jq -cS . "${tmp_json}" | sha256sum | awk '{print $1}')"
+                  echo "[s3-sync] old_conf_hash=${old_conf_hash:-none} new_conf_hash=${new_conf_hash}"
+
+                  kubectl -n "${POD_NAMESPACE}" create secret generic seaweedfs-s3-config \
+                    --from-file=s3.conf="${tmp_json}" \
+                    --dry-run=client -o yaml | kubectl apply -f -
+
+                  if [ "${old_conf_hash:-}" != "${new_conf_hash}" ]; then
+                    echo "[s3-sync] s3.conf mudou, reiniciando statefulset do filer..."
+                    kubectl -n "${POD_NAMESPACE}" patch statefulset seaweedfs-lab-filer \
+                      --type=merge \
+                      -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"s3-sync/restarted-at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
+                    kubectl -n "${POD_NAMESPACE}" rollout status statefulset/seaweedfs-lab-filer --timeout=180s
+                  else
+                    echo "[s3-sync] s3.conf sem alteracao, nao reinicia filer"
+                  fi
+
+                  echo "[s3-sync] aguardando propagacao..."
+                  sleep 3
+
+                  jq -c '.identities[]' "${tmp_json}" | while IFS= read -r identity; do
+                    bucket_name="$(echo "${identity}" | jq -r '.buckets[0]')"
+                    identity_name="$(echo "${identity}" | jq -r '.name')"
+                    if [ "${bucket_name}" = "null" ] || [ -z "${bucket_name}" ]; then
+                      continue
+                    fi
+
+                    echo "[s3-sync] garantindo bucket '${bucket_name}' (identity=${identity_name})"
+                    if AWS_ACCESS_KEY_ID="${S3_ADMIN_ACCESS_KEY}" AWS_SECRET_ACCESS_KEY="${S3_ADMIN_SECRET_KEY}" \
+                      aws --endpoint-url "${S3_ENDPOINT}" s3api head-bucket --bucket "${bucket_name}" >/dev/null 2>&1; then
+                      echo "[s3-sync] bucket '${bucket_name}' ja existe"
+                      continue
+                    fi
+
+                    attempt=1
+                    max_attempts=6
+                    while [ "${attempt}" -le "${max_attempts}" ]; do
+                      if AWS_ACCESS_KEY_ID="${S3_ADMIN_ACCESS_KEY}" AWS_SECRET_ACCESS_KEY="${S3_ADMIN_SECRET_KEY}" \
+                        aws --endpoint-url "${S3_ENDPOINT}" s3api create-bucket --bucket "${bucket_name}"; then
+                        echo "[s3-sync] bucket '${bucket_name}' criado"
+                        break
+                      fi
+                      echo "[s3-sync] tentativa ${attempt}/${max_attempts} falhou para '${bucket_name}', aguardando..."
+                      sleep 5
+                      attempt=$((attempt + 1))
+                    done
+
+                    if [ "${attempt}" -gt "${max_attempts}" ]; then
+                      echo "[s3-sync] erro ao criar bucket '${bucket_name}'"
+                      exit 1
+                    fi
+                  done

@@ -94,6 +94,16 @@ Do not edit `hosts.ini` by hand — it includes `vm_role` in `[vms:vars]` and li
 | `overlays.<id>.role` | yes | Becomes `vm_role` in generated vars |
 | `overlays.<id>.vms[]` | yes | At least one VM: `name`, `ip`, optional `mac` |
 | `overlays.<id>.vars` | no | Extra keys merged into `50_overlay.generated.yml` |
+| `overlays.<id>.k8s` | no | Kubernetes selection of the overlay (omit for VMs without k8s manifests, e.g. `golden`) |
+| `overlays.<id>.k8s.stacks` | yes | Stacks from [`k8s/catalog.yml`](../../k8s/catalog.yml); `core` is always included |
+| `overlays.<id>.k8s.disable` | no | Optional components to leave out (`<stack>/<component>`) |
+| `overlays.<id>.k8s.domain` | yes | Apps domain; hostnames are `<app>.<domain>` |
+| `overlays.<id>.k8s.tls_issuer` | no | Gateway ClusterIssuer (`selfsigned` default, `letsencrypt-prod`) |
+| `overlays.<id>.k8s.argo_source` | no | `local` (Git served by the VM, default) or `remote` |
+
+The `k8s` keys become `k8s_stacks`, `apps_domain`, `tls_issuer` and `argo_source`
+in `50_overlay.generated.yml` (consumed by role `04_deploy_k8s`) and drive the
+files rendered under `k8s/**/overlays/<id>/` (`uv run k8s-blueprint overlay render <id>`).
 
 Example overlay entry:
 
@@ -106,6 +116,10 @@ overlays:
       - name: broetec-core
         ip: 10.20.30.40
         # mac: "52:54:00:aa:bb:cc"  # optional; derived from name if omitted
+    k8s:
+      stacks: [core]
+      domain: core.local.broetec.com.br
+      tls_issuer: letsencrypt-prod
 ```
 
 ## `90_local.yml` override examples
@@ -130,11 +144,26 @@ Full variable catalog: [`_shared/group_vars/all.yml`](_shared/group_vars/all.yml
 
 ## Local overlay (gitignored)
 
-```bash
-# 1. Add entry in manifest.yml (in your fork) or copy a versioned overlay
-cp -r broetec-core ../my-lab   # outside git — see .gitignore
+Overlays created by the tooling never touch `manifest.yml`: they are written to
+`manifest.local.yml` (same `overlays:` schema, gitignored) and merged at load
+time. A local overlay id cannot collide with a versioned one, and the
+`broetec-` prefix is reserved for versioned overlays.
 
-# 2. Or override active overlay via env/.env only:
+```bash
+make tui                                   # interactive menu
+make new NAME=my-lab FROM=broetec-core     # non-interactive
+make overlays                              # list versioned and local overlays
+make up OVERLAY=my-lab
+make rm-overlay NAME=my-lab                # after make destroy OVERLAY=my-lab
+```
+
+`make new` picks the next free static IP outside the DHCP range, writes
+`my-lab/group_vars/all/90_local.yml` with the VM size and renders
+`k8s/**/overlays/my-lab/`. Everything stays out of git.
+
+To only move the active versioned overlay, `env/.env` still works:
+
+```bash
 #    OVERLAY=broetec-core
 #    VM_IP=10.20.30.45
 make inventory

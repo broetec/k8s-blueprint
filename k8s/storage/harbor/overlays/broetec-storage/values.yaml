@@ -1,0 +1,8 @@
+## Overlay broetec-storage: valores para o chart goharbor/harbor
+externalURL: https://harbor.storage.local.broetec.com.br
+hostname: harbor.storage.local.broetec.com.br
+
+persistence:
+  imageChartStorage:
+    s3:
+      rootdirectory: /harbor

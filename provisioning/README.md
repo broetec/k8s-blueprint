@@ -28,7 +28,7 @@ provisioning/
     ├── 01_create_vm/README.md     # qcow2, seed ISO, virt-install
     ├── 02_prepare_vm/README.md    # swap, SELinux, iptables baseline inside VM
     ├── 03_install_rke2/README.md  # RKE2 server, Cilium, Gateway API
-    ├── 04_deploy_k8s/README.md    # cluster-config, cert-manager, Argo CD
+    ├── 04_deploy_k8s/README.md    # cluster-config, Argo CD, local Git, app-of-apps
     ├── reset_k8s/README.md        # teardown of k8s workloads (opt-in)
     └── golden_image/README.md     # prepared-OS base image (opt-in)
 ```
@@ -237,6 +237,7 @@ make up-all             # core + storage + monitor (3 VMs)
 make deploy OVERLAY=broetec-core   # k8s only (03 + 04)
 make ssh OVERLAY=broetec-storage
 make destroy OVERLAY=broetec-monitor
+make destroy-all        # every lab VM, whatever OVERLAY is
 ```
 
 `make help` lists all targets and current config.

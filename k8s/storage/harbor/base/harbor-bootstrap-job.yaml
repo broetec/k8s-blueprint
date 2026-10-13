@@ -1,0 +1,310 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: harbor-bootstrap-job
+  namespace: harbor
+  labels:
+    app: harbor-bootstrap
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: harbor-robot-creator-sa
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-harbor-core
+          image: alpine/curl:8.17.0
+          env:
+            - name: HARBOR_URL
+              value: "http://harbor-core"
+          command:
+            - sh
+            - -ec
+            - |
+              until curl -sf "${HARBOR_URL}/api/v2.0/ping" > /dev/null; do
+                echo "Aguardando Harbor Core em ${HARBOR_URL}..."
+                sleep 3
+              done
+              echo "Harbor Core está pronto."
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: harbor-bootstrap
+          image: alpine/k8s:1.35.0
+          env:
+            - name: HARBOR_URL
+              value: "http://harbor-core"
+          envFrom:
+            - secretRef:
+                name: users-secret
+          volumeMounts:
+            - name: bootstrap
+              mountPath: /config
+              readOnly: true
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              set -eu
+
+              log() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $*" >&2; }
+              require_env() { eval "test -n \"\${$1:-}\"" || { log "ERROR: $1 ausente"; exit 1; }; }
+
+              require_env HARBOR_URL
+              require_env HARBOR_ADMIN_PASSWORD
+
+              BOOTSTRAP_JSON="/config/bootstrap.json"
+
+              if ! command -v jq >/dev/null 2>&1; then
+                log "Instalando jq..."
+                apk add --no-cache jq >/dev/null
+              fi
+
+              HARBOR_API_URL="${HARBOR_URL%/}/api/v2.0"
+              BASIC_AUTH="$(printf 'admin:%s' "${HARBOR_ADMIN_PASSWORD}" | base64 | tr -d '\n')"
+
+              if [ ! -f "$BOOTSTRAP_JSON" ]; then
+                log "ERROR: $BOOTSTRAP_JSON não encontrado"
+                exit 1
+              fi
+
+              CONFIGURE_GC="$(jq -r '.configure_gc_schedule // true' "$BOOTSTRAP_JSON")"
+              TAG_RETENTION_CRON="$(jq -r '.tag_retention_cron // "0 0 4 * * 0"' "$BOOTSTRAP_JSON")"
+
+              get_project_id() {
+                _name="$1"
+                curl -sS -H "Authorization: Basic ${BASIC_AUTH}" \
+                  "${HARBOR_API_URL}/projects?name=${_name}&page_size=1" | jq -r '.[0].project_id // empty'
+              }
+
+              build_project_req_json() {
+                _name="$1"
+                _pub="$(jq -r --arg n "$_name" '.projects[] | select(.name == $n) | .public // false' "$BOOTSTRAP_JSON")"
+                _pub_str="false"
+                if [ "$_pub" = "true" ]; then _pub_str="true"; fi
+                _sl="$(jq -r --arg n "$_name" '.projects[] | select(.name == $n) | ((.quota_storage_gb // 5) | tonumber) * 1024 * 1024 * 1024 | floor' "$BOOTSTRAP_JSON")"
+                jq -n --arg n "$_name" --arg ps "$_pub_str" --argjson sl "$_sl" \
+                  '{project_name: $n, metadata: {public: $ps}, storage_limit: $sl}'
+              }
+
+              ensure_project_quota() {
+                _name="$1"
+                _gb="$(jq -r --arg n "$_name" '.projects[] | select(.name == $n) | .quota_storage_gb // 5' "$BOOTSTRAP_JSON")"
+                log "Aplicando cota de ${_gb}GB ao projeto ${_name}..."
+                _body="$(build_project_req_json "$_name")"
+                _st="$(curl -sS -o /tmp/harbor_quota_put -w "%{http_code}" -X PUT "${HARBOR_API_URL}/projects/${_name}" \
+                  -H "Authorization: Basic ${BASIC_AUTH}" \
+                  -H "Content-Type: application/json" \
+                  --data "$_body")"
+                if [ "$_st" != "200" ]; then
+                  log "ERROR: falha ao definir cota do projeto ${_name} (status=${_st})"
+                  cat /tmp/harbor_quota_put
+                  exit 1
+                fi
+              }
+
+              ensure_project() {
+                _name="$1"
+                pid="$(get_project_id "$_name")"
+                if [ -n "$pid" ] && [ "$pid" != "null" ]; then
+                  log "Projeto ${_name} já existe (project_id=${pid})."
+                  echo "$pid"
+                  return 0
+                fi
+                log "Criando projeto ${_name}..."
+                _body="$(build_project_req_json "$_name")"
+                _st="$(curl -sS -o /tmp/harbor_proj_body -w "%{http_code}" -X POST "${HARBOR_API_URL}/projects" \
+                  -H "Authorization: Basic ${BASIC_AUTH}" \
+                  -H "Content-Type: application/json" \
+                  --data "$_body")"
+                if [ "$_st" != "201" ] && [ "$_st" != "409" ]; then
+                  log "ERROR: falha ao criar projeto ${_name} (status=${_st})"
+                  cat /tmp/harbor_proj_body
+                  exit 1
+                fi
+                pid="$(get_project_id "$_name")"
+                if [ -z "$pid" ] || [ "$pid" = "null" ]; then
+                  log "ERROR: projeto ${_name} criado mas project_id não encontrado"
+                  exit 1
+                fi
+                log "Projeto ${_name} criado (project_id=${pid})."
+                echo "$pid"
+              }
+
+              get_retention_id() {
+                _name="$1"
+                _out="$(curl -sS -w "%{http_code}" -o /tmp/harbor_meta -H "Authorization: Basic ${BASIC_AUTH}" \
+                  "${HARBOR_API_URL}/projects/${_name}/metadatas/")"
+                if [ "$_out" != "200" ]; then
+                  echo ""
+                  return 0
+                fi
+                jq -r '.retention_id // empty' /tmp/harbor_meta
+              }
+
+              build_retention_policy() {
+                _pid="$1"
+                _pname="$2"
+                _keep="$3"
+                _cron="$4"
+                _repos_json="$(jq -c --arg pn "$_pname" '.projects[] | select(.name == $pn) | .repositories' "$BOOTSTRAP_JSON")"
+                jq -n \
+                  --argjson pid "$_pid" \
+                  --arg pn "$_pname" \
+                  --argjson keep "$_keep" \
+                  --arg cron "$_cron" \
+                  --argjson repos "$_repos_json" \
+                  '{
+                    algorithm: "or",
+                    rules: (
+                      $repos
+                      | to_entries
+                      | map({
+                          id: 0,
+                          priority: (.key + 1),
+                          disabled: false,
+                          action: "retain",
+                          template: "latestPushedK",
+                          params: { latestPushedK: $keep },
+                          tag_selectors: [
+                            { kind: "doublestar", decoration: "matches", pattern: "**", extras: "" }
+                          ],
+                          scope_selectors: {
+                            repository: [
+                              {
+                                kind: "doublestar",
+                                decoration: "repoMatches",
+                                pattern: ($pn + "/" + .value),
+                                extras: ""
+                              }
+                            ]
+                          }
+                        })
+                    ),
+                    trigger: { kind: "Schedule", settings: { cron: $cron } },
+                    scope: { level: "project", ref: $pid }
+                  }'
+              }
+
+              apply_retention_policy() {
+                _pname="$1"
+                _pid="$2"
+                _keep="$(jq -r --arg n "$_pname" '.projects[] | select(.name == $n) | .keep_last_pushed // 10' "$BOOTSTRAP_JSON")"
+                _repos_len="$(jq -r --arg n "$_pname" '.projects[] | select(.name == $n) | .repositories | length' "$BOOTSTRAP_JSON")"
+                if [ "$_repos_len" = "0" ] || [ -z "$_repos_len" ]; then
+                  log "Projeto ${_pname}: sem repositórios declarados, pulando política de retenção."
+                  return 0
+                fi
+
+                _policy="$(build_retention_policy "$_pid" "$_pname" "$_keep" "$TAG_RETENTION_CRON")"
+                _rid="$(get_retention_id "$_pname")"
+
+                if [ -n "$_rid" ] && [ "$_rid" != "null" ]; then
+                  log "Atualizando política de retenção (id=${_rid}) do projeto ${_pname}..."
+                  _existing="$(curl -sS -H "Authorization: Basic ${BASIC_AUTH}" "${HARBOR_API_URL}/retentions/${_rid}")"
+                  _merged="$(echo "$_existing" | jq --argjson nu "$_policy" \
+                    '.rules = $nu.rules | .trigger = $nu.trigger | .algorithm = $nu.algorithm | .scope = $nu.scope')"
+                  _st="$(curl -sS -o /tmp/harbor_ret_put -w "%{http_code}" -X PUT "${HARBOR_API_URL}/retentions/${_rid}" \
+                    -H "Authorization: Basic ${BASIC_AUTH}" \
+                    -H "Content-Type: application/json" \
+                    --data "$_merged")"
+                  if [ "$_st" != "200" ]; then
+                    log "ERROR: falha ao atualizar retenção (status=${_st})"
+                    cat /tmp/harbor_ret_put
+                    exit 1
+                  fi
+                  log "Política de retenção do projeto ${_pname} atualizada."
+                  return 0
+                fi
+
+                log "Criando política de retenção do projeto ${_pname}..."
+                _st="$(curl -sS -o /tmp/harbor_ret_post -w "%{http_code}" -X POST "${HARBOR_API_URL}/retentions" \
+                  -H "Authorization: Basic ${BASIC_AUTH}" \
+                  -H "Content-Type: application/json" \
+                  --data "$_policy")"
+                if [ "$_st" != "201" ]; then
+                  log "ERROR: falha ao criar política de retenção (status=${_st})"
+                  cat /tmp/harbor_ret_post
+                  exit 1
+                fi
+                log "Política de retenção do projeto ${_pname} criada."
+              }
+
+              ensure_gc_schedule() {
+                _sched_body="$(jq -n \
+                  --arg typ "$(jq -r '.garbage_collection.schedule_type // "Weekly"' "$BOOTSTRAP_JSON")" \
+                  --arg cron "$(jq -r '.garbage_collection.cron // "0 0 3 * * 0"' "$BOOTSTRAP_JSON")" \
+                  --argjson delu "$(jq '.garbage_collection.parameters.delete_untagged // true' "$BOOTSTRAP_JSON")" \
+                  --argjson dry "$(jq '.garbage_collection.parameters.dry_run // false' "$BOOTSTRAP_JSON")" \
+                  '{
+                    schedule: { type: $typ, cron: $cron },
+                    parameters: { delete_untagged: $delu, dry_run: $dry }
+                  }')"
+
+                _resp="$(curl -sS -H "Authorization: Basic ${BASIC_AUTH}" "${HARBOR_API_URL}/system/gc/schedule")"
+                if [ -n "$_resp" ] && echo "$_resp" | jq -e '.id != null' >/dev/null 2>&1; then
+                  log "Atualizando agendamento de garbage collection..."
+                  _st="$(curl -sS -o /tmp/harbor_gc -w "%{http_code}" -X PUT "${HARBOR_API_URL}/system/gc/schedule" \
+                    -H "Authorization: Basic ${BASIC_AUTH}" \
+                    -H "Content-Type: application/json" \
+                    --data "$_sched_body")"
+                  if [ "$_st" != "200" ]; then
+                    log "ERROR: falha ao atualizar GC schedule (status=${_st})"
+                    cat /tmp/harbor_gc
+                    exit 1
+                  fi
+                  log "Agendamento de garbage collection atualizado."
+                  return 0
+                fi
+
+                log "Criando agendamento de garbage collection..."
+                _st="$(curl -sS -o /tmp/harbor_gc -w "%{http_code}" -X POST "${HARBOR_API_URL}/system/gc/schedule" \
+                  -H "Authorization: Basic ${BASIC_AUTH}" \
+                  -H "Content-Type: application/json" \
+                  --data "$_sched_body")"
+                if [ "$_st" != "201" ] && [ "$_st" != "200" ]; then
+                  log "ERROR: falha ao criar GC schedule (status=${_st})"
+                  cat /tmp/harbor_gc
+                  exit 1
+                fi
+                log "Agendamento de garbage collection criado."
+              }
+
+              _pc="$(jq '.projects | length' "$BOOTSTRAP_JSON")"
+              if [ "$_pc" -eq 0 ]; then
+                log "Nenhum projeto em bootstrap.json; apenas GC (se habilitado) será aplicado."
+              else
+                jq -r '.projects[].name' "$BOOTSTRAP_JSON" | while IFS= read -r PNAME || [ -n "$PNAME" ]; do
+                  [ -z "$PNAME" ] && continue
+                  PROJ_ID="$(ensure_project "$PNAME")"
+                  ensure_project_quota "$PNAME"
+                  apply_retention_policy "$PNAME" "$PROJ_ID"
+                done
+              fi
+
+              if [ "$CONFIGURE_GC" = "true" ]; then
+                ensure_gc_schedule
+              else
+                log "configure_gc_schedule=false: não alterando agendamento de GC."
+              fi
+
+              log "Concluído com sucesso."
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: harbor-bootstrap-conf
+            items:
+              - key: bootstrap.json
+                path: bootstrap.json

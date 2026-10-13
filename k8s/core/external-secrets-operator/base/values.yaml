@@ -1,0 +1,18 @@
+## Valores base para o chart external-secrets/external-secrets
+## Referência: https://artifacthub.io/packages/helm/external-secrets-operator/external-secrets
+
+# O nome fixo mantém a ServiceAccount `external-secrets-operator`, usada pelos
+# ClusterSecretStores das outras stacks.
+fullnameOverride: external-secrets-operator
+
+priorityClassName: pc-2-secrets-certs
+installCRDs: true
+
+serviceAccount:
+  create: true
+
+webhook:
+  priorityClassName: pc-2-secrets-certs
+
+certController:
+  priorityClassName: pc-2-secrets-certs

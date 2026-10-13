@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-bootstrap-conf
+data:
+  # Projetos criados pelo Job harbor-bootstrap. Cada projeto privado recebe os
+  # repositórios listados e uma regra de retenção (keep_last_pushed).
+  bootstrap.json: |
+    {
+      "tag_retention_cron": "0 0 4 * * 0",
+      "configure_gc_schedule": true,
+      "garbage_collection": {
+        "schedule_type": "Weekly",
+        "cron": "0 0 3 * * 0",
+        "parameters": {
+          "delete_untagged": true,
+          "dry_run": false
+        }
+      },
+      "projects": [
+        {
+          "name": "library",
+          "public": true,
+          "quota_storage_gb": 5,
+          "repositories": [],
+          "keep_last_pushed": 10
+        },
+        {
+          "name": "apps",
+          "public": false,
+          "quota_storage_gb": 5,
+          "repositories": ["dev", "stg", "prd"],
+          "keep_last_pushed": 10
+        }
+      ]
+    }

@@ -1,0 +1,82 @@
+apiVersion: pgv2.percona.com/v2
+kind: PerconaPGCluster
+metadata:
+  name: seaweedfs-cr-1
+  annotations:
+    pgv2.percona.com/custom-patroni-version: "4"
+
+spec:
+  crVersion: 2.8.2
+  image: percona/percona-distribution-postgresql:18.1-3
+  imagePullPolicy: Always
+  postgresVersion: 18
+  port: 5432
+
+  users:
+    - name: seaweedfs
+      databases:
+        - seaweedfs
+      options: "NOSUPERUSER"
+      password:
+        type: AlphaNumeric
+
+  instances:
+    - name: instance1
+      replicas: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    postgres-operator.crunchydata.com/data: postgres
+                topologyKey: kubernetes.io/hostname
+
+      priorityClassName: pc-4-databases
+
+      dataVolumeClaimSpec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+
+  proxy:
+    pgBouncer:
+      replicas: 1
+      image: percona/percona-pgbouncer:1.25.0-1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    postgres-operator.crunchydata.com/role: pgbouncer
+                topologyKey: kubernetes.io/hostname
+
+      priorityClassName: pc-4-databases
+
+  # Lab: repositório do pgBackRest em PVC. Em produção troque por um repositório
+  # S3 (repos[].s3 + configuration com o Secret das credenciais).
+  backups:
+    pgbackrest:
+      image: percona/percona-pgbackrest:2.57.0-1
+      repoHost:
+        priorityClassName: pc-4-databases
+      repos:
+        - name: repo1
+          volume:
+            volumeClaimSpec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 5Gi
+
+  pmm:
+    enabled: false
+    image: docker.io/percona/pmm-client:3.5.0
+    secret: cluster1-pmm-secret
+    serverHost: monitoring-service

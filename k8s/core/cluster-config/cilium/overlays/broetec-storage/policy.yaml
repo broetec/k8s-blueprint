@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/interfaces/0
+  value: "enp1s0"

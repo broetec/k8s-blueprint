@@ -120,7 +120,7 @@ Ao subir a versão, mexa nas três coisas em conjunto:
 
 1. `rke2_version` (e `rke2_channel`) em `provisioning/roles/03_install_rke2/defaults/main.yml`.
 2. `rke2_cilium_version`, para a versão do chart que a release nova do RKE2 empacota (tabela de componentes nas *release notes*).
-3. Os CRDs do Gateway API em `k8s/cluster-config/gateway-api/kustomization.yaml`, para a versão que a documentação dessa série do Cilium exige (Cilium 1.18 -> `v1.3.0`; Cilium 1.20 -> `v1.6.3`). São aplicados pelo role `04_deploy_k8s`, não vêm com o chart.
+3. Os CRDs do Gateway API em `k8s/core/cluster-config/gateway-api/kustomization.yaml`, para a versão que a documentação dessa série do Cilium exige (Cilium 1.18 -> `v1.3.0`; Cilium 1.20 -> `v1.6.3`). São aplicados pelo role `04_deploy_k8s`, não vêm com o chart.
 
 > **Compatibilidade Cilium x Kubernetes:** Cilium 1.20 foi testado oficialmente de Kubernetes 1.31 a 1.36. O RKE2 `v1.37.1` já empacota o Cilium 1.20.2, mas o K8s 1.37 ainda não consta da matriz do Cilium e essa release troca o etcd para a série 3.7; teste primeiro numa VM descartável (`make install-rke2 RKE2_VERSION=v1.37.1+rke2r1`).
 
@@ -284,7 +284,7 @@ Repita o passo 6.
 - **Kubernetes 1.35**: ler [`CHANGELOG-1.35.md`](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.35.md) para *deprecations* e *urgent upgrade notes*.
 - **Cilium chart**: o RKE2 1.35.x empacota Cilium 1.19.x. Na altura deste upgrade o `HelmChartConfig` fixava `v1.18.7`, e **o data plane manteve-se em 1.18.7**; a série 1.19 foi saltada por causa do issue [cilium/cilium#44430](https://github.com/cilium/cilium/issues/44430). O estado atual está no passo 4.
 - **Etcd**: o RKE2 1.35.x continua a usar `etcd v3.6` (mesma série da v1.34.x). Sem mudança de formato/binário esperada.
-- **Gateway API**: as CRDs são aplicadas pelo role `04_deploy_k8s` (`k8s/cluster-config/gateway-api`) e devem seguir a versão do Cilium fixada. Não há ação adicional enquanto o Cilium não mudar de série.
+- **Gateway API**: as CRDs são aplicadas pelo role `04_deploy_k8s` (`k8s/core/cluster-config/gateway-api`) e devem seguir a versão do Cilium fixada. Não há ação adicional enquanto o Cilium não mudar de série.
 
 ---
 

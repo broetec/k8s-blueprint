@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: core
+  source:
+    repoURL: https://github.com/broetec/k8s-blueprint.git
+    targetRevision: main
+    path: PLACEHOLDER
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 30
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 1m
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - RespectIgnoreDifferences=true
+
+  ignoreDifferences:
+    - group: "*"
+      kind: "Application"
+      namespace: "*"
+      jsonPointers:
+        - /spec/syncPolicy/automated
+        - /metadata/annotations/argocd.argoproj.io~1refresh
+        - /metadata/annotations/argocd.argoproj.io~1tracking-id
+        - /operation

@@ -1,0 +1,5 @@
+[% if 'storage' in stacks %]
+- op: replace
+  path: /spec/source/path
+  value: k8s/storage/applications/overlays/[[ overlay_id ]]
+[% endif %]

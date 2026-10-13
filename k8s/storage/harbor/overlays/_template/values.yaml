@@ -1,0 +1,8 @@
+## Overlay [[ overlay_id ]]: valores para o chart goharbor/harbor
+externalURL: https://harbor.[[ apps_domain ]]
+hostname: harbor.[[ apps_domain ]]
+
+persistence:
+  imageChartStorage:
+    s3:
+      rootdirectory: /harbor

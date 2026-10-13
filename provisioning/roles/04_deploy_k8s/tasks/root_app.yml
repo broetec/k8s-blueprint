@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# tasks/root_app.yml — Root Application (app-of-apps) + wait for Healthy
+# =============================================================================
+#
+# Purpose
+#   Apply k8s/core/applications/overlays/<overlay>: the AppProject, the
+#   `core-apps` root Application and its children. From here on Argo CD keeps
+#   the cluster in sync with the Git source (local Git of the node by default).
+#
+#   A hard refresh is requested on every run so a `make k8s-push` is picked up
+#   immediately instead of waiting for the polling interval, then the role
+#   waits until every Application is Synced and Healthy.
+#
+# Variables
+#   deploy_k8s_argocd_wait / _wait_timeout / _wait_interval
+#
+# Scope
+#   become: false — kubectl runs as the connecting user.
+# =============================================================================
+
+- name: "root_app | Apply the app-of-apps of overlay {{ deploy_k8s_overlay }}"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl apply -k
+      {{ deploy_k8s_k8s_path }}/core/applications/overlays/{{ deploy_k8s_overlay }}
+  environment:
+    PATH: "{{ deploy_k8s_bin_path }}"
+  register: _deploy_k8s_root_app
+  changed_when: "'configured' in _deploy_k8s_root_app.stdout or 'created' in _deploy_k8s_root_app.stdout"
+
+- name: "root_app | Ask Argo CD for a hard refresh of every Application"
+  become: false
+  ansible.builtin.command:
+    cmd: >-
+      kubectl -n {{ argocd_namespace }} annotate applications.argoproj.io --all
+      argocd.argoproj.io/refresh=hard --overwrite
+  environment:
+    PATH: "{{ deploy_k8s_bin_path }}"
+  changed_when: false
+
+- name: "root_app | Wait for every Application to be Synced and Healthy"
+  become: false
+  when: deploy_k8s_argocd_wait | bool
+  ansible.builtin.shell: |
+    set -uo pipefail
+    deadline=$(( $(date +%s) + {{ deploy_k8s_argocd_wait_timeout | int }} ))
+    while :; do
+      status=$(kubectl -n {{ argocd_namespace }} get applications.argoproj.io \
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.sync.status}{" "}{.status.health.status}{"\n"}{end}' 2>/dev/null)
+      pending=$(printf '%s\n' "$status" | awk 'NF && !($2 == "Synced" && $3 == "Healthy")')
+      if [ -n "$status" ] && [ -z "$pending" ]; then
+        printf '%s\n' "$status"
+        exit 0
+      fi
+      if [ "$(date +%s)" -ge "$deadline" ]; then
+        echo "Timed out waiting for Argo CD Applications:" >&2
+        printf '%s\n' "$status" >&2
+        exit 1
+      fi
+      sleep {{ deploy_k8s_argocd_wait_interval | int }}
+    done
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "{{ deploy_k8s_bin_path }}"
+  register: _deploy_k8s_apps_wait
+  changed_when: false
+
+- name: "root_app | Applications"
+  when: deploy_k8s_argocd_wait | bool
+  ansible.builtin.debug:
+    msg: "{{ _deploy_k8s_apps_wait.stdout_lines }}"

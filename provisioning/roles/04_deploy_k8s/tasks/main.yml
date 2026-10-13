@@ -1,48 +1,56 @@
 ---
 # =============================================================================
-# tasks/main.yml — Role 04 entrypoint (k8s bootstrap, common to RKE2 and k3s)
+# tasks/main.yml — Role 04 entrypoint (k8s bootstrap + hand-over to Argo CD)
 # =============================================================================
 #
 # Purpose
-#   Bring the cluster to a usable baseline after install (role 03), mirroring
-#   provisioning/roles/04_deploy_k8s/README.md (manual reference §3):
-#     1. cluster-config (Cilium + PriorityClasses)   — kubectl apply -k
-#     2. local-path-provisioner (rke2 only)           — kubectl + Helm
-#     3. Sealed Secrets (optional, BYOK)              — Helm + pre-applied key
-#     4. cert-manager (+ ClusterIssuers)              — Helm + kubectl
-#     5. Argo CD                                      — Helm
+#   Bring the cluster from "node Ready" (role 03) to "everything managed by
+#   Argo CD", following the app-of-apps layout of k8s/:
+#     1. seal        — BYOK keypair + SealedSecrets, offline on the controller
+#     2. sync        — pack k8s/ and unpack it on the VM (exact mirror)
+#     3. overrides   — lab-only rewrite of _release-source.yaml/_tls-issuer.yaml
+#     4. cluster-config (Gateway API CRDs, Cilium, PriorityClasses)
+#     5. local-path-provisioner (rke2 only)
+#     6. bootstrap secrets (Sealed Secrets key, optional Cloudflare token)
+#     7. Argo CD (Helm)
+#     8. local Git (bare repo on the node, read by Argo CD over SSH)
+#     9. root Application (k8s/core/applications/overlays/<overlay>) + wait
 #
-#   local-path-provisioner runs only on rke2 (detected at runtime); k3s ships
-#   its own under kube-system. The node storage directory is prepared by role 03.
+#   From step 9 on Argo CD installs sealed-secrets, cert-manager, External
+#   Secrets and the other stacks, and adopts what steps 4, 5 and 7 created.
 #
 # Execution model
-#   Sealing runs on the controller (delegate_to: localhost) so the keypair and
-#   SealedSecrets are produced offline before the cluster is touched. helm and
-#   kubectl run on the VM as the connecting user (become: false): the kubeconfig
-#   lives at ~/.kube/config and the tooling is installed by role 02
-#   (tasks/k8s_tools.yml). k8s/ is synced to the VM under the user's home.
+#   Sealing and packaging run on the controller (delegate_to: localhost).
+#   helm, kubectl and git run on the VM as the connecting user (become: false):
+#   the kubeconfig lives at ~/.kube/config and the tooling is installed by
+#   role 02 (tasks/k8s_tools.yml).
+#
+# Tags
+#   k8s_push — only what is needed to republish k8s/ to the local Git and ask
+#   Argo CD to refresh (make k8s-push).
 #
 # Related commands
-#   make deploy-k8s, make up (SEALED_SECRETS=true to enable Sealed Secrets)
+#   make deploy-k8s, make up, make k8s-push
 # =============================================================================
 
 - name: "deploy_k8s | Connectivity check"
   become: false
   ansible.builtin.ping:
-  tags: [deploy_k8s]
+  tags: [deploy_k8s, k8s_push]
 
 - name: "deploy_k8s | Resolve home directory of {{ ansible_user }}"
   become: false
   ansible.builtin.getent:
     database: passwd
     key: "{{ ansible_user }}"
-  tags: [deploy_k8s]
+  tags: [deploy_k8s, k8s_push]
 
 - name: "deploy_k8s | Set deploy_k8s_user_home / remote path facts"
   ansible.builtin.set_fact:
     deploy_k8s_user_home: "{{ getent_passwd[ansible_user][4] }}"
     deploy_k8s_remote_path: "{{ getent_passwd[ansible_user][4] }}/{{ deploy_k8s_remote_dir }}"
-  tags: [deploy_k8s]
+    deploy_k8s_k8s_path: "{{ getent_passwd[ansible_user][4] }}/{{ deploy_k8s_remote_dir }}/k8s"
+  tags: [deploy_k8s, k8s_push]
 
 - name: "deploy_k8s | Detect active distribution (rke2-server.service)"
   become: false
@@ -59,13 +67,16 @@
   tags: [deploy_k8s, local_path]
 
 - name: "deploy_k8s | Seal Secrets offline (BYOK, on controller)"
-  when: sealed_secrets_enabled | bool
   ansible.builtin.import_tasks: seal.yml
-  tags: [deploy_k8s, sealed_secrets]
+  tags: [deploy_k8s, sealed_secrets, k8s_push]
 
 - name: "deploy_k8s | Sync k8s/ manifests to the VM"
   ansible.builtin.import_tasks: sync.yml
-  tags: [deploy_k8s]
+  tags: [deploy_k8s, k8s_push]
+
+- name: "deploy_k8s | Lab overrides (Argo CD source, Gateway TLS issuer)"
+  ansible.builtin.import_tasks: overrides.yml
+  tags: [deploy_k8s, k8s_push]
 
 - name: "deploy_k8s | Cluster config (Cilium + PriorityClasses)"
   ansible.builtin.import_tasks: cluster_config.yml
@@ -76,15 +87,19 @@
   ansible.builtin.import_tasks: local_path.yml
   tags: [deploy_k8s, local_path]
 
-- name: "deploy_k8s | Sealed Secrets controller (BYOK)"
-  when: sealed_secrets_enabled | bool
+- name: "deploy_k8s | Bootstrap secrets (Sealed Secrets key, Cloudflare token)"
   ansible.builtin.import_tasks: sealed_secrets.yml
   tags: [deploy_k8s, sealed_secrets]
-
-- name: "deploy_k8s | cert-manager"
-  ansible.builtin.import_tasks: cert_manager.yml
-  tags: [deploy_k8s, cert_manager]
 
 - name: "deploy_k8s | Argo CD"
   ansible.builtin.import_tasks: argocd.yml
   tags: [deploy_k8s, argocd]
+
+- name: "deploy_k8s | Local Git served by the node (Argo CD source)"
+  when: deploy_k8s_argo_source == 'local'
+  ansible.builtin.import_tasks: git_local.yml
+  tags: [deploy_k8s, argocd, k8s_push]
+
+- name: "deploy_k8s | Root Application (app-of-apps) and wait"
+  ansible.builtin.import_tasks: root_app.yml
+  tags: [deploy_k8s, argocd, k8s_push]

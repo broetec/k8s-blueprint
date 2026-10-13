@@ -1,75 +1,101 @@
 ---
 # =============================================================================
-# defaults/main.yml — Role 04 defaults (k8s bootstrap)
+# defaults/main.yml — Role 04 defaults (k8s bootstrap + Argo CD app-of-apps)
 # =============================================================================
 #
 # Purpose
-#   Tunables for the cluster-level bootstrap applied once the cluster is Ready,
-#   common to both RKE2 and k3s: cluster-config (Cilium + PriorityClasses),
-#   optional Sealed Secrets (BYOK), cert-manager and Argo CD.
+#   Tunables for the minimal bootstrap applied once the cluster is Ready
+#   (cluster-config, local-path-provisioner, Sealed Secrets key, Argo CD) and
+#   for the hand-over to Argo CD: local Git served by the node and the root
+#   Application of the core stack.
 #
 # Variables
 #   deploy_k8s_enabled            — master switch for the whole role.
-#   deploy_k8s_overlay            — k8s/ overlay name (defaults to inventory_hostname,
-#                                   e.g. broetec-core).
-#   deploy_k8s_remote_dir         — directory on the VM where k8s/ is synced.
-#   deploy_k8s_repo_root          — repo root on the controller (for offline sealing).
-#   sealed_secrets_enabled        — when true, generate a BYOK keypair locally,
-#                                   seal the plain Secrets offline, pre-apply the
-#                                   controller key and install the controller.
-#   *_chart_version / *_repo_*    — Helm pins for the bootstrap charts.
+#   deploy_k8s_overlay            — k8s/ overlay name (overlay_id of the
+#                                   inventory, e.g. broetec-core).
+#   deploy_k8s_remote_dir         — directory on the VM that receives k8s/ and
+#                                   is the working tree of the local Git.
+#   deploy_k8s_repo_root          — repo root on the controller.
+#   deploy_k8s_argo_source        — local (Git served by the node) | remote
+#                                   (repoURL/targetRevision as committed).
+#   deploy_k8s_tls_issuer         — ClusterIssuer wanted for the Gateway; falls
+#                                   back to selfsigned when a letsencrypt-*
+#                                   issuer has no Cloudflare token on disk.
+#   deploy_k8s_git_*              — local Git (system user, bare repo, key).
+#   deploy_k8s_argocd_wait_*      — how long to wait for Synced/Healthy.
+#   *_chart_version / *_repo_*    — Helm pins of the bootstrap charts; must
+#                                   match k8s/core/applications/base (tests).
 #
 # Related commands
-#   make deploy-k8s, make up (SEALED_SECRETS=true to enable Sealed Secrets)
+#   make deploy-k8s, make up, make k8s-push
 # =============================================================================
 
 deploy_k8s_enabled: true
 
-deploy_k8s_overlay: "{{ inventory_hostname }}"
+deploy_k8s_overlay: "{{ overlay_id | default(inventory_hostname) }}"
 
-# k8s/ manifests are copied here on the VM (under the connecting user's home so
-# every kubectl/helm step runs without become).
+# k8s/ is unpacked here on the VM (under the connecting user's home so every
+# kubectl/helm/git step runs without become). Layout: <dir>/k8s/<stack>/...
 deploy_k8s_remote_dir: "manifests/k8s-blueprint"
 
-# Repo root on the controller, used by the offline sealing step (delegate_to localhost).
+# Repo root on the controller (sealing, packaging; delegate_to localhost).
 deploy_k8s_repo_root: "{{ playbook_dir | dirname }}"
+
+# PATH used by every kubectl/helm command on the VM.
+deploy_k8s_bin_path: "/var/lib/rancher/rke2/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+
+# -----------------------------------------------------------------------------
+# Source read by Argo CD
+# -----------------------------------------------------------------------------
+# local  — role publishes k8s/ to a bare Git repo on the node and rewrites
+#          _release-source.yaml (VM copy only) to point at it.
+# remote — keep repoURL/targetRevision exactly as committed in the overlay.
+deploy_k8s_argo_source: "{{ argo_source | default('local') }}"
+
+deploy_k8s_git_user: git
+deploy_k8s_git_repo_name: k8s-blueprint.git
+deploy_k8s_git_branch: main
+# Address Argo CD uses to reach the node's sshd.
+deploy_k8s_git_host: "{{ vm_ip | default(ansible_host) }}"
+deploy_k8s_git_url: "{{ deploy_k8s_git_user }}@{{ deploy_k8s_git_host }}:{{ deploy_k8s_git_repo_name }}"
+# Key pair (on the VM, connecting user) shared by the publish step and Argo CD.
+deploy_k8s_git_key_name: k8s-blueprint-git
+deploy_k8s_git_secret_name: k8s-blueprint-local-git
+
+# -----------------------------------------------------------------------------
+# Gateway TLS issuer
+# -----------------------------------------------------------------------------
+deploy_k8s_tls_issuer: "{{ tls_issuer | default('selfsigned') }}"
+
+# Plain Cloudflare token (gitignored). When present it is applied to the
+# cluster and letsencrypt-* issuers become usable.
+deploy_k8s_cloudflare_token_file: "{{ deploy_k8s_repo_root }}/k8s/core/cert-manager/overlays/{{ deploy_k8s_overlay }}/api-token-secret.yaml"
 
 # -----------------------------------------------------------------------------
 # local-path-provisioner (rke2 only; k3s ships its own under kube-system).
-# Deployed after cluster-config and before Argo CD so PVCs (e.g. argocd-ha) have
-# a default StorageClass. The node storage directory is prepared by role 03.
+# Installed before Argo CD so its PVCs have a default StorageClass; adopted
+# later by the `local-path-provisioner` Application.
 # -----------------------------------------------------------------------------
-deploy_k8s_local_path_overlay: "{{ deploy_k8s_overlay }}"
-
 # Official chart is published as OCI (charts.rancher.io is deprecated/unavailable).
 deploy_k8s_local_path_chart_ref: "oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner"
-
-# Pin chart version (e.g. "0.0.35"). Empty = latest available.
 deploy_k8s_local_path_chart_version: "0.0.35"
 
 # Gateway API CRDs must be Established before Gateway/GatewayClass resources.
 deploy_k8s_gateway_api_crd_wait_seconds: 120
 
 # -----------------------------------------------------------------------------
-# Sealed Secrets (optional, BYOK) — default OFF.
+# Sealed Secrets (BYOK) — the controller is installed by Argo CD; the role only
+# generates the keypair, seals the overlay Secrets and pre-applies the key.
 # -----------------------------------------------------------------------------
-sealed_secrets_enabled: false
-
 # Directory (relative to repo root) where the BYOK keypair is generated/kept.
 sealed_secrets_keydir: "env/{{ deploy_k8s_overlay }}"
-
 sealed_secrets_namespace: sealed-secrets
-sealed_secrets_chart_version: "2.18.3"
-sealed_secrets_repo_name: sealed-secrets
-sealed_secrets_repo_url: "https://bitnami.github.io/sealed-secrets"
 
 # -----------------------------------------------------------------------------
-# cert-manager
+# cert-manager — installed by Argo CD; the role only pre-creates the namespace
+# when a Cloudflare token has to be applied.
 # -----------------------------------------------------------------------------
 cert_manager_namespace: cert-manager
-cert_manager_chart_version: "v1.19.3"
-cert_manager_repo_name: cert-manager
-cert_manager_repo_url: "https://charts.jetstack.io"
 
 # -----------------------------------------------------------------------------
 # Argo CD
@@ -78,3 +104,8 @@ argocd_namespace: argocd
 argocd_chart_version: "9.4.10"
 argocd_repo_name: argo
 argocd_repo_url: "https://argoproj.github.io/argo-helm"
+
+# Wait for every Application to report Synced/Healthy after the root app.
+deploy_k8s_argocd_wait: true
+deploy_k8s_argocd_wait_timeout: 1800
+deploy_k8s_argocd_wait_interval: 15

@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/source/path
+  value: k8s/storage/postgres/clusters/seaweedfs/overlays/[[ overlay_id ]]

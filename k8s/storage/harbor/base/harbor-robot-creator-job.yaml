@@ -1,0 +1,190 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-harbor-robot-job
+  namespace: harbor
+  labels:
+    app: harbor-robot-creator
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: harbor-robot-creator-sa
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-harbor-core
+          image: alpine/curl:8.17.0
+          envFrom:
+            - configMapRef:
+                name: harbor-robot-creator-conf
+          command:
+            - sh
+            - -ec
+            - |
+              until curl -sf "${HARBOR_URL}/api/v2.0/ping" > /dev/null; do
+                echo "Aguardando Harbor Core em ${HARBOR_URL}..."
+                sleep 3
+              done
+              echo "Harbor Core está pronto."
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: create-harbor-robot
+          image: alpine/k8s:1.35.0
+          envFrom:
+            - configMapRef:
+                name: harbor-robot-creator-conf
+            - secretRef:
+                name: users-secret
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              set -eu
+
+              log() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"; }
+              require_env() { eval "test -n \"\${$1:-}\"" || { log "ERROR: $1 ausente"; exit 1; }; }
+
+              require_env HARBOR_URL
+              require_env HARBOR_ADMIN_PASSWORD
+              require_env PULLER_ROBOT_NAME
+              require_env PULLER_ROBOT_PASSWORD
+              require_env PUSHER_ROBOT_NAME
+              require_env PUSHER_ROBOT_PASSWORD
+              require_env TARGET_NAMESPACE
+              require_env TARGET_SECRET_NAME
+
+              if ! command -v jq >/dev/null 2>&1; then
+                log "Instalando jq..."
+                apk add --no-cache jq >/dev/null
+              fi
+
+              PULLER_ROBOT_USERNAME="robot$${PULLER_ROBOT_NAME}"
+              PUSHER_ROBOT_USERNAME="robot$${PUSHER_ROBOT_NAME}"
+              HARBOR_API_URL="${HARBOR_URL%/}/api/v2.0"
+              BASIC_AUTH="$(printf 'admin:%s' "${HARBOR_ADMIN_PASSWORD}" | base64 | tr -d '\n')"
+
+              PULLER_ROBOT_PAYLOAD="$(jq -n --arg name "${PULLER_ROBOT_NAME}" '{
+                name: $name,
+                description: "Robot account with global pull access managed by K8s Job",
+                level: "system",
+                disable: false,
+                duration: -1,
+                permissions: [
+                  {
+                    kind: "project",
+                    namespace: "*",
+                    access: [
+                      {
+                        resource: "repository",
+                        action: "pull",
+                        effect: "allow"
+                      }
+                    ]
+                  }
+                ]
+              }')"
+
+              PUSHER_ROBOT_PAYLOAD="$(jq -n --arg name "${PUSHER_ROBOT_NAME}" '{
+                name: $name,
+                description: "Robot account with global pull/push/update access managed by K8s Job",
+                level: "system",
+                disable: false,
+                duration: -1,
+                permissions: [
+                  {
+                    kind: "project",
+                    namespace: "*",
+                    access: [
+                      {
+                        resource: "repository",
+                        action: "pull",
+                        effect: "allow"
+                      },
+                      {
+                        resource: "repository",
+                        action: "push",
+                        effect: "allow"
+                      },
+                      {
+                        resource: "repository",
+                        action: "update",
+                        effect: "allow"
+                      }
+                    ]
+                  }
+                ]
+              }')"
+
+              ensure_robot() {
+                local robot_username="$1"
+                local robot_payload="$2"
+                local robot_password="$3"
+                local robot_id status password_payload
+
+                password_payload="$(jq -n --arg secret "${robot_password}" '{secret: $secret}')"
+
+                log "Consultando robot ${robot_username}..."
+                ROBOT_LIST_JSON="$(curl -sS -X GET "${HARBOR_API_URL}/robots?page_size=100" \
+                  -H "Authorization: Basic ${BASIC_AUTH}" \
+                  -H "Content-Type: application/json")"
+                robot_id="$(echo "${ROBOT_LIST_JSON}" | jq -r --arg name "${robot_username}" '.[] | select(.name == $name) | .id' | head -n1)"
+
+                if [ -n "${robot_id}" ] && [ "${robot_id}" != "null" ]; then
+                  log "Robot ${robot_username} encontrado (id=${robot_id}), atualizando permissões..."
+                  status="$(curl -sS -o /tmp/harbor_update_perm_body -w "%{http_code}" -X PUT "${HARBOR_API_URL}/robots/${robot_id}" \
+                    -H "Authorization: Basic ${BASIC_AUTH}" \
+                    -H "Content-Type: application/json" \
+                    --data "${robot_payload}")"
+                  if [ "${status}" != "200" ]; then
+                    log "WARNING: falha ao atualizar permissões de ${robot_username} (status=${status})"
+                    cat /tmp/harbor_update_perm_body
+                  fi
+                else
+                  log "Robot ${robot_username} não encontrado, criando..."
+                  status="$(curl -sS -o /tmp/harbor_create_body -w "%{http_code}" -X POST "${HARBOR_API_URL}/robots" \
+                    -H "Authorization: Basic ${BASIC_AUTH}" \
+                    -H "Content-Type: application/json" \
+                    --data "${robot_payload}")"
+                  if [ "${status}" != "201" ]; then
+                    log "ERROR: falha ao criar robot ${robot_username} (status=${status})"
+                    cat /tmp/harbor_create_body
+                    exit 1
+                  fi
+                  robot_id="$(cat /tmp/harbor_create_body | jq -r '.id')"
+                  if [ -z "${robot_id}" ] || [ "${robot_id}" = "null" ]; then
+                    log "ERROR: robot ${robot_username} criado sem id no response"
+                    cat /tmp/harbor_create_body
+                    exit 1
+                  fi
+                fi
+
+                log "Atualizando senha do robot ${robot_username} (id=${robot_id})..."
+                status="$(curl -sS -o /tmp/harbor_update_pass_body -w "%{http_code}" -X PATCH "${HARBOR_API_URL}/robots/${robot_id}" \
+                  -H "Authorization: Basic ${BASIC_AUTH}" \
+                  -H "Content-Type: application/json" \
+                  --data "${password_payload}")"
+                if [ "${status}" != "200" ]; then
+                  log "ERROR: falha ao atualizar senha de ${robot_username} (status=${status})"
+                  cat /tmp/harbor_update_pass_body
+                  exit 1
+                fi
+              }
+
+              ensure_robot "${PULLER_ROBOT_USERNAME}" "${PULLER_ROBOT_PAYLOAD}" "${PULLER_ROBOT_PASSWORD}"
+              ensure_robot "${PUSHER_ROBOT_USERNAME}" "${PUSHER_ROBOT_PAYLOAD}" "${PUSHER_ROBOT_PASSWORD}"
+
+              log "Aplicando docker-registry secret '${TARGET_SECRET_NAME}'..."
+              kubectl create secret docker-registry "${TARGET_SECRET_NAME}" \
+                --namespace="${TARGET_NAMESPACE}" \
+                --docker-server="${REGISTRY_HOST:-${HARBOR_URL}}" \
+                --docker-username="${PULLER_ROBOT_USERNAME}" \
+                --docker-password="${PULLER_ROBOT_PASSWORD}" \
+                --dry-run=client -o yaml | kubectl apply --namespace="${TARGET_NAMESPACE}" -f -
+
+              log "Concluído com sucesso."

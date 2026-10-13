@@ -1,0 +1,6 @@
+- op: replace
+  path: /spec/master/volumeSizeLimitMB
+  value: 1024
+- op: replace
+  path: /spec/volume/requests/storage
+  value: "20Gi"

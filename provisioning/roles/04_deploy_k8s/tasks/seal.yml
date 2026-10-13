@@ -12,7 +12,11 @@
 # Behaviour
 #   - genkey is idempotent: an existing key in env/<overlay>/ is reused (so
 #     previously sealed secrets stay decryptable). Use --force to rotate.
-#   - Seals k8s/<app>/overlays/<overlay>/*-secret.yaml -> *-sealedsecret.yaml.
+#   - Lab secrets: *-secret.yaml.example files with <lab:NAME> placeholders are
+#     materialized as *-secret.yaml with random values kept in
+#     env/<overlay>/lab-secrets.yml (k8s-blueprint secrets init). Existing
+#     *-secret.yaml files are never overwritten.
+#   - Seals k8s/**/overlays/<overlay>/**/*-secret.yaml -> *-sealedsecret.yaml.
 #     Plain *-secret.yaml are gitignored except the didactic ones; missing files
 #     are simply skipped.
 #
@@ -34,6 +38,24 @@
     chdir: "{{ deploy_k8s_repo_root }}"
   register: _seal_genkey
   changed_when: "'Written:' in _seal_genkey.stdout"
+
+- name: "seal | Generate the lab Secrets missing for overlay {{ deploy_k8s_overlay }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.command:
+    argv:
+      - uv
+      - run
+      - --directory
+      - "{{ deploy_k8s_repo_root }}"
+      - k8s-blueprint
+      - secrets
+      - init
+      - --overlay
+      - "{{ deploy_k8s_overlay }}"
+  register: _seal_lab_secrets
+  changed_when: "'Written:' in _seal_lab_secrets.stdout"
 
 - name: "seal | Find plain Secrets for overlay {{ deploy_k8s_overlay }}"
   delegate_to: localhost

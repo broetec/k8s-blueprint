@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: seaweedfs
+
+resources:
+  - ../../base
+  - secrets
+
+patches:
+  - path: cr.yaml
+    target:
+      group: seaweed.seaweedfs.com
+      version: v1
+      kind: Seaweed
+      name: seaweedfs-lab
+
+  - path: httproute-filer.yaml
+    target:
+      group: gateway.networking.k8s.io
+      version: v1
+      kind: HTTPRoute
+      name: seaweedfs-lab-filer
+
+  - path: httproute-s3.yaml
+    target:
+      group: gateway.networking.k8s.io
+      version: v1
+      kind: HTTPRoute
+      name: seaweedfs-lab-s3

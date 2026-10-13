@@ -1,0 +1,195 @@
+# Valores comuns do Harbor - sobrescritos por harbor/overlays/<env>/values.yaml
+existingSecretAdminPassword: "users-secret"
+existingSecretAdminPasswordKey: "HARBOR_ADMIN_PASSWORD"
+
+expose:
+  type: clusterIP
+  tls:
+    enabled: false
+
+# --- External Database Configuration (Percona) ---
+database:
+  type: external
+  external:
+    host: "harbor-cr-1-pgbouncer.harbor-db.svc.cluster.local"
+    port: "5432"
+    username: "harbor"
+    existingSecret: "harbor-db-credentials"
+    coreDatabase: "harbor"
+    sslmode: "require"
+
+# --- S3 Storage Configuration (rootdirectory definido no overlay) ---
+persistence:
+  enabled: true
+  persistentVolumeClaim:
+    registry:
+      enabled: false
+  imageChartStorage:
+    disableredirect: true
+    type: s3
+    s3:
+      region: "us-east-1"
+      bucket: "harbor-registry"
+      existingSecret: "s3-secret"
+      # Endpoint interno do SeaweedFS: não depende de DNS nem do certificado do
+      # Gateway. Com disableredirect o registry entrega os blobs ele mesmo, em
+      # vez de redirecionar o cliente para este endereço.
+      regionendpoint: "http://seaweedfs-lab-filer.seaweedfs.svc.cluster.local:8333"
+      secure: false
+      v4auth: true
+      # rootdirectory definido no overlay
+
+nginx:
+  priorityClassName: pc-3-registry-harbor
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+portal:
+  priorityClassName: pc-3-registry-harbor
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+core:
+  priorityClassName: pc-3-registry-harbor
+  resources:
+    requests:
+      cpu: 10m
+      memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  # Garante que o harbor-db (pgBouncer) esteja aceitando conexões antes do core subir
+  initContainers:
+    - name: wait-for-harbor-db
+      image: alpine/psql:18.1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: harbor-db-credentials
+              key: password
+        - name: PGUSER
+          value: "harbor"
+      command:
+        - sh
+        - -c
+        - |
+          DB_HOST="harbor-cr-1-pgbouncer.harbor-db.svc.cluster.local"
+          until psql -h "$DB_HOST" -p 5432 -U "$PGUSER" -d harbor -c "SELECT 1" 2>/dev/null; do
+            echo "Aguardando banco no namespace harbor-db..."
+            sleep 2
+          done
+          echo "Conexão estabelecida com sucesso!"
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 999
+        capabilities:
+          drop:
+            - ALL
+
+jobservice:
+  priorityClassName: pc-3-registry-harbor
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  # Core já espera harbor-db; jobservice só precisa do Core (fila de jobs + API). Usar o nome do Service evita URL por overlay.
+  initContainers:
+    - name: wait-for-harbor-core
+      image: alpine/curl:8.17.0
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "32Mi"
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
+      command:
+        - sh
+        - -c
+        - |
+          until curl -sf "http://harbor-core/api/v2.0/ping" > /dev/null; do
+            echo "Aguardando Harbor Core..."
+            sleep 3
+          done
+          echo "Harbor Core está pronto."
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop:
+            - ALL
+
+registry:
+  priorityClassName: pc-3-registry-harbor
+  registry:
+    # Durante push/pull o registry bufferiza layers em memória; limites baixos causam OOMKilled
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+  controller:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+trivy:
+  enabled: true
+  priorityClassName: pc-3-registry-harbor
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# Redis interno (StatefulSet harbor-redis-0)
+redis:
+  type: internal
+  internal:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+exporter:
+  priorityClassName: pc-3-registry-harbor
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

@@ -42,7 +42,7 @@ A geração é idempotente: se a chave já existe, o Make pula esse passo.
 
 ## Chaves do Sealed Secrets (BYOK) — `env/<overlay>/`
 
-Quando `SEALED_SECRETS=true`, a role `04_deploy_k8s` gera localmente o par de
+A role `04_deploy_k8s` gera localmente o par de
 chaves do controller Sealed Secrets em `env/<overlay>/` (ex.: `env/broetec-core/`):
 
 | Arquivo | Uso |
@@ -50,6 +50,7 @@ chaves do controller Sealed Secrets em `env/<overlay>/` (ex.: `env/broetec-core/
 | `sealed-secrets-key.pem` | chave **privada** RSA do controller (NUNCA compartilhar) |
 | `sealed-secrets-pub.pem` | certificado público usado por `k8s-blueprint-seal seal` |
 | `sealed-secrets-key-secret.yaml` | Secret `kubernetes.io/tls` (label `active`) pré-aplicado no cluster para o controller adotar a chave |
+| `lab-secrets.yml` | valores aleatórios dos segredos de laboratório do overlay (`k8s-blueprint secrets init` / `secrets show`) |
 
 A geração (`k8s-blueprint-seal genkey`) é **idempotente**: a chave existente é
 reutilizada entre deploys (mantém os SealedSecrets antigos decifráveis). Para

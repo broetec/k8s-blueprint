@@ -12,7 +12,7 @@ Outputs
     A ``bitnami.com/v1alpha1`` ``SealedSecret`` manifest (as a dict).
 
 Related
-    k8s/sealed-secrets/README.md, app/secrets/cli.py
+    k8s/core/sealed-secrets/README.md, app/secrets/cli.py
 """
 
 from __future__ import annotations

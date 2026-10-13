@@ -1,0 +1,6 @@
+- op: replace
+  path: /spec/sources/0/helm/valueFiles/1
+  value: $repoData/k8s/storage/harbor/overlays/broetec-storage/values.yaml
+- op: replace
+  path: /spec/sources/2/path
+  value: k8s/storage/harbor/overlays/broetec-storage

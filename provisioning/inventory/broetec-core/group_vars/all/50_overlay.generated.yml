@@ -4,3 +4,8 @@
 vm_role: core
 overlay_id: broetec-core
 overlay_label: Core node (control plane / lab reference)
+k8s_stacks:
+- core
+apps_domain: core.local.broetec.com.br
+tls_issuer: letsencrypt-prod
+argo_source: local

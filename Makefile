@@ -15,6 +15,7 @@ include make/setup.mk
 include make/inventory.mk
 include make/ssh.mk
 include make/targets.mk
+include make/overlays.mk
 include make/docs.mk
 
 .DEFAULT_GOAL := help
@@ -32,10 +33,14 @@ help: ## Lista targets e config actual
 	@printf "  $(G)create-vm$(N)      01 — libvirt + qcow2\n"
 	@printf "  $(G)prepare-vm$(N)     02 — SO na VM\n"
 	@printf "  $(G)install-rke2$(N)   03 — RKE2 (install-k3s p/ k3s)\n"
-	@printf "  $(G)deploy-k8s$(N)     04 — bootstrap k8s (Cilium, cert-manager, Argo CD)\n"
+	@printf "  $(G)deploy-k8s$(N)     04 — bootstrap k8s + Argo CD (app-of-apps)\n"
+	@printf "\n$(B)Overlays locais:$(N)\n"
+	@printf "  $(G)tui$(N)            menu interativo para montar um overlay\n"
+	@printf "  $(G)new$(N)            NAME=meu-lab [FROM=broetec-core] — sem interação\n"
+	@printf "  $(G)k8s-push$(N)       reenviar k8s/ ao Git local da VM (Argo CD aplica)\n"
 	@printf "\n$(B)Operações:$(N)\n"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / { \
-		if ($$1 !~ /^(setup|setup-host|create-vm|prepare-vm|install-rke2|deploy-k8s|deploy|up|up-all)$$/) \
+		if ($$1 !~ /^(setup|setup-host|create-vm|prepare-vm|install-rke2|deploy-k8s|deploy|up|up-all|tui|new|k8s-push)$$/) \
 		  printf "  $(G)%-18s$(N) %s\n", $$1, $$2 \
 	}' $(MAKEFILE_LIST)
 	@printf "\n$(B)Config:$(N) OVERLAY=$(OVERLAY)  VM=$(VM_NAME)@$(VM_IP)  KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP)\n"

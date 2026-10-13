@@ -13,8 +13,9 @@ Makefile              # entry point — help + includes
 ├── make/ansible.mk   # run-playbook macro, setup-host tag/sudo logic
 ├── make/setup.mk     # sync, deps, keys, setup
 ├── make/inventory.mk # inventory, inventory-overlay
-├── make/targets.mk   # setup-host, create-vm … up, up-all
-└── make/ssh.mk       # SSH known_hosts, ssh, status, destroy, clean
+├── make/targets.mk   # setup-host, create-vm … up, up-all, k8s-push
+├── make/overlays.mk  # tui, new, overlays, rm-overlay, dns-check, validate-k8s
+└── make/ssh.mk       # SSH known_hosts, ssh, status, destroy, destroy-all, clean
 ```
 
 ## Documentation map
@@ -50,7 +51,8 @@ flowchart TB
 | `create-vm` | `create_vm` → role **01** |
 | `prepare-vm` | `prepare_vm` → role **02** |
 | `install-rke2` | `install_rke2` → role **03** (stub) |
-| `deploy-k8s` | `deploy_k8s` → role **04** (stub) |
+| `deploy-k8s` | `deploy_k8s` → role **04** |
+| `k8s-push` | `k8s_push` → role **04** (seal, sync, local Git, Argo CD refresh) |
 | `deploy` | roles **03** + **04** |
 | `up` | sub-makes: `create-vm` + `prepare-vm` + `deploy` |
 | `up-all` | loop `up` over `LAB_OVERLAYS` |
@@ -69,7 +71,8 @@ make setup-host                # once: controller + KVM host (role 00)
 make up                        # broetec-core: VM + OS + k8s (01–04)
 make ssh
 make status
-make destroy
+make destroy                   # active overlay only (OVERLAY from env/.env or command line)
+make destroy-all               # every lab VM
 make clean
 ```
 
@@ -114,7 +117,7 @@ Most playbook targets depend on `inventory-overlay` implicitly.
 | `create-vm` | **01** | qcow2, cloud-init seed ISO, `virt-install` |
 | `prepare-vm` | **02** | Guest OS prep (swap, SELinux, iptables baseline) |
 | `install-rke2` | **03** | RKE2 server, Cilium (`install-k3s` / `install-k8s` for the alternative) |
-| `deploy-k8s` | **04** | cluster-config, local-path, cert-manager, Argo CD |
+| `deploy-k8s` | **04** | cluster-config, local-path, Argo CD, local Git, root Application (Argo CD installs the rest) |
 | `deploy` | **03** + **04** | Update k8s only on an existing VM |
 
 ### Lab flows
@@ -135,7 +138,8 @@ redefines `MAKE` to an AppImage.
 | `ssh` | SSH into the VM (`VM_USER@VM_IP` from inventory, lab private key) |
 | `ssh-add-lab` | Add lab private key to `ssh-agent` |
 | `status` | List libvirt domains and networks |
-| `destroy` | Undefine VMs for active overlay and delete their disk + seed ISO; keep the image cache. Fails if a domain cannot be removed |
+| `destroy` | Undefine VMs for active overlay and delete their disk + seed ISO; keep the image cache. Fails if a domain cannot be removed. When the overlay has no VM it says so (exit 0) and lists the lab VMs that still exist, with the `OVERLAY=` to use |
+| `destroy-all` | Run `destroy` for every overlay that has an inventory (versioned, local and `golden`), regardless of `OVERLAY`; prints the VMs removed. Keeps the image cache, the network and the overlays themselves |
 | `snapshot NAME=x` | libvirt snapshot of each VM in the overlay (includes memory when the VM is running) |
 | `revert NAME=x` | Revert each VM to the snapshot and sync the guest clock |
 | `snapshots` | List snapshots of each VM in the overlay |
@@ -224,7 +228,21 @@ Wraps `app.inventory.cli`: `inventory` (all overlays) and `inventory-overlay`
 ### [`targets.mk`](targets.mk)
 
 Playbook pipeline and lab flows: `setup-host`, stages **01–04**, `deploy`,
-`up`, `up-all`. Uses `SUBMAKE` for recursive stage invocations.
+`up`, `up-all`, `k8s-push`. Uses `SUBMAKE` for recursive stage invocations.
+
+### [`overlays.mk`](overlays.mk)
+
+Wraps `uv run k8s-blueprint` (`app/cli.py`):
+
+| Target | What it does |
+|--------|--------------|
+| `tui` | Interactive menu to build a local overlay |
+| `new NAME= [FROM=] [ARGS=]` | Same, non-interactive (`ARGS="--ip 10.20.30.80 --disable core/external-secrets-operator"`) |
+| `overlays` | List versioned and local overlays |
+| `rm-overlay NAME= [ARGS=]` | Remove a local overlay (`--purge-env`, `--force`) |
+| `catalog` | Stacks and components of `k8s/catalog.yml` |
+| `dns-check [OVERLAY=]` | Expected A records and the ones that do not resolve |
+| `validate-k8s [OVERLAY=]` | `kustomize build` on every overlay |
 
 ### [`ansible.mk`](ansible.mk)
 

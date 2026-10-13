@@ -38,7 +38,7 @@ Manual `90_local.yml` files are never overwritten.
 | Module | Responsibility |
 |--------|----------------|
 | [`cli.py`](cli.py) | Entrypoint: `python -m app.inventory.cli` |
-| [`models.py`](models.py) | Parse and validate manifest (`VmSpec`, `OverlaySpec`, `InventoryManifest`) |
+| [`models.py`](models.py) | Parse and validate manifest (`VmSpec`, `K8sSpec`, `OverlaySpec`, `InventoryManifest`); merges the gitignored `manifest.local.yml` |
 | [`generator.py`](generator.py) | Render `hosts.ini`, write symlinks and generated group_vars |
 | [`mac.py`](mac.py) | MAC `52:54:00:<md5(hostname)>` — same rule as Ansible role 00 |
 | [`env_file.py`](env_file.py) | Minimal `.env` reader; `VM_NAME` / `VM_IP` / `OVERLAY` overrides |
@@ -91,7 +91,9 @@ Applied only when `OVERLAY` in `.env` matches the overlay being generated (or is
 
 ## Extending
 
-1. Add overlay block to `manifest.yml` (`label`, `role`, `vms`, optional `vars`).
+1. Add overlay block to `manifest.yml` (`label`, `role`, `vms`, optional `k8s` and `vars`).
+   For a personal overlay use `k8s-blueprint overlay new` instead: it writes
+   `manifest.local.yml` (see [`app/scaffold/`](../scaffold/README.md)).
 2. Create overlay directory with `group_vars/all/90_local.yml` if needed.
 3. Run `make inventory` or `generate --dry-run` to preview `hosts.ini`.
 4. Use `vm_role` in conditional Ansible plays (see inventory README).

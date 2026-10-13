@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pgo
+
+resources:
+  - https://raw.githubusercontent.com/percona/percona-postgresql-operator/v2.8.2/deploy/bundle.yaml
+  - clusterrole.yaml
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: percona-postgresql-operator
+    patch: |-
+      - op: add
+        path: /spec/template/spec/priorityClassName
+        value: pc-1-operators

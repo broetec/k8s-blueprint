@@ -1,0 +1,44 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-secret-reader-role
+  namespace: seaweedfs
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-secret-reader-binding
+  namespace: seaweedfs
+subjects:
+  - kind: ServiceAccount
+    name: external-secrets-operator
+    namespace: external-secrets
+roleRef:
+  kind: Role
+  name: eso-secret-reader-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Lê Secrets do namespace seaweedfs para ExternalSecrets de outros namespaces.
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: seaweedfs
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: seaweedfs
+      server:
+        url: "https://kubernetes.default.svc"
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+          namespace: external-secrets
+      auth:
+        serviceAccount:
+          name: external-secrets-operator
+          namespace: external-secrets

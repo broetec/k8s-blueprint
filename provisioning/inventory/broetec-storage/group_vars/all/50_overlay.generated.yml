@@ -4,3 +4,9 @@
 vm_role: storage
 overlay_id: broetec-storage
 overlay_label: Storage node
+k8s_stacks:
+- core
+- storage
+apps_domain: storage.local.broetec.com.br
+tls_issuer: letsencrypt-prod
+argo_source: local

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: harbor
+
+resources:
+  - harbor-robot-creator-configmap.yaml
+  - harbor-robot-creator-rbac.yaml
+  - harbor-robot-creator-job.yaml
+  - harbor-bootstrap-configmap.yaml
+  - harbor-bootstrap-job.yaml
+  - externalsecret-db.yaml
+  - externalsecret-s3.yaml
+  - httproute.yaml

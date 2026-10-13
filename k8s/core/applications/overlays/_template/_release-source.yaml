@@ -1,0 +1,9 @@
+# Origem dos manifests lidos pelo Argo CD. No lab (argo_source: local) o role 04
+# reescreve este arquivo na cópia enviada para a VM, apontando para o Git local
+# do nó (git@<ip>:k8s-blueprint.git).
+- op: replace
+  path: /data/repoURL
+  value: [[ repo_url ]]
+- op: replace
+  path: /data/targetRevision
+  value: [[ revision ]]

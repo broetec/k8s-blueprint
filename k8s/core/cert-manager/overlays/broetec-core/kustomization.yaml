@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+# O token Cloudflare (api-token-secret.yaml) não entra aqui: é credencial de
+# bootstrap, aplicada pelo role 04 (provisioning/roles/04_deploy_k8s) quando o
+# arquivo existe. Assim o overlay funciona com ou sem token.

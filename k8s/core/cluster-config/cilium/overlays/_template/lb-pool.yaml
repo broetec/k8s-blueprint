@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/blocks/0/cidr
+  value: "[[ vm_ip ]]/32"

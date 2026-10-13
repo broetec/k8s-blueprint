@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/template/spec/containers/0/env/0
+  value: {"name": "WATCH_NAMESPACE", "value": "pgo,seaweedfs-db[% if 'storage/harbor' in components %],harbor-db[% endif %]"}

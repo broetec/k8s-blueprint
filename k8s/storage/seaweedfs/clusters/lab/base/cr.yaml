@@ -1,0 +1,63 @@
+# API: https://github.com/seaweedfs/seaweedfs-operator/blob/master/api/v1/seaweed_types.go
+# Sem hostSuffix: o operador não cria Ingress — usar HTTPRoute no overlay.
+apiVersion: seaweed.seaweedfs.com/v1
+kind: Seaweed
+metadata:
+  name: seaweedfs-lab
+spec:
+  image: chrislusf/seaweedfs:4.17_large_disk
+  volumeServerDiskCount: 1
+  master:
+    replicas: 1
+    volumeSizeLimitMB: PLACEHOLDER
+  volume:
+    replicas: 1
+    storageClassName: local-path
+    requests:
+      storage: PLACEHOLDER
+  filer:
+    replicas: 1
+    s3:
+      enabled: true
+      configSecret:
+        name: seaweedfs-s3-config
+        key: s3.conf
+    env:
+      - name: WEED_POSTGRES2_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: seaweedfs-filer-db-credentials
+            key: password
+    config: |
+      [leveldb2]
+      enabled = false
+
+      [postgres2]
+      enabled = true
+      createTable = """
+      CREATE TABLE IF NOT EXISTS "%s" (
+      dirhash BIGINT,
+      name VARCHAR(65535),
+      directory VARCHAR(65535),
+      meta bytea,
+      PRIMARY KEY (dirhash, name)
+      );
+      """
+      hostname = "seaweedfs-cr-1-pgbouncer.seaweedfs-db.svc.cluster.local"
+      port = 5432
+      username = "seaweedfs"
+      database = "seaweedfs"
+      schema = ""
+      sslmode = "require"
+      pgbouncer_compatible = false
+      connection_max_idle = 10
+      connection_max_open = 50
+      connection_max_lifetime_seconds = 300
+      enableUpsert = true
+      upsertQuery = """
+      INSERT INTO "%[1]s" (dirhash, name, directory, meta)
+      VALUES($1, $2, $3, $4)
+      ON CONFLICT (dirhash, name) DO UPDATE SET
+      directory=EXCLUDED.directory,
+      meta=EXCLUDED.meta
+      """

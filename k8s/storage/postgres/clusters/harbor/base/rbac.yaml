@@ -1,0 +1,13 @@
+# Liga o SA do operador (pgo) ao ClusterRole em postgres/operator/base.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: percona-postgresql-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: percona-postgresql-operator-target-namespace
+subjects:
+  - kind: ServiceAccount
+    name: percona-postgresql-operator
+    namespace: pgo

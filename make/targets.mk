@@ -2,7 +2,7 @@
 # make/targets.mk — playbook pipeline (roles 00–04) and lab flows
 # =============================================================================
 
-.PHONY: setup-host create-vm prepare-vm install-rke2 install-k3s install-k8s deploy-k8s reset-k8s redeploy-k8s deploy up up-all golden golden-seal
+.PHONY: setup-host create-vm prepare-vm install-rke2 install-k3s install-k8s deploy-k8s k8s-push reset-k8s redeploy-k8s deploy up up-all golden golden-seal
 
 setup-host: setup inventory-overlay deps ensure-user-known-hosts ## 1ª vez: controlador + host KVM (role 00)
 	@printf "$(B)==> [00] setup-host (OVERLAY=$(OVERLAY), KVM_HOST_BOOTSTRAP=$(KVM_HOST_BOOTSTRAP))$(N)\n"
@@ -28,9 +28,13 @@ install-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 03 — instalar
 	@printf "$(Y)==> [03] install-k8s (OVERLAY=$(OVERLAY), K8S_DISTRIBUTION=$(K8S_DISTRIBUTION)$(if $(RKE2_VERSION), RKE2_VERSION=$(RKE2_VERSION))$(if $(K3S_VERSION), K3S_VERSION=$(K3S_VERSION)))$(N)\n"
 	$(call run-playbook,install_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(K8S_DISTRIBUTION_EXTRA) $(EXTRA))
 
-deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — bootstrap k8s (cluster-config, cert-manager, argocd; SEALED_SECRETS=true p/ sealed-secrets)
-	@printf "$(Y)==> [04] deploy-k8s (OVERLAY=$(OVERLAY), SEALED_SECRETS=$(SEALED_SECRETS))$(N)\n"
-	$(call run-playbook,deploy_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),-e sealed_secrets_enabled=$(SEALED_SECRETS) $(EXTRA))
+deploy-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04 — bootstrap k8s + Argo CD app-of-apps (ARGO_SOURCE=, TLS_ISSUER=)
+	@printf "$(Y)==> [04] deploy-k8s (OVERLAY=$(OVERLAY))$(N)\n"
+	$(call run-playbook,deploy_k8s,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(DEPLOY_K8S_EXTRA) $(EXTRA))
+
+k8s-push: inventory-overlay deps keys ssh-host-key-refresh ## 04 — reenviar k8s/ ao Git local da VM e pedir refresh ao Argo CD
+	@printf "$(Y)==> [04] k8s-push (OVERLAY=$(OVERLAY))$(N)\n"
+	$(call run-playbook,k8s_push,$(SUDO_FLAGS_VM) $(ANSIBLE_FLAGS),$(DEPLOY_K8S_EXTRA) $(EXTRA))
 
 reset-k8s: inventory-overlay deps keys ssh-host-key-refresh ## 04⁻¹ — destruir todos os namespaces/releases (exceto os protegidos) SEM desinstalar o cluster
 	@printf "$(R)==> [reset] reset-k8s (OVERLAY=$(OVERLAY)) — apaga tudo exceto namespaces protegidos$(N)\n"

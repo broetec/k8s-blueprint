@@ -1,0 +1,123 @@
+# =============================================================================
+# catalog.yml — stacks e componentes disponíveis para montar um overlay
+# =============================================================================
+#
+# Lido por `k8s-blueprint` (app/scaffold). Cada stack é um diretório de k8s/
+# no padrão applications/{base,overlays/<id>} + componentes base/overlays.
+#
+# Esquema
+#   repo.url / repo.revision — origem versionada dos manifests (GitHub).
+#   stacks.<id>.label        — descrição curta.
+#   stacks.<id>.required     — stack obrigatória em todo overlay.
+#   stacks.<id>.requires     — componentes de outras stacks (<stack>/<comp>).
+#   stacks.<id>.vm           — tamanho mínimo sugerido de VM.
+#   stacks.<id>.dirs         — diretórios da stack com overlays/_template
+#                              sempre renderizados (ex.: applications).
+#   components.<id>.required — não pode ser desligado.
+#   components.<id>.requires — outros componentes (<stack>/<comp>).
+#   components.<id>.dirs     — diretórios (relativos à stack) com
+#                              overlays/_template deste componente.
+#   components.<id>.hosts    — hostnames expostos: <host>.<domínio do overlay>.
+#
+# Templates
+#   overlays/_template/ é renderizado em overlays/<id>/ com Jinja2 usando os
+#   delimitadores [[ var ]] e [% bloco %]. Variáveis: overlay_id, node_name,
+#   vm_ip, apps_domain, iface, tls_issuer, repo_url, revision, stacks,
+#   components. Um arquivo que renderiza vazio não é escrito.
+# =============================================================================
+
+repo:
+  url: https://github.com/broetec/k8s-blueprint.git
+  revision: main
+
+defaults:
+  iface: enp1s0
+
+stacks:
+  core:
+    label: Base do cluster (rede, storage local, segredos, certificados, Argo CD)
+    required: true
+    vm:
+      vcpus: 4
+      memory_mb: 8192
+      disk_size_gb: 60
+    dirs:
+      - applications
+    components:
+      cluster-config:
+        label: Cilium (Gateway API, LB-IPAM, L2) e PriorityClasses
+        required: true
+        dirs:
+          - cluster-config
+          - cluster-config/cilium
+          - cluster-config/priorityclasses
+      local-path-provisioner:
+        label: StorageClass padrão (local-path)
+        required: true
+        dirs:
+          - local-path-provisioner
+      sealed-secrets:
+        label: Sealed Secrets (chave BYOK)
+        required: true
+        dirs:
+          - sealed-secrets
+      cert-manager:
+        label: cert-manager e ClusterIssuers
+        required: true
+        dirs:
+          - cert-manager
+      argocd:
+        label: Argo CD (app-of-apps)
+        required: true
+        dirs:
+          - argocd
+        hosts:
+          argo: Argo CD
+      external-secrets-operator:
+        label: External Secrets Operator
+        dirs:
+          - external-secrets-operator
+
+  storage:
+    label: Armazenamento (PostgreSQL, S3 SeaweedFS e registry Harbor)
+    requires:
+      - core/external-secrets-operator
+    vm:
+      vcpus: 6
+      memory_mb: 16384
+      disk_size_gb: 120
+    dirs:
+      - applications
+    components:
+      postgres-operator:
+        label: Percona Operator for PostgreSQL
+        required: true
+        dirs:
+          - postgres/operator
+      seaweedfs:
+        label: SeaweedFS (S3 + filer) com metadados em PostgreSQL
+        required: true
+        requires:
+          - storage/postgres-operator
+        dirs:
+          - secret-stores
+          - seaweedfs/operator
+          - seaweedfs/clusters/lab
+          - postgres/clusters/seaweedfs
+        hosts:
+          s3: API S3 do SeaweedFS
+          filer: Filer do SeaweedFS (basic auth)
+      harbor:
+        label: Harbor (registry) com banco PostgreSQL e blobs no S3
+        requires:
+          - storage/postgres-operator
+          - storage/seaweedfs
+        dirs:
+          - harbor
+          - postgres/clusters/harbor
+        hosts:
+          harbor: Harbor
+
+  monitor:
+    label: Monitoração (catálogo ainda vazio)
+    components: {}

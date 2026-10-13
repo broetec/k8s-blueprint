@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: harbor-db
+
+# Referência: CR mínimo upstream (não listar em resources junto com
+# overlays/storage/cr.yaml — seriam dois PerconaPGCluster no mesmo build).
+# - https://raw.githubusercontent.com/percona/percona-postgresql-operator/v2.8.2/deploy/cr.yaml
+
+resources:
+  - rbac.yaml

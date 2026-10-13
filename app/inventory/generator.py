@@ -136,6 +136,13 @@ class InventoryGenerator:
             'overlay_id': overlay.overlay_id,
             'overlay_label': overlay.label,
         }
+        if overlay.k8s is not None:
+            payload.update({
+                'k8s_stacks': list(overlay.k8s.stacks),
+                'apps_domain': overlay.k8s.domain,
+                'tls_issuer': overlay.k8s.tls_issuer,
+                'argo_source': overlay.k8s.argo_source,
+            })
         payload.update(overlay.extra_vars_dict())
         header = (
             '# Auto-generated — DO NOT EDIT.\n'

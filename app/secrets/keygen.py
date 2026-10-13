@@ -14,7 +14,7 @@ Outputs
     a ``kubernetes.io/tls`` Secret dict labelled ``active`` for adoption.
 
 Related
-    app/secrets/sealer.py, app/secrets/cli.py, k8s/sealed-secrets/README.md
+    app/secrets/sealer.py, app/secrets/cli.py, k8s/core/sealed-secrets/README.md
 """
 
 from __future__ import annotations

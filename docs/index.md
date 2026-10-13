@@ -38,6 +38,9 @@ structure
 :maxdepth: 1
 
 ../k8s/README
+../k8s/core/applications/README
+../k8s/storage/README
+../k8s/monitor/README
 upgrade/README
 ```
 
@@ -47,6 +50,7 @@ upgrade/README
 
 ../make/README
 ../app/inventory/README
+../app/scaffold/README
 ../env/README
 ../lab/README
 ```

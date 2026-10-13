@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/hostnames/0
+  value: "harbor.storage.local.broetec.com.br"

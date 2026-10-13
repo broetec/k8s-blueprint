@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - secret-stores.yaml
+  - postgres-operator.yaml
+  - seaweedfs-operator.yaml
+  - seaweedfs-db.yaml
+  - seaweedfs-cluster.yaml
+  - harbor-db.yaml
+  - harbor.yaml
+
+# Origem dos manifests (repositório Git + revisão). O overlay ajusta os valores
+# em _release-source.yaml e os propaga para as Applications via replacements.
+configMapGenerator:
+  - name: storage-release-source
+    literals:
+      - repoURL=https://github.com/broetec/k8s-blueprint.git
+      - targetRevision=main
+    options:
+      disableNameSuffixHash: true

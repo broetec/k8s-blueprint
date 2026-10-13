@@ -42,7 +42,7 @@
 # Pinned so that recreating a VM always gives the same cluster (an unpinned
 # `stable` channel moved from v1.35 to v1.36 and broke the pipeline).
 # Bump deliberately; keep rke2_cilium_version and the Gateway API CRDs
-# (k8s/cluster-config/gateway-api) in step with the Cilium chart it bundles.
+# (k8s/core/cluster-config/gateway-api) in step with the Cilium chart it bundles.
 # Empty string = latest patch of rke2_channel.
 rke2_version: "v1.36.5+rke2r1"
 
@@ -172,7 +172,7 @@ rke2_healthcheck_wait_api_seconds: 600
 # -----------------------------------------------------------------------------
 # Node directory created before RKE2 starts (mkdir + chmod 1777 + SELinux
 # container_file_t).  Must match nodePathMap.paths[0] in
-# k8s/local-path-provisioner/base/values.yaml.  Empty = skip OS prep.
+# k8s/core/local-path-provisioner/base/values.yaml.  Empty = skip OS prep.
 # Defaults to /opt/local-path-provisioner so the node is always ready for the
 # cluster-level deploy done by role 04 (04_deploy_k8s/tasks/local_path.yml).
 rke2_local_path_dir: "/opt/local-path-provisioner"

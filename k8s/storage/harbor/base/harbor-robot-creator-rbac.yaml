@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: harbor-robot-creator-sa
+  namespace: harbor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: harbor-robot-secret-manager
+  namespace: harbor
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bind-harbor-robot-creator-sa-to-secret-manager
+  namespace: harbor
+subjects:
+  - kind: ServiceAccount
+    name: harbor-robot-creator-sa
+    namespace: harbor
+roleRef:
+  kind: Role
+  name: harbor-robot-secret-manager
+  apiGroup: rbac.authorization.k8s.io

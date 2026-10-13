@@ -1,0 +1,5 @@
+[% if 'storage/harbor' in components %]
+- op: replace
+  path: /spec/source/path
+  value: k8s/storage/postgres/clusters/harbor/overlays/[[ overlay_id ]]
+[% endif %]

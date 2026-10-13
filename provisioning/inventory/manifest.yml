@@ -12,6 +12,16 @@
 #   vms[].name   — libvirt domain name (--name)
 #   vms[].ip     — static guest IP (cloud-init network-config)
 #   vms[].mac    — optional; derived as 52:54:00:<md5(name)> if omitted
+#   k8s          — optional; Kubernetes selection rendered by `k8s-blueprint`
+#     stacks     — stacks from k8s/catalog.yml (core is always required)
+#     disable    — optional components to leave out (<stack>/<component>)
+#     domain     — apps domain; hostnames are <app>.<domain>
+#     tls_issuer — ClusterIssuer of the Gateway (letsencrypt-prod | selfsigned)
+#     argo_source— local (Git served by the node, default) | remote
+#
+# Local overlays
+#   Overlays created with `k8s-blueprint overlay new` live in the gitignored
+#   manifest.local.yml (same schema) and are merged with this file.
 #
 # Regenerate
 #   make inventory              # all overlays
@@ -41,6 +51,10 @@ overlays:
     vms:
       - name: broetec-core
         ip: 10.20.30.40
+    k8s:
+      stacks: [core]
+      domain: core.local.broetec.com.br
+      tls_issuer: letsencrypt-prod
 
   broetec-storage:
     label: Storage node
@@ -48,6 +62,10 @@ overlays:
     vms:
       - name: broetec-storage
         ip: 10.20.30.50
+    k8s:
+      stacks: [core, storage]
+      domain: storage.local.broetec.com.br
+      tls_issuer: letsencrypt-prod
 
   broetec-monitor:
     label: Telemetry / monitoring node
@@ -55,6 +73,10 @@ overlays:
     vms:
       - name: broetec-monitor
         ip: 10.20.30.60
+    k8s:
+      stacks: [core]
+      domain: monitor.local.broetec.com.br
+      tls_issuer: letsencrypt-prod
 
   # Temporary builder VM for `make golden` (role golden_image). Not a lab node:
   # it is prepared by role 02, sealed, exported to lab/cache/ and destroyed.

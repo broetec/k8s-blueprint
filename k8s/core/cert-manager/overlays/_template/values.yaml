@@ -1,0 +1,2 @@
+## Overlay [[ overlay_id ]]: valores para o chart jetstack/cert-manager
+## Herda tudo de ../../base/values.yaml.
