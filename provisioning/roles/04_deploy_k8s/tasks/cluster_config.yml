@@ -11,24 +11,27 @@
 #   Gateway API CRDs must be Established before Gateway/GatewayClass resources;
 #   a single kubectl apply -k on the full overlay races and fails on first run.
 #
-#   cilium-operator only starts its Gateway API controller when the CRDs exist
-#   at startup. On a fresh cluster they are installed here, after the operator
-#   is already running, so the operator is restarted once (first install only).
+#   cilium-operator only enables the Gateway API kinds whose CRDs exist when it
+#   starts (ListenerSet, TCPRoute and UDPRoute are optional). The operator is
+#   restarted whenever the CRD bundle (version/channel annotations) changes:
+#   first install on a fresh cluster, a new release or a channel switch in
+#   gateway-api/kustomization.yaml.
 #
 # Scope
 #   become: false — runs kubectl as the connecting user (kubeconfig at
 #   ~/.kube/config). The overlay is the synced copy on the VM.
 # =============================================================================
 
-- name: "cluster_config | Check whether Gateway API CRDs already exist"
+- name: "cluster_config | Read the installed Gateway API bundle (version/channel)"
   become: false
   ansible.builtin.command:
-    cmd: kubectl get crd gatewayclasses.gateway.networking.k8s.io
+    cmd: >-
+      kubectl get crd gatewayclasses.gateway.networking.k8s.io --ignore-not-found
+      -o 'jsonpath={.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}/{.metadata.annotations.gateway\.networking\.k8s\.io/channel}'
   environment:
     PATH: "{{ deploy_k8s_bin_path }}"
-  register: _deploy_k8s_gateway_api_crd
+  register: _deploy_k8s_gateway_api_before
   changed_when: false
-  failed_when: false
 
 - name: "cluster_config | Apply Gateway API CRDs (server-side)"
   become: false
@@ -44,7 +47,7 @@
   become: false
   ansible.builtin.shell: |
     set -euo pipefail
-    crds=$(kubectl get crd -o name | grep 'gateway\.networking\.k8s\.io' || true)
+    crds=$(kubectl get crd -o name | grep -E 'gateway\.networking\.(x-)?k8s\.io' || true)
     if [ -z "$crds" ]; then
       echo "No Gateway API CRDs found" >&2
       exit 1
@@ -58,15 +61,27 @@
     PATH: "{{ deploy_k8s_bin_path }}"
   changed_when: false
 
-- name: "cluster_config | Restart cilium-operator after the first Gateway API CRD install"
+- name: "cluster_config | Read the Gateway API bundle (version/channel) after the apply"
   become: false
-  when: _deploy_k8s_gateway_api_crd.rc != 0
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get crd gatewayclasses.gateway.networking.k8s.io
+      -o 'jsonpath={.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}/{.metadata.annotations.gateway\.networking\.k8s\.io/channel}'
+  environment:
+    PATH: "{{ deploy_k8s_bin_path }}"
+  register: _deploy_k8s_gateway_api_after
+  changed_when: false
+
+- name: "cluster_config | Restart cilium-operator when the Gateway API bundle changed"
+  become: false
+  when: _deploy_k8s_gateway_api_before.stdout != _deploy_k8s_gateway_api_after.stdout
   ansible.builtin.shell: |
     set -euo pipefail
     if kubectl -n kube-system get deploy cilium-operator >/dev/null 2>&1; then
       kubectl -n kube-system rollout restart deploy/cilium-operator
       kubectl -n kube-system rollout status deploy/cilium-operator --timeout=180s
     fi
+    echo "Gateway API bundle: '{{ _deploy_k8s_gateway_api_before.stdout }}' -> '{{ _deploy_k8s_gateway_api_after.stdout }}'"
   args:
     executable: /bin/bash
   environment:

@@ -120,7 +120,7 @@ Ao subir a versão, mexa nas três coisas em conjunto:
 
 1. `rke2_version` (e `rke2_channel`) em `provisioning/roles/03_install_rke2/defaults/main.yml`.
 2. `rke2_cilium_version`, para a versão do chart que a release nova do RKE2 empacota (tabela de componentes nas *release notes*).
-3. Os CRDs do Gateway API em `k8s/core/cluster-config/gateway-api/kustomization.yaml`, para a versão que a documentação dessa série do Cilium exige (Cilium 1.18 -> `v1.3.0`; Cilium 1.20 -> `v1.6.3`). São aplicados pelo role `04_deploy_k8s`, não vêm com o chart.
+3. Os CRDs do Gateway API em `k8s/core/cluster-config/gateway-api/kustomization.yaml`, para a versão que a documentação dessa série do Cilium exige (Cilium 1.18 -> `v1.3.0`; Cilium 1.20 -> `v1.6.1` ou mais nova, o repo usa `v1.6.3`, canal standard). São aplicados pelo role `04_deploy_k8s`, não vêm com o chart; quando a versão ou o canal do pacote mudam, o role reinicia o `cilium-operator`.
 
 > **Compatibilidade Cilium x Kubernetes:** Cilium 1.20 foi testado oficialmente de Kubernetes 1.31 a 1.36. O RKE2 `v1.37.1` já empacota o Cilium 1.20.2, mas o K8s 1.37 ainda não consta da matriz do Cilium e essa release troca o etcd para a série 3.7; teste primeiro numa VM descartável (`make install-rke2 RKE2_VERSION=v1.37.1+rke2r1`).
 

@@ -1,18 +1,21 @@
-## Cilium Gateway API – IP público
+# Cilium Gateway API – Gateway `public`
 
-Este diretório contém a configuração do Cilium (Gateway API + Ingress) para o cluster RKE2.
+Este diretório contém os recursos de rede do cluster RKE2 que ficam no Git: a
+`GatewayClass` do Cilium, o Gateway `public` e o LB-IPAM que dá a ele o IP da
+VM.
 
-O objetivo desta configuração é:
+Não há Ingress neste repo. O role 03 desliga todos os controladores de Ingress
+que o RKE2 traz (`rke2-ingress-nginx`, `rke2-traefik`, `rke2-traefik-crd`) e o
+Cilium não roda o `ingressController`. Aplicações são publicadas com
+`HTTPRoute` apontando para o Gateway `public`.
 
-- **Gateway público (`public`)**: expor sites de clientes usando um IP dedicado.
-- **Ingress Cilium**: continuar atendendo aplicações legadas via Ingress.
+## 1. Configuração do Cilium (role 03)
 
-### 1. Pré‑requisitos no cluster
-
-- Cluster **RKE2** com:
-  - `cni: cilium` em `/etc/rancher/rke2/config.yaml`
-  - `disable: rke2-ingress-nginx`, `rke2-traefik`, `rke2-traefik-crd`
-- Cilium instalado via manifest do RKE2, com algo próximo de:
+O Cilium é o CNI do RKE2 e é configurado antes do cluster subir, pelo
+`HelmChartConfig` que o role 03 grava em
+`/var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml`. O template é
+[`rke2-cilium-config.yaml.j2`](../../../../provisioning/roles/03_install_rke2/templates/rke2-cilium-config.yaml.j2);
+com os valores padrão ele gera:
 
 ```yaml
 apiVersion: helm.cattle.io/v1
@@ -21,157 +24,116 @@ metadata:
   name: rke2-cilium
   namespace: kube-system
 spec:
-  valuesContent: |
+  valuesContent: |-
+    k8sServiceHost: "10.20.30.40"      # rke2_advertise_address (IP da VM)
+    k8sServicePort: 6443
     operator:
       replicas: 1
-    kubeProxyReplacement: partial
-    ingressController:
-      enabled: true
-      default: true
-      loadbalancerMode: shared
-      service:
-        labels:
-          network: public
+      image:
+        override: quay.io/cilium/operator-generic:v1.20.2
+    image:
+      repository: quay.io/cilium/cilium
+      tag: v1.20.2
+    kubeProxyReplacement: true
     gatewayAPI:
       enabled: true
       gatewayClass:
-        # String obrigatória no schema Helm: "true" | "false" | "auto"
-        create: "false"
-      # Recomendado começar sem hostNetwork para evitar impacto no SSH:
-      hostNetwork:
-        enabled: false
+        create: "false"                # a GatewayClass vem de base/gatewayclass.yaml
 ```
 
-> **Importante**: alterar `kubeProxyReplacement` ou `gatewayAPI.hostNetwork.enabled`
-> pode derrubar conexões SSH ativas. Faça sempre em janela de manutenção e, se
-> possível, com acesso de console (out‑of‑band) ao nó.
+| Variável (role 03) | Padrão | Efeito |
+|--------------------|--------|--------|
+| `rke2_cilium_version` | `v1.20.2` | Imagens do agente e do operator (a mesma versão que o RKE2 traz) |
+| `rke2_cilium_operator_replicas` | `1` | Evita conflito de portas em cluster de um nó |
+| `rke2_cilium_kube_proxy_replacement` | `true` | Cilium substitui o kube-proxy (`rke2_disable_kube_proxy: true`) |
+| `rke2_cilium_gateway_api_enabled` | `true` | Controlador de Gateway API do Cilium |
+| `rke2_disable` | `rke2-ingress-nginx`, `rke2-traefik`, `rke2-traefik-crd` | Nenhum Ingress embutido; o `rke2-traefik-crd` também conflitaria com os CRDs do Gateway API |
 
-- CRDs do Gateway API instalados (antes do overlay Cilium):
+> **Importante**: alterar `kubeProxyReplacement` ou ligar
+> `gatewayAPI.hostNetwork.enabled` pode derrubar conexões SSH ativas. Faça em
+> janela de manutenção e com acesso de console ao nó.
+
+### CRDs do Gateway API
+
+Os CRDs vêm de [`../gateway-api`](../gateway-api/kustomization.yaml): pacote
+**v1.6.3, canal standard**, aplicado pelo role 04 antes deste diretório
+(fora do Argo CD).
+
+| Ponto | Detalhe |
+|-------|---------|
+| Versão mínima | O Cilium 1.20 exige Gateway API v1.6.1 ou mais nova (`TLSRoute` passou a `v1`) |
+| Canal | Standard: desde a v1.6 já traz `ListenerSet`, `TCPRoute`, `UDPRoute` e `TLSRoute` em `v1`. O experimental acrescenta só os CRDs `gateway.networking.x-k8s.io` (`XBackend`, `XBackendTrafficPolicy`, `XMesh`) e campos experimentais (retry, CORS no `HTTPRoute`), que o repo não usa |
+| `safe-upgrades` | O pacote instala a `ValidatingAdmissionPolicy` `safe-upgrades.gateway.networking.k8s.io`: recusa CRDs abaixo da v1.5 e a troca de standard para experimental (para isso, apague a policy antes). Experimental → standard é permitido |
+| Troca de versão | Edite a URL em `../gateway-api/kustomization.yaml` e rode `make deploy-k8s`. O role reinicia o `cilium-operator` quando a versão ou o canal do pacote mudam, porque ele só habilita os tipos cujos CRDs existiam quando subiu |
+| Cluster criado com o experimental | `make deploy-k8s` passa os CRDs para o standard e reinicia o operator, mas não fica igual a uma instalação nova: os CRDs `x-k8s.io` continuam no cluster e `TLSRoute`/`TCPRoute`/`UDPRoute` seguem servindo as versões `v1alpha*` antigas. Nada no repo usa essas versões. Para ficar limpo, recrie a VM (`make destroy && make up`) ou apague os CRDs `x-k8s.io` com `kubectl get crd -o name \| grep x-k8s.io \| xargs kubectl delete` |
+
+## 2. Arquivos
+
+`base/` (comum a todos os overlays, namespace `cilium`):
+
+| Arquivo | Recurso |
+|---------|---------|
+| `namespace.yaml` | Namespace `cilium` |
+| `gatewayclass.yaml` | `GatewayClass` `cilium` (`io.cilium/gateway-controller`); única fonte desse recurso, já que o chart não a cria |
+| `gateway-public.yaml` | `Gateway` `public`: listeners HTTP (80) e HTTPS (443) com o certificado `public-tls-secret` emitido pelo cert-manager |
+| `lb-pool.yaml` | `CiliumLoadBalancerIPPool` `lb-pool` |
+| `policy.yaml` | `CiliumL2AnnouncementPolicy` `l2-policy` |
+
+`overlays/<id>/` (patches JSON6902 sobre a base):
+
+| Arquivo | O que ajusta | Variável do `_template` |
+|---------|--------------|------------------------|
+| `gateway-public.yaml` | IP do Gateway (`spec.addresses[0]`) e hostname do listener HTTPS (`*.<domínio>`) | `vm_ip`, `apps_domain` |
+| `lb-pool.yaml` | Bloco do pool: o IP da VM em `/32` | `vm_ip` |
+| `policy.yaml` | Interface de rede da VM | `iface` |
+| `_tls-issuer.yaml` | Annotation `cert-manager.io/cluster-issuer` do Gateway | `tls_issuer` |
+
+O role 04 reescreve o `_tls-issuer.yaml` na cópia enviada à VM com o emissor
+efetivo: o `tls_issuer` do inventário (ou `TLS_ISSUER=` no make), trocado por
+`selfsigned` quando é um `letsencrypt-*` e falta o token do Cloudflare.
+
+## 3. Como o Gateway recebe o IP
+
+1. O Gateway pede o IP da VM em `spec.addresses`.
+2. O Cilium cria o Service `LoadBalancer` do Gateway com os labels e annotations
+   de `spec.infrastructure` (`network: public`, `lb-ipam-sharing-key`).
+3. O LB-IPAM atribui o IP a partir do `lb-pool`, que contém só esse endereço.
+
+Como o IP do Gateway é o próprio IP do nó, o tráfego chega sem anúncio ARP
+extra. A `CiliumL2AnnouncementPolicy` só tem efeito com
+`l2announcements.enabled: true` no Cilium, que o role 03 não liga; ela fica no
+repo para um IP de Gateway diferente do IP do nó.
+
+## 4. Como alterar e aplicar
+
+Os overlays `broetec-*` e os locais são gerados a partir de
+`overlays/_template/`. Para mudar IP, domínio ou interface, altere o `k8s:` do
+[`manifest.yml`](../../../../provisioning/inventory/manifest.yml) (ou o
+`manifest.local.yml`) ou o template, e renderize:
 
 ```bash
-kubectl apply --server-side -k k8s/core/cluster-config/gateway-api
+uv run k8s-blueprint overlay render broetec-core
+kustomize build k8s/core/cluster-config/cilium/overlays/broetec-core   # inspecionar
+make k8s-push OVERLAY=broetec-core                                    # publicar
 ```
 
-### 2. Estrutura dos arquivos
+No bootstrap o role `04_deploy_k8s` aplica `k8s/core/cluster-config/overlays/<id>`
+(Cilium + PriorityClasses); depois a Application `cluster-config` do Argo CD
+mantém esses recursos.
 
-- `base/gatewayclass.yaml`  
-  Define o `GatewayClass` `cilium` (`controllerName: io.cilium/gateway-controller`). Com `gatewayAPI.gatewayClass.create: "false"` no HelmChartConfig, este ficheiro é a única fonte de verdade para esse recurso.
-
-- `base/gateway-public.yaml`  
-  Define o `Gateway` público (`name: public`) com:
-  - `gatewayClassName: cilium`
-  - `infrastructure.labels.network: public`
-  - `spec.addresses[0].value: PLACEHOLDER` (substituído pelo overlay)
-
-- `overlays/<overlay>/kustomization.yaml`  
-  Usa o `base` e aplica patches de JSON6902 nos dois Gateways:
-
-  - `gateway-public.yaml`: substitui o valor do primeiro endereço (`spec.addresses[0].value`)
-    pelo **IP público** desejado.
-
-### 3. Ajustando os IPs via Services (`io.cilium/lb-ipam-ips`)
-
-Em vez de definir o IP diretamente no `Gateway`, os IPs são fixados nos `Service`
-tipo `LoadBalancer` usando a anotação `io.cilium/lb-ipam-ips`.
-
-- `base/gateway-public-svc.yaml`  
-  Service do Gateway público:
-
-  ```yaml
-  apiVersion: v1
-  kind: Service
-  metadata:
-    name: gateway-public
-  spec:
-    type: LoadBalancer
-    selector:
-      gateway.networking.k8s.io/gateway-name: public
-    ports:
-      - name: http
-        port: 80
-        targetPort: 80
-      - name: https
-        port: 443
-        targetPort: 443
-  ```
-
-Os overlays aplicam os IPs desejados nesses Services:
-
-- `overlays/<overlay>/gateway-public-svc.yaml`
-
-  ```yaml
-  - op: add
-    path: /metadata/annotations/io.cilium~1lb-ipam-ips
-    value: "10.20.30.40"  # IP público
-  ```
-
-  ```
-
-Para alterar:
-
-1. Edite os valores `value: "..."` em `gateway-public-svc.yaml` 
-   dentro de `overlays/<overlay>` conforme os IPs que você quer usar (por exemplo
-   `10.0.0.50`).
-2. Garanta que esses IPs estejam roteáveis até o cluster (BGP, L2, IPAM do Cilium, etc.).
-3. Ajuste o DNS:
-   - Registros públicos apontando para o IP do `Service` público.
-
-### 4. Aplicando as configurações com Kustomize (`k apply -k`)
-
-Usando o overlay `broetec-core` (ajuste o nome do overlay se necessário), a
-partir da raiz do repositório:
+## 5. Verificação
 
 ```bash
-kubectl apply --server-side -k k8s/core/cluster-config/cilium/overlays/broetec-core
+kubectl get gatewayclass cilium
+kubectl -n cilium get gateway public          # PROGRAMMED=True e o IP da VM
+kubectl -n cilium describe gateway public
+kubectl get ciliumloadbalancerippool lb-pool
+kubectl get httproute -A                      # rotas presas ao Gateway public
 ```
 
-Para inspecionar o render antes de aplicar:
+Se o Cilium não aplicar mudanças no Gateway, reinicie o operator:
 
 ```bash
-kustomize build k8s/core/cluster-config/overlays/broetec-core | less
+kubectl rollout restart deployment -n kube-system cilium-operator
 ```
-
-No fluxo normal isso é feito pelo role `04_deploy_k8s` no bootstrap e, depois,
-pela Application `cluster-config` do Argo CD.
-
-Isso irá:
-
-- Criar/atualizar os recursos `Gateway`:
-  - `public`
-- Aplicar os IPs definidos nos arquivos de overlay.
-
-### 5. Como isso se integra com Cilium
-
-- Cada `Gateway` (`public`) é provisionado pelo Cilium (`gatewayClassName: cilium`).
-- O Cilium usa:
-  - `spec.addresses[0].value` como IP desejado.
-  - `spec.infrastructure.labels.network` para selecionar pools de IP ou regras
-    de rede, conforme sua configuração de IPAM/rede.
-- O Ingress Cilium continua ativo para aplicações legadas (via `ingressController.enabled: true`).
-
-### 6. Ordem sugerida de mudanças (sem perder SSH)
-
-1. Configurar/ajustar o `rke2-cilium-config.yaml` conforme o trecho da seção 1, **sem** `hostNetwork.enabled: true` inicialmente.
-2. Confirmar que o cluster está saudável:
-   - `kubectl -n kube-system get pods -l k8s-app=cilium`
-   - `kubectl -n kube-system get pods -l app.kubernetes.io/name=cilium-operator`
-3. Instalar os CRDs do Gateway API (se ainda não instalados).
-4. Ajustar os IPs nos overlays `gateway-public.yaml`
-5. Aplicar o overlay:
-
-   ```bash
-   kubectl apply -k overlays/<overlay>
-   ```
-
-6. Verificar:
-   - `kubectl get gateway -A`
-   - `kubectl describe gateway public -n cilium`
-7. Validar o acesso:
-   - Testar sites de clientes via IP/nome público.
-
-Se estiver tudo funcional e você quiser avançar para `kubeProxyReplacement: true`
-ou habilitar `gatewayAPI.hostNetwork.enabled: true`, faça isso em:
-
-- Janela de manutenção.
-- Com acesso de console alternativo caso o SSH caia.
-
+ 
